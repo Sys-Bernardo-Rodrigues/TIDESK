@@ -1,6 +1,6 @@
 # TIDESK - Sistema de Helpdesk Profissional
 
-Sistema completo de gerenciamento de tickets e suporte ao cliente desenvolvido com React, TypeScript, Node.js e SQLite.
+Sistema completo de gerenciamento de tickets e suporte ao cliente desenvolvido com React, TypeScript, Node.js. Suporta SQLite (padrão) e PostgreSQL.
 
 ## 🚀 Funcionalidades
 
@@ -28,18 +28,38 @@ Sistema completo de gerenciamento de tickets e suporte ao cliente desenvolvido c
 npm run install:all
 ```
 
-3. Configure as variáveis de ambiente (opcional):
+3. Configure as variáveis de ambiente:
 ```bash
 cd server
 cp .env.example .env
 ```
 
-Edite o arquivo `.env` se necessário:
-```
+Edite o arquivo `.env` para configurar o banco de dados:
+
+**Para SQLite (padrão - mais simples):**
+```env
+DB_TYPE=sqlite
+SQLITE_DB_PATH=./tidesk.db
 PORT=5000
 JWT_SECRET=tidesk-secret-key-change-in-production
 NODE_ENV=development
 ```
+
+**Para PostgreSQL (recomendado para produção):**
+```env
+DB_TYPE=postgres
+POSTGRES_HOST=localhost
+POSTGRES_PORT=5432
+POSTGRES_DB=tidesk
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=sua_senha
+POSTGRES_SSL=false
+PORT=5000
+JWT_SECRET=tidesk-secret-key-change-in-production
+NODE_ENV=development
+```
+
+📖 **Veja mais detalhes em:** `server/CONFIGURACAO_BANCO.md`
 
 ## 🚀 Executando o Projeto
 
@@ -150,12 +170,24 @@ TIDESK/
 
 ## 🗄️ Banco de Dados
 
-O sistema utiliza SQLite como banco de dados. O arquivo `tidesk.db` é criado automaticamente na primeira execução.
+O sistema suporta **SQLite** (padrão) e **PostgreSQL**. O banco é configurado através do arquivo `.env`.
+
+### SQLite (Padrão)
+- Arquivo `tidesk.db` criado automaticamente na primeira execução
+- Ideal para desenvolvimento e pequenas instalações
+- Não requer configuração adicional
+
+### PostgreSQL
+- Requer instalação e configuração do PostgreSQL
+- Ideal para produção e ambientes com muitos usuários
+- Configure as credenciais no arquivo `.env`
 
 ### Tabelas
 - **users**: Usuários do sistema
 - **tickets**: Tickets de suporte
 - **categories**: Categorias de tickets
+
+📖 **Documentação completa:** `server/CONFIGURACAO_BANCO.md`
 
 ## 🎨 Tecnologias Utilizadas
 
@@ -163,7 +195,7 @@ O sistema utiliza SQLite como banco de dados. O arquivo `tidesk.db` é criado au
 - Node.js
 - Express.js
 - TypeScript
-- SQLite3
+- SQLite3 ou PostgreSQL (configurável)
 - JWT (JSON Web Tokens)
 - bcryptjs
 - express-validator
