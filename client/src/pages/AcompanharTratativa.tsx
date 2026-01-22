@@ -855,13 +855,13 @@ export default function AcompanharTratativa() {
                                             alignItems: 'center',
                                             gap: '0.5rem',
                                             padding: '0.5rem',
-                                            backgroundColor: 'var(--bg-tertiary)',
+                    backgroundColor: 'var(--bg-tertiary)',
                                             borderRadius: '0.375rem',
                                             marginTop: '0.5rem'
-                                          }}>
+                  }}>
                                             <FileText size={18} color="var(--purple)" />
                                             <div style={{ flex: 1 }}>
-                                              <div style={{
+                    <div style={{
                                                 fontSize: '0.8125rem',
                                                 fontWeight: '500',
                                                 color: 'var(--text-primary)'
@@ -884,8 +884,8 @@ export default function AcompanharTratativa() {
                                                 borderRadius: '0.25rem',
                                                 color: '#FFFFFF',
                                                 cursor: 'pointer',
-                                                display: 'flex',
-                                                alignItems: 'center',
+                      display: 'flex',
+                      alignItems: 'center',
                                                 transition: 'all 0.2s'
                                               }}
                                             >
@@ -954,21 +954,21 @@ export default function AcompanharTratativa() {
                           marginBottom: '2px'
                         }}>
                           <User size={16} color="#FFFFFF" />
-                        </div>
+                    </div>
                         <div>
-                          <div style={{
+                    <div style={{
                             backgroundColor: '#1E1E22',
                             padding: '0.5rem 0.75rem',
                             borderRadius: '0.5rem 0.5rem 0.5rem 0.125rem',
-                            color: 'var(--text-primary)',
+                      color: 'var(--text-primary)',
                             fontSize: '0.875rem',
                             lineHeight: '1.4',
                             boxShadow: '0 1px 2px rgba(0, 0, 0, 0.3)',
-                            whiteSpace: 'pre-wrap',
+                      whiteSpace: 'pre-wrap',
                             wordBreak: 'break-word'
-                          }}>
-                            {selectedTicket.description}
-                          </div>
+                    }}>
+                      {selectedTicket.description}
+                    </div>
                           <div style={{
                             fontSize: '0.6875rem',
                             color: 'var(--text-tertiary)',
@@ -976,7 +976,7 @@ export default function AcompanharTratativa() {
                             marginTop: '0.25rem'
                           }}>
                             {formatDate(selectedTicket.created_at)}
-                          </div>
+                  </div>
                         </div>
                       </div>
                     </div>
@@ -1019,7 +1019,7 @@ export default function AcompanharTratativa() {
                               backgroundColor: '#1E1E22',
                               padding: '0.5rem 0.75rem',
                               borderRadius: '0.5rem 0.5rem 0.5rem 0.125rem',
-                              color: 'var(--text-primary)',
+                        color: 'var(--text-primary)',
                               fontSize: '0.875rem',
                               lineHeight: '1.4',
                               boxShadow: '0 1px 2px rgba(0, 0, 0, 0.3)',
@@ -1041,11 +1041,11 @@ export default function AcompanharTratativa() {
                                       <div style={{
                                         padding: '0.5rem 0.75rem',
                                         backgroundColor: '#1E1E22',
-                                        display: 'flex',
-                                        alignItems: 'center',
+                        display: 'flex',
+                        alignItems: 'center',
                                         gap: '0.5rem',
                                         borderRadius: '0.375rem'
-                                      }}>
+                      }}>
                                         <FileText size={16} color="var(--purple)" />
                                         <div style={{ flex: 1 }}>
                                           <div style={{
@@ -1053,10 +1053,10 @@ export default function AcompanharTratativa() {
                                             fontWeight: '500',
                                             color: 'var(--text-primary)',
                                             marginBottom: '0.25rem'
-                                          }}>
+                          }}>
                                             {attachment.file_name}
                                           </div>
-                                          <div style={{
+                            <div style={{
                                             fontSize: '0.75rem',
                                             opacity: 0.8,
                                             color: 'var(--text-tertiary)'
@@ -1073,8 +1073,8 @@ export default function AcompanharTratativa() {
                                             borderRadius: '0.25rem',
                                             color: '#FFFFFF',
                                             cursor: 'pointer',
-                                            display: 'flex',
-                                            alignItems: 'center',
+                              display: 'flex',
+                              alignItems: 'center',
                                             transition: 'all 0.2s',
                                             flexShrink: 0
                                           }}

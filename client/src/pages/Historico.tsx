@@ -188,13 +188,13 @@ export default function Historico() {
       padding: 'var(--spacing-lg)',
       maxWidth: '1920px',
       margin: '0 auto'
-    }}>
+        }}>
       {/* Filtros Fixos no Canto Superior Direito */}
       <div style={{ 
         position: 'fixed',
         top: 0,
         right: 0,
-        display: 'flex',
+        display: 'flex', 
         alignItems: 'stretch',
         gap: 'var(--spacing-xs)',
         zIndex: 1000,
@@ -236,10 +236,10 @@ export default function Historico() {
             }}
           />
         </div>
-        <select
+          <select
           className="input"
-          value={filterStatus}
-          onChange={(e) => setFilterStatus(e.target.value)}
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
           style={{ 
             minWidth: '100px',
             padding: '0.375rem 0.75rem',
@@ -249,15 +249,15 @@ export default function Historico() {
             boxSizing: 'border-box',
             lineHeight: '1'
           }}
-        >
+          >
           <option value="all">Status</option>
-          <option value="resolved">Resolvido</option>
-          <option value="closed">Fechado</option>
-        </select>
-        <select
+            <option value="resolved">Resolvido</option>
+            <option value="closed">Fechado</option>
+          </select>
+          <select
           className="input"
-          value={filterPriority}
-          onChange={(e) => setFilterPriority(e.target.value)}
+            value={filterPriority}
+            onChange={(e) => setFilterPriority(e.target.value)}
           style={{ 
             minWidth: '100px',
             padding: '0.375rem 0.75rem',
@@ -267,13 +267,13 @@ export default function Historico() {
             boxSizing: 'border-box',
             lineHeight: '1'
           }}
-        >
+          >
           <option value="all">Prioridade</option>
           <option value="urgent">Urgente</option>
           <option value="high">Alta</option>
           <option value="medium">Média</option>
-          <option value="low">Baixa</option>
-        </select>
+            <option value="low">Baixa</option>
+          </select>
         <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 'var(--spacing-xs)' }}>
           <Calendar size={14} color="var(--text-tertiary)" />
           <input
@@ -433,22 +433,22 @@ export default function Historico() {
                         <span>{formatDate(ticket.updated_at)}</span>
                       </div>
                     </div>
+                        </div>
+                    </div>
                   </div>
-                </div>
-              </div>
             </Link>
             ))}
             
             {/* Paginação */}
             {totalPages > 1 && (
-              <div style={{
-                display: 'flex',
+                  <div style={{ 
+                    display: 'flex',
                 justifyContent: 'center',
                 alignItems: 'center',
                 gap: 'var(--spacing-sm)',
                 marginTop: 'var(--spacing-lg)',
                 padding: 'var(--spacing-md)'
-              }}>
+                  }}>
                 <button
                   onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                   disabled={currentPage === 1}
@@ -459,8 +459,8 @@ export default function Historico() {
                     borderRadius: 'var(--radius-sm)',
                     color: currentPage === 1 ? 'var(--text-tertiary)' : 'var(--text-primary)',
                     cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
+                      display: 'flex',
+                      alignItems: 'center',
                     gap: 'var(--spacing-xs)',
                     fontSize: '0.875rem',
                     transition: 'all var(--transition-base)'
@@ -527,7 +527,7 @@ export default function Historico() {
                       </button>
                     );
                   })}
-                </div>
+                    </div>
                 
                 <button
                   onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
@@ -539,8 +539,8 @@ export default function Historico() {
                     borderRadius: 'var(--radius-sm)',
                     color: currentPage === totalPages ? 'var(--text-tertiary)' : 'var(--text-primary)',
                     cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
+                      display: 'flex',
+                      alignItems: 'center',
                     gap: 'var(--spacing-xs)',
                     fontSize: '0.875rem',
                     transition: 'all var(--transition-base)'
@@ -559,19 +559,19 @@ export default function Historico() {
                   Próxima
                   <ChevronRight size={16} />
                 </button>
-              </div>
+                    </div>
             )}
             
             {/* Info de paginação */}
             {filteredTickets.length > 0 && (
-              <div style={{
+                    <div style={{ 
                 textAlign: 'center',
                 fontSize: '0.875rem',
-                color: 'var(--text-secondary)',
+                      color: 'var(--text-secondary)',
                 marginTop: 'var(--spacing-md)'
-              }}>
+                    }}>
                 Mostrando {startIndex + 1} - {Math.min(endIndex, filteredTickets.length)} de {filteredTickets.length} tickets
-              </div>
+                    </div>
             )}
           </>
         )}

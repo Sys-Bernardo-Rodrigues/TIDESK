@@ -8,7 +8,7 @@ import {
   Clock, 
   User, 
   FileText, 
-  CheckCircle,
+  CheckCircle, 
   RefreshCw
 } from 'lucide-react';
 
@@ -383,7 +383,7 @@ export default function Tickets() {
       navigate(`/tickets/${fullId}`);
     } else {
       console.log(`[Tickets] Ticket não encontrado na lista, usando ID numérico: ${ticketId}`);
-      navigate(`/tickets/${ticketId}`);
+    navigate(`/tickets/${ticketId}`);
     }
   };
 
@@ -415,14 +415,14 @@ export default function Tickets() {
   }
 
   return (
-    <div style={{ 
+      <div style={{
       padding: 'var(--spacing-lg)',
       maxWidth: '1920px',
       margin: '0 auto',
       position: 'relative'
-    }}>
+      }}>
       {/* Filtros Minimalistas - Canto Superior Direito */}
-      <div style={{
+        <div style={{
         position: 'fixed',
         top: 0,
         right: 0,
@@ -471,11 +471,11 @@ export default function Tickets() {
         </div>
 
         {/* Prioridade Compacta */}
-        <select
-          className="input"
-          value={priorityFilter}
-          onChange={(e) => setPriorityFilter(e.target.value)}
-          style={{
+          <select
+            className="input"
+            value={priorityFilter}
+            onChange={(e) => setPriorityFilter(e.target.value)}
+            style={{
             padding: '0.375rem 0.75rem',
             fontSize: '0.8125rem',
             cursor: 'pointer',
@@ -483,13 +483,13 @@ export default function Tickets() {
             minWidth: '100px',
             boxSizing: 'border-box',
             lineHeight: '1'
-          }}
-        >
+            }}
+          >
           <option value="all">Todas</option>
-          <option value="urgent">Urgente</option>
-          <option value="high">Alta</option>
-          <option value="medium">Média</option>
-          <option value="low">Baixa</option>
+            <option value="urgent">Urgente</option>
+            <option value="high">Alta</option>
+            <option value="medium">Média</option>
+            <option value="low">Baixa</option>
         </select>
 
         {/* Atualização Compacta */}
@@ -789,7 +789,7 @@ export default function Tickets() {
                       </p>
 
                       {/* Meta Info - Compacto */}
-                      <div style={{
+                        <div style={{
                         display: 'flex',
                         alignItems: 'stretch',
                         justifyContent: 'space-between',
@@ -798,17 +798,17 @@ export default function Tickets() {
                         paddingTop: '0.375rem',
                         borderTop: '1px solid var(--border-primary)',
                         fontSize: '0.6875rem',
-                        color: 'var(--text-tertiary)',
+                          color: 'var(--text-tertiary)',
                         flexWrap: 'wrap'
-                      }}>
-                        <div style={{ 
-                          display: 'flex', 
+                        }}>
+                      <div style={{
+                        display: 'flex',
                           alignItems: 'stretch', 
-                          gap: '0.25rem',
+                        gap: '0.25rem',
                           flex: '1',
                           minWidth: '0',
                           overflow: 'hidden'
-                        }}>
+                      }}>
                           <User size={10} />
                           <span style={{
                             overflow: 'hidden',

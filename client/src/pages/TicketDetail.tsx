@@ -732,20 +732,20 @@ export default function TicketDetail() {
                 Atribuir a
               </label>
               <div style={{ display: 'flex', gap: 'var(--spacing-xs)' }}>
-                <select
-                  className="select"
-                  value={agents.find(a => a.name === ticket.assigned_name)?.id || ''}
-                  onChange={(e) => handleUpdateTicket('assigned_to', e.target.value ? parseInt(e.target.value) : null)}
-                  disabled={updating}
+              <select
+                className="select"
+                value={agents.find(a => a.name === ticket.assigned_name)?.id || ''}
+                onChange={(e) => handleUpdateTicket('assigned_to', e.target.value ? parseInt(e.target.value) : null)}
+                disabled={updating}
                   style={{ flex: 1 }}
-                >
-                  <option value="">Não atribuído</option>
-                  {agents.map((agent) => (
-                    <option key={agent.id} value={agent.id}>
-                      {agent.name}
-                    </option>
-                  ))}
-                </select>
+              >
+                <option value="">Não atribuído</option>
+                {agents.map((agent) => (
+                  <option key={agent.id} value={agent.id}>
+                    {agent.name}
+                  </option>
+                ))}
+              </select>
                 <button
                   className="btn btn-secondary"
                   onClick={() => setShowScheduleModal(true)}
@@ -819,12 +819,12 @@ export default function TicketDetail() {
             return (
               <>
                 {/* Mensagem de boas-vindas do formulário */}
-                <div style={{
-                  display: 'flex',
+        <div style={{
+          display: 'flex',
                   justifyContent: 'flex-start',
-                  marginBottom: 'var(--spacing-sm)'
-                }}>
-                  <div style={{
+          marginBottom: 'var(--spacing-sm)'
+        }}>
+          <div style={{
                     maxWidth: '75%',
                     display: 'flex',
                     gap: 'var(--spacing-xs)',
@@ -833,16 +833,16 @@ export default function TicketDetail() {
                     <div style={{
                       width: '32px',
                       height: '32px',
-                      borderRadius: '50%',
+            borderRadius: '50%',
                       backgroundColor: 'var(--purple)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
                       flexShrink: 0,
                       marginBottom: '2px'
-                    }}>
+          }}>
                       <User size={16} color="#FFFFFF" />
-                    </div>
+          </div>
                     <div>
                       <div style={{
                         backgroundColor: '#1E1E22',
@@ -855,9 +855,9 @@ export default function TicketDetail() {
                         marginBottom: '0.25rem'
                       }}>
                         {ticket.form_name && (
-                          <div style={{
-                            display: 'flex',
-                            alignItems: 'center',
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
                             gap: '0.5rem',
                             marginBottom: '0.5rem',
                             paddingBottom: '0.5rem',
@@ -872,8 +872,8 @@ export default function TicketDetail() {
                         <div style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
                           Olá! Recebi sua solicitação. Aqui estão os dados informados:
                         </div>
-                      </div>
-                      <div style={{
+            </div>
+            <div style={{
                         fontSize: '0.6875rem',
                         color: 'var(--text-tertiary)',
                         paddingLeft: '0.5rem',
@@ -881,9 +881,9 @@ export default function TicketDetail() {
                       }}>
                         {formatDate(ticket.created_at)}
                       </div>
-                    </div>
-                  </div>
-                </div>
+            </div>
+          </div>
+        </div>
 
                 {/* Dados do formulário em mensagens separadas */}
                 {formData.map((item, index) => {
@@ -900,18 +900,18 @@ export default function TicketDetail() {
 
                   return (
                     <div key={index} style={{
-                      display: 'flex',
+            display: 'flex',
                       justifyContent: 'flex-start',
                       marginBottom: 'var(--spacing-xs)'
-                    }}>
-                      <div style={{
+          }}>
+            <div style={{
                         maxWidth: '75%',
-                        display: 'flex',
+              display: 'flex',
                         gap: 'var(--spacing-xs)',
                         alignItems: 'flex-end'
-                      }}>
+            }}>
                         <div style={{ width: '32px', flexShrink: 0 }} />
-                        <div style={{ flex: 1 }}>
+            <div style={{ flex: 1 }}>
                           {attachment ? (
                             <div style={{
                               backgroundColor: '#1E1E22',
@@ -949,9 +949,9 @@ export default function TicketDetail() {
                                     }}>
                                       {item.label}
                                     </div>
-                                    <div style={{
-                                      display: 'flex',
-                                      alignItems: 'center',
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
                                       justifyContent: 'space-between',
                                       gap: '0.5rem'
                                     }}>
@@ -961,8 +961,8 @@ export default function TicketDetail() {
                                         flex: 1
                                       }}>
                                         {attachment.file_name} • {formatFileSize(attachment.file_size)}
-                                      </span>
-                                      <button
+                  </span>
+                    <button
                                         onClick={() => handleDownload(attachment)}
                                         style={{
                                           padding: '0.25rem 0.5rem',
@@ -986,7 +986,7 @@ export default function TicketDetail() {
                                       >
                                         <Download size={12} />
                                         Baixar
-                                      </button>
+                    </button>
                                     </div>
                                   </div>
                                 </div>
@@ -1025,7 +1025,7 @@ export default function TicketDetail() {
                                         {formatFileSize(attachment.file_size)}
                                       </div>
                                     </div>
-                                    <button
+                    <button
                                       onClick={() => handleDownload(attachment)}
                                       style={{
                                         padding: '0.375rem',
@@ -1046,11 +1046,11 @@ export default function TicketDetail() {
                                       }}
                                     >
                                       <Download size={14} />
-                                    </button>
+                    </button>
                                   </div>
-                                </div>
-                              )}
-                            </div>
+                  </div>
+                )}
+              </div>
                           ) : (
                             <div style={{
                               backgroundColor: '#1E1E22',
@@ -1177,18 +1177,18 @@ export default function TicketDetail() {
                   </div>
                 )}
                 <div style={{ flex: 1 }}>
-                  {editingMessageId === message.id ? (
-                    <div style={{
+              {editingMessageId === message.id ? (
+                <div style={{
                       backgroundColor: isOwnMessage ? 'var(--purple)' : '#1E1E22',
                       padding: '0.75rem',
                       borderRadius: isOwnMessage ? '0.5rem 0.5rem 0.125rem 0.5rem' : '0.5rem 0.5rem 0.5rem 0.125rem',
                       boxShadow: '0 1px 2px rgba(0, 0, 0, 0.3)'
-                    }}>
-                      <textarea
-                        className="textarea"
-                        value={editText}
-                        onChange={(e) => setEditText(e.target.value)}
-                        rows={3}
+                }}>
+                  <textarea
+                    className="textarea"
+                    value={editText}
+                    onChange={(e) => setEditText(e.target.value)}
+                    rows={3}
                         style={{
                           marginBottom: 'var(--spacing-sm)',
                           backgroundColor: 'var(--bg-tertiary)',
@@ -1201,13 +1201,13 @@ export default function TicketDetail() {
                           resize: 'none',
                           fontFamily: 'inherit'
                         }}
-                      />
-                      <div style={{ display: 'flex', gap: 'var(--spacing-sm)', justifyContent: 'flex-end' }}>
-                        <button
-                          onClick={() => {
-                            setEditingMessageId(null);
-                            setEditText('');
-                          }}
+                  />
+                  <div style={{ display: 'flex', gap: 'var(--spacing-sm)', justifyContent: 'flex-end' }}>
+                    <button
+                      onClick={() => {
+                        setEditingMessageId(null);
+                        setEditText('');
+                      }}
                           style={{
                             padding: '0.375rem 0.75rem',
                             backgroundColor: 'var(--bg-tertiary)',
@@ -1217,11 +1217,11 @@ export default function TicketDetail() {
                             cursor: 'pointer',
                             fontSize: '0.8125rem'
                           }}
-                        >
-                          Cancelar
-                        </button>
-                        <button
-                          onClick={() => handleEditMessage(message.id)}
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      onClick={() => handleEditMessage(message.id)}
                           style={{
                             padding: '0.375rem 0.75rem',
                             backgroundColor: 'var(--purple)',
@@ -1231,14 +1231,14 @@ export default function TicketDetail() {
                             cursor: 'pointer',
                             fontSize: '0.8125rem'
                           }}
-                        >
-                          Salvar
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
+                    >
+                      Salvar
+                    </button>
+                  </div>
+                </div>
+              ) : (
                     <>
-                      <div style={{
+                <div style={{
                         display: 'flex',
                         alignItems: 'center',
                         gap: 'var(--spacing-xs)',
@@ -1320,7 +1320,7 @@ export default function TicketDetail() {
                         fontSize: '0.875rem',
                         lineHeight: '1.4',
                         boxShadow: '0 1px 2px rgba(0, 0, 0, 0.3)',
-                        whiteSpace: 'pre-wrap',
+                  whiteSpace: 'pre-wrap',
                         wordBreak: 'break-word',
                         position: 'relative',
                         overflow: 'hidden'
@@ -1472,8 +1472,8 @@ export default function TicketDetail() {
                           <div style={{
                             padding: message.attachments && message.attachments.length > 0 ? '0.5rem 0.75rem' : '0',
                             paddingTop: message.attachments && message.attachments.length > 0 ? '0.5rem' : '0'
-                          }}>
-                            {message.message}
+                }}>
+                  {message.message}
                             {message.updated_at !== message.created_at && (
                               <span style={{
                                 fontSize: '0.6875rem',
@@ -1484,9 +1484,9 @@ export default function TicketDetail() {
                                 (editado)
                               </span>
                             )}
-                          </div>
-                        )}
-                      </div>
+                </div>
+              )}
+            </div>
                       <div style={{
                         fontSize: '0.6875rem',
                         color: 'var(--text-tertiary)',
@@ -1496,7 +1496,7 @@ export default function TicketDetail() {
                         textAlign: isOwnMessage ? 'right' : 'left'
                       }}>
                         {formatDate(message.created_at)}
-                      </div>
+          </div>
                     </>
                   )}
                 </div>

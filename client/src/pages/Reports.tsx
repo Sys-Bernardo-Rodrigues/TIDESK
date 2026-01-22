@@ -11,7 +11,8 @@ import {
   BarChart3,
   PieChart,
   Zap,
-  RefreshCw
+  RefreshCw,
+  FileDown
 } from 'lucide-react';
 
 interface OverviewData {
@@ -130,6 +131,460 @@ export default function Reports() {
     const days = Math.floor(hours / 24);
     const remainingHours = Math.round((hours % 24) * 10) / 10;
     return `${days}d ${remainingHours}h`;
+  };
+
+  const generatePDF = async () => {
+    try {
+      const { jsPDF } = await import('jspdf');
+      const doc = new jsPDF();
+      
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const margin = 15;
+      const contentWidth = pageWidth - (margin * 2);
+      let yPos = 15;
+      
+      // Cores do tema
+      const primaryColor = [138, 43, 226]; // Roxo
+      const secondaryColor = [59, 130, 246]; // Azul
+      const successColor = [34, 197, 94]; // Verde
+      const warningColor = [245, 158, 11]; // Amarelo
+      const dangerColor = [239, 68, 68]; // Vermelho
+      const textColor = [30, 30, 30];
+      const textSecondary = [100, 100, 100];
+      const borderColor = [220, 220, 230];
+      const bgLight = [250, 250, 255];
+      
+      // Função para nova página
+      const addPageIfNeeded = (space: number) => {
+        if (yPos + space > pageHeight - 20) {
+          doc.addPage();
+          yPos = 15;
+          drawHeader();
+        }
+      };
+      
+      // Função para desenhar cabeçalho
+      const drawHeader = () => {
+        // Barra superior
+        doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+        doc.rect(0, 0, pageWidth, 30, 'F');
+        
+        // Título
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(20);
+        doc.setFont('helvetica', 'bold');
+        doc.text('TIDESK', margin, 18);
+        
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        doc.text('Relatório de Métricas', margin + 45, 18);
+        
+        // Data
+        const now = new Date();
+        const dateStr = now.toLocaleString('pt-BR', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+        doc.setFontSize(8);
+        doc.text(`Gerado em: ${dateStr}`, pageWidth - margin, 18, { align: 'right' });
+        
+        doc.setTextColor(textColor[0], textColor[1], textColor[2]);
+        yPos = 40;
+      };
+      
+      // Desenhar cabeçalho inicial
+      drawHeader();
+      
+      // Período
+      let periodText = '';
+      if (useCustomDates && customDateStart && customDateEnd) {
+        periodText = `${customDateStart} até ${customDateEnd}`;
+      } else {
+        const periodLabels: Record<string, string> = {
+          today: 'Hoje',
+          week: 'Última semana',
+          month: 'Último mês',
+          quarter: 'Último trimestre',
+          year: 'Último ano'
+        };
+        periodText = periodLabels[period] || period;
+      }
+      
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(textSecondary[0], textSecondary[1], textSecondary[2]);
+      doc.text(`Período: ${periodText}`, margin, yPos);
+      yPos += 8;
+      
+      // Linha divisória
+      doc.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
+      doc.setLineWidth(0.5);
+      doc.line(margin, yPos, pageWidth - margin, yPos);
+      yPos += 10;
+      
+      // Métricas principais
+      if (overview) {
+        addPageIfNeeded(50);
+        
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(textColor[0], textColor[1], textColor[2]);
+        doc.text('Métricas Principais', margin, yPos);
+        yPos += 12;
+        
+        const boxWidth = (contentWidth - 9) / 4;
+        const boxHeight = 28;
+        const metrics = [
+          { label: 'Total', value: overview.totalTickets.toString(), color: primaryColor },
+          { label: 'Resolvidos', value: overview.resolvedTickets.toString(), color: successColor },
+          { label: 'Taxa', value: `${overview.resolutionRate.toFixed(1)}%`, color: secondaryColor },
+          { label: 'Tempo Médio', value: formatHours(overview.avgResolutionTimeHours), color: warningColor }
+        ];
+        
+        metrics.forEach((metric, index) => {
+          const x = margin + (index * (boxWidth + 3));
+          
+          // Box
+          doc.setFillColor(255, 255, 255);
+          doc.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
+          doc.setLineWidth(0.5);
+          doc.roundedRect(x, yPos, boxWidth, boxHeight, 2, 2, 'FD');
+          
+          // Barra superior colorida
+          doc.setFillColor(metric.color[0], metric.color[1], metric.color[2]);
+          doc.roundedRect(x, yPos, boxWidth, 3, 2, 2, 'F');
+          
+          // Label
+          doc.setFontSize(8);
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(textSecondary[0], textSecondary[1], textSecondary[2]);
+          doc.text(metric.label, x + 4, yPos + 10);
+          
+          // Valor
+          doc.setFontSize(14);
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(textColor[0], textColor[1], textColor[2]);
+          doc.text(metric.value, x + 4, yPos + 22);
+        });
+        
+        yPos += boxHeight + 15;
+      }
+      
+      // Tickets por Status
+      if (overview && overview.ticketsByStatus.length > 0) {
+        addPageIfNeeded(40);
+        
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(textColor[0], textColor[1], textColor[2]);
+        doc.text('Distribuição por Status', margin, yPos);
+        yPos += 10;
+        
+        // Cabeçalho da tabela
+        doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+        doc.roundedRect(margin, yPos, contentWidth, 8, 1, 1, 'F');
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(255, 255, 255);
+        doc.text('Status', margin + 4, yPos + 5.5);
+        doc.text('Quantidade', margin + contentWidth - 30, yPos + 5.5, { align: 'right' });
+        yPos += 10;
+        
+        // Linhas da tabela
+        const statusColors: Record<string, number[]> = {
+          open: secondaryColor,
+          in_progress: warningColor,
+          resolved: successColor,
+          closed: [107, 114, 128],
+          scheduled: primaryColor,
+          pending_approval: dangerColor
+        };
+        
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'normal');
+        overview.ticketsByStatus.forEach((item, index) => {
+          addPageIfNeeded(10);
+          
+          // Linha alternada
+          if (index % 2 === 0) {
+            doc.setFillColor(bgLight[0], bgLight[1], bgLight[2]);
+            doc.rect(margin, yPos - 1, contentWidth, 8, 'F');
+          }
+          
+          // Indicador colorido
+          const color = statusColors[item.status] || [200, 200, 200];
+          doc.setFillColor(color[0], color[1], color[2]);
+          doc.circle(margin + 4, yPos + 3, 2, 'F');
+          
+          doc.setTextColor(textColor[0], textColor[1], textColor[2]);
+          doc.text(getStatusLabel(item.status), margin + 9, yPos + 5);
+          doc.setFont('helvetica', 'bold');
+          doc.text(item.count.toString(), margin + contentWidth - 4, yPos + 5, { align: 'right' });
+          doc.setFont('helvetica', 'normal');
+          yPos += 9;
+        });
+        yPos += 8;
+      }
+      
+      // Tickets por Prioridade
+      if (overview && overview.ticketsByPriority.length > 0) {
+        addPageIfNeeded(40);
+        
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(textColor[0], textColor[1], textColor[2]);
+        doc.text('Distribuição por Prioridade', margin, yPos);
+        yPos += 10;
+        
+        // Cabeçalho da tabela
+        doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+        doc.roundedRect(margin, yPos, contentWidth, 8, 1, 1, 'F');
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(255, 255, 255);
+        doc.text('Prioridade', margin + 4, yPos + 5.5);
+        doc.text('Quantidade', margin + contentWidth - 30, yPos + 5.5, { align: 'right' });
+        yPos += 10;
+        
+        // Linhas da tabela
+        const priorityColors: Record<string, number[]> = {
+          low: secondaryColor,
+          medium: warningColor,
+          high: [249, 115, 22],
+          urgent: dangerColor
+        };
+        
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'normal');
+        overview.ticketsByPriority.forEach((item, index) => {
+          addPageIfNeeded(10);
+          
+          if (index % 2 === 0) {
+            doc.setFillColor(bgLight[0], bgLight[1], bgLight[2]);
+            doc.rect(margin, yPos - 1, contentWidth, 8, 'F');
+          }
+          
+          const color = priorityColors[item.priority] || [200, 200, 200];
+          doc.setFillColor(color[0], color[1], color[2]);
+          doc.circle(margin + 4, yPos + 3, 2, 'F');
+          
+          doc.setTextColor(textColor[0], textColor[1], textColor[2]);
+          doc.text(getPriorityLabel(item.priority), margin + 9, yPos + 5);
+          doc.setFont('helvetica', 'bold');
+          doc.text(item.count.toString(), margin + contentWidth - 4, yPos + 5, { align: 'right' });
+          doc.setFont('helvetica', 'normal');
+          yPos += 9;
+        });
+        yPos += 8;
+      }
+      
+      // Tickets por Formulário
+      if (formsData.length > 0) {
+        addPageIfNeeded(50);
+        
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(textColor[0], textColor[1], textColor[2]);
+        doc.text('Tickets por Formulário', margin, yPos);
+        yPos += 10;
+        
+        // Cabeçalho da tabela
+        doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+        doc.roundedRect(margin, yPos, contentWidth, 8, 1, 1, 'F');
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(255, 255, 255);
+        doc.text('Formulário', margin + 4, yPos + 5.5);
+        doc.text('Total', margin + contentWidth - 85, yPos + 5.5, { align: 'right' });
+        doc.text('Resolvidos', margin + contentWidth - 65, yPos + 5.5, { align: 'right' });
+        doc.text('Taxa', margin + contentWidth - 45, yPos + 5.5, { align: 'right' });
+        doc.text('Tempo', margin + contentWidth - 20, yPos + 5.5, { align: 'right' });
+        yPos += 10;
+        
+        // Linhas da tabela
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'normal');
+        formsData.forEach((form, index) => {
+          addPageIfNeeded(10);
+          
+          if (index % 2 === 0) {
+            doc.setFillColor(bgLight[0], bgLight[1], bgLight[2]);
+            doc.rect(margin, yPos - 1, contentWidth, 8, 'F');
+          }
+          
+          const resolutionRate = form.ticket_count > 0 
+            ? (form.resolved_count / form.ticket_count) * 100 
+            : 0;
+          
+          doc.setTextColor(textColor[0], textColor[1], textColor[2]);
+          const formName = form.name.length > 30 ? form.name.substring(0, 27) + '...' : form.name;
+          doc.text(formName, margin + 4, yPos + 5);
+          
+          doc.setFont('helvetica', 'bold');
+          doc.text(form.ticket_count.toString(), margin + contentWidth - 85, yPos + 5, { align: 'right' });
+          doc.text(form.resolved_count.toString(), margin + contentWidth - 65, yPos + 5, { align: 'right' });
+          
+          const rateColor = resolutionRate >= 80 ? successColor : resolutionRate >= 50 ? warningColor : dangerColor;
+          doc.setTextColor(rateColor[0], rateColor[1], rateColor[2]);
+          doc.text(`${resolutionRate.toFixed(1)}%`, margin + contentWidth - 45, yPos + 5, { align: 'right' });
+          
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(textColor[0], textColor[1], textColor[2]);
+          doc.text(formatHours(form.avg_resolution_hours), margin + contentWidth - 20, yPos + 5, { align: 'right' });
+          yPos += 9;
+        });
+        yPos += 8;
+      }
+      
+      // Performance de Agentes
+      if (agentsData.length > 0) {
+        addPageIfNeeded(50);
+        
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(textColor[0], textColor[1], textColor[2]);
+        doc.text('Performance de Agentes', margin, yPos);
+        yPos += 10;
+        
+        // Cabeçalho da tabela
+        doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+        doc.roundedRect(margin, yPos, contentWidth, 8, 1, 1, 'F');
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(255, 255, 255);
+        doc.text('Agente', margin + 4, yPos + 5.5);
+        doc.text('Total', margin + contentWidth - 85, yPos + 5.5, { align: 'right' });
+        doc.text('Resolvidos', margin + contentWidth - 65, yPos + 5.5, { align: 'right' });
+        doc.text('Taxa', margin + contentWidth - 45, yPos + 5.5, { align: 'right' });
+        doc.text('Tempo', margin + contentWidth - 20, yPos + 5.5, { align: 'right' });
+        yPos += 10;
+        
+        // Linhas da tabela
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'normal');
+        agentsData.forEach((agent, index) => {
+          addPageIfNeeded(10);
+          
+          if (index % 2 === 0) {
+            doc.setFillColor(bgLight[0], bgLight[1], bgLight[2]);
+            doc.rect(margin, yPos - 1, contentWidth, 8, 'F');
+          }
+          
+          const resolutionRate = agent.total_tickets > 0 
+            ? (agent.resolved_tickets / agent.total_tickets) * 100 
+            : 0;
+          
+          doc.setTextColor(textColor[0], textColor[1], textColor[2]);
+          const agentName = agent.name.length > 25 ? agent.name.substring(0, 22) + '...' : agent.name;
+          doc.text(agentName, margin + 4, yPos + 5);
+          
+          doc.setFont('helvetica', 'bold');
+          doc.text(agent.total_tickets.toString(), margin + contentWidth - 85, yPos + 5, { align: 'right' });
+          doc.text(agent.resolved_tickets.toString(), margin + contentWidth - 65, yPos + 5, { align: 'right' });
+          
+          const rateColor = resolutionRate >= 80 ? successColor : resolutionRate >= 50 ? warningColor : dangerColor;
+          doc.setTextColor(rateColor[0], rateColor[1], rateColor[2]);
+          doc.text(`${resolutionRate.toFixed(1)}%`, margin + contentWidth - 45, yPos + 5, { align: 'right' });
+          
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(textColor[0], textColor[1], textColor[2]);
+          doc.text(formatHours(agent.avg_resolution_hours), margin + contentWidth - 20, yPos + 5, { align: 'right' });
+          yPos += 9;
+        });
+        yPos += 8;
+      }
+      
+      // Tempo de Resposta por Prioridade
+      if (responseTime.length > 0) {
+        addPageIfNeeded(50);
+        
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(textColor[0], textColor[1], textColor[2]);
+        doc.text('Tempo de Resposta por Prioridade', margin, yPos);
+        yPos += 10;
+        
+        // Cabeçalho da tabela
+        doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+        doc.roundedRect(margin, yPos, contentWidth, 8, 1, 1, 'F');
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(255, 255, 255);
+        doc.text('Prioridade', margin + 4, yPos + 5.5);
+        doc.text('Total', margin + contentWidth - 85, yPos + 5.5, { align: 'right' });
+        doc.text('Médio', margin + contentWidth - 65, yPos + 5.5, { align: 'right' });
+        doc.text('Mínimo', margin + contentWidth - 45, yPos + 5.5, { align: 'right' });
+        doc.text('Máximo', margin + contentWidth - 20, yPos + 5.5, { align: 'right' });
+        yPos += 10;
+        
+        // Linhas da tabela
+        const priorityColors: Record<string, number[]> = {
+          low: secondaryColor,
+          medium: warningColor,
+          high: [249, 115, 22],
+          urgent: dangerColor
+        };
+        
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'normal');
+        responseTime.forEach((item, index) => {
+          addPageIfNeeded(10);
+          
+          if (index % 2 === 0) {
+            doc.setFillColor(bgLight[0], bgLight[1], bgLight[2]);
+            doc.rect(margin, yPos - 1, contentWidth, 8, 'F');
+          }
+          
+          const color = priorityColors[item.priority] || [200, 200, 200];
+          doc.setFillColor(color[0], color[1], color[2]);
+          doc.circle(margin + 4, yPos + 3, 2, 'F');
+          
+          doc.setTextColor(textColor[0], textColor[1], textColor[2]);
+          doc.text(getPriorityLabel(item.priority), margin + 9, yPos + 5);
+          
+          doc.setFont('helvetica', 'bold');
+          doc.text(item.total_tickets.toString(), margin + contentWidth - 85, yPos + 5, { align: 'right' });
+          
+          doc.setFont('helvetica', 'normal');
+          doc.text(formatHours(item.avg_hours), margin + contentWidth - 65, yPos + 5, { align: 'right' });
+          doc.text(formatHours(item.min_hours), margin + contentWidth - 45, yPos + 5, { align: 'right' });
+          doc.text(formatHours(item.max_hours), margin + contentWidth - 20, yPos + 5, { align: 'right' });
+          yPos += 9;
+        });
+        yPos += 8;
+      }
+      
+      // Rodapé em todas as páginas
+      const totalPages = doc.internal.pages.length - 1;
+      const now = new Date();
+      for (let i = 1; i <= totalPages; i++) {
+        doc.setPage(i);
+        
+        // Linha
+        doc.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
+        doc.setLineWidth(0.5);
+        doc.line(margin, pageHeight - 12, pageWidth - margin, pageHeight - 12);
+        
+        // Texto
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(textSecondary[0], textSecondary[1], textSecondary[2]);
+        doc.text(`Página ${i} de ${totalPages}`, margin, pageHeight - 6);
+        doc.text('TIDESK - Sistema de Gestão de Tickets', pageWidth / 2, pageHeight - 6, { align: 'center' });
+        doc.text(now.toLocaleDateString('pt-BR'), pageWidth - margin, pageHeight - 6, { align: 'right' });
+      }
+      
+      // Salvar
+      const fileName = `relatorio-tidesk-${now.toISOString().split('T')[0]}.pdf`;
+      doc.save(fileName);
+    } catch (error) {
+      console.error('Erro ao gerar PDF:', error);
+      alert('Erro ao gerar PDF. Verifique se a biblioteca jsPDF está instalada.');
+    }
   };
 
   const getStatusLabel = (status: string): string => {
@@ -320,6 +775,41 @@ export default function Reports() {
             <option value="120">120s</option>
           </select>
         </div>
+        
+        {/* Botão PDF */}
+        <button
+          onClick={generatePDF}
+          disabled={loading || !overview}
+          style={{
+            padding: '0.375rem 0.75rem',
+            backgroundColor: 'var(--red)',
+            border: 'none',
+            borderRadius: 'var(--radius-sm)',
+            color: '#FFFFFF',
+            cursor: loading || !overview ? 'not-allowed' : 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 'var(--spacing-xs)',
+            fontSize: '0.8125rem',
+            height: '32px',
+            boxSizing: 'border-box',
+            transition: 'all var(--transition-base)',
+            opacity: loading || !overview ? 0.5 : 1
+          }}
+          onMouseEnter={(e) => {
+            if (!loading && overview) {
+              e.currentTarget.style.backgroundColor = 'var(--red-dark)';
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (!loading && overview) {
+              e.currentTarget.style.backgroundColor = 'var(--red)';
+            }
+          }}
+        >
+          <FileDown size={14} />
+          PDF
+        </button>
       </div>
 
       {/* Espaço para os filtros fixos */}
