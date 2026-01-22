@@ -476,6 +476,8 @@ router.post('/public/:url/submit', uploadMultiple, async (req, res) => {
     const formValues: Record<string, any> = {};
     let userName: string | null = null;
     
+    // IMPORTANTE: O nome encontrado será usado APENAS no título do ticket
+    // NÃO será criado um novo usuário no banco de dados
     fields.forEach((field: any) => {
       const fieldId = field.id.toString();
       const value = formData[fieldId];
@@ -487,7 +489,7 @@ router.post('/public/:url/submit', uploadMultiple, async (req, res) => {
         const cleanLabel = normalizedLabel.replace(/[:：]/g, '').trim();
         
         if (cleanLabel === 'nome' || cleanLabel === 'nome completo') {
-          userName = value.trim();
+          userName = value.trim(); // Armazenar apenas para usar no título do ticket
         }
       }
       
@@ -514,55 +516,22 @@ router.post('/public/:url/submit', uploadMultiple, async (req, res) => {
     // Determinar status baseado na vinculação
     const needsApproval = !!(form.linked_user_id || form.linked_group_id);
     const ticketStatus = needsApproval ? 'pending_approval' : 'open';
-    const ticketTitle = `Submissão: ${form.name}`;
+    
+    // Usar o nome encontrado APENAS no título do ticket (não cria usuário)
+    const ticketTitle = userName 
+      ? `Submissão: ${form.name} - ${userName}`
+      : `Submissão: ${form.name}`;
 
     console.log(`[Form Submit] Criando ticket para formulário ${form.id}:`);
     console.log(`  - linked_user_id: ${form.linked_user_id}`);
     console.log(`  - linked_group_id: ${form.linked_group_id}`);
     console.log(`  - needsApproval: ${needsApproval}`);
     console.log(`  - ticketStatus: ${ticketStatus}`);
-    console.log(`  - userName encontrado: ${userName || 'não encontrado'}`);
+    console.log(`  - nome encontrado (usado apenas no título): ${userName || 'não encontrado'}`);
 
-    // Buscar ou criar usuário com o nome fornecido
-    let userId = 1; // Padrão: usuário anônimo
-    
-    if (userName) {
-      try {
-        // Normalizar nome para busca (trim e lowercase)
-        const normalizedName = userName.trim().toLowerCase();
-        
-        // Buscar usuário existente pelo nome (case-insensitive)
-        // Usar LIKE para compatibilidade com ambos os bancos
-        const allUsers = await dbAll('SELECT id, name FROM users', []);
-        const existingUser = allUsers.find((u: any) => 
-          u.name && u.name.trim().toLowerCase() === normalizedName
-        );
-        
-        if (existingUser) {
-          userId = (existingUser as any).id;
-          console.log(`[Form Submit] Usuário encontrado: ${userName} (ID: ${userId})`);
-        } else {
-          // Criar novo usuário com o nome fornecido
-          // Usar email temporário baseado no nome e timestamp
-          const tempEmail = `form_${normalizedName.replace(/\s+/g, '_')}_${Date.now()}@tidesk.temp`;
-          // Gerar senha aleatória (usuário não poderá fazer login, mas precisa de senha)
-          const tempPassword = crypto.randomBytes(16).toString('hex');
-          const hashedPassword = await bcrypt.hash(tempPassword, 10);
-          
-          const userResult = await dbRun(
-            'INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)',
-            [userName.trim(), tempEmail, hashedPassword, 'user']
-          );
-          
-          userId = (userResult as any).lastID || (userResult as any).id;
-          console.log(`[Form Submit] Novo usuário criado: ${userName} (ID: ${userId})`);
-        }
-      } catch (error) {
-        console.error('[Form Submit] Erro ao buscar/criar usuário:', error);
-        // Em caso de erro, usar usuário anônimo (ID 1)
-        userId = 1;
-      }
-    }
+    // IMPORTANTE: Usar usuário vinculado ao formulário ou usuário anônimo (ID 1)
+    // O nome encontrado é usado APENAS no título do ticket, NÃO cria novo usuário
+    const userId = form.linked_user_id || 1;
 
     // Gerar número do ticket do dia
     const today = new Date();
@@ -592,7 +561,7 @@ router.post('/public/:url/submit', uploadMultiple, async (req, res) => {
       'medium',
       form.id,
       submissionId,
-      userId, // Usar o user_id encontrado ou criado
+      userId, // Usar o usuário vinculado ao formulário ou usuário anônimo (ID 1) - NÃO criar novos usuários
       needsApproval ? 1 : 0,
       ticketNumber,
       brasiliaTimestamp,

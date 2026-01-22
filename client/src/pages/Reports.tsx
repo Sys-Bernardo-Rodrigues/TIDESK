@@ -620,7 +620,7 @@ export default function Reports() {
   };
 
   if (loading) {
-    return (
+  return (
       <div style={{
         display: 'flex',
         justifyContent: 'center',
@@ -639,7 +639,7 @@ export default function Reports() {
             margin: '0 auto 1rem'
           }} />
           <p>Carregando relatórios...</p>
-        </div>
+      </div>
       </div>
     );
   }
@@ -652,11 +652,11 @@ export default function Reports() {
       position: 'relative'
     }}>
       {/* Filtros Fixos no Canto Superior Direito */}
-      <div style={{ 
+        <div style={{ 
         position: 'fixed',
         top: 0,
         right: 0,
-        display: 'flex',
+          display: 'flex', 
         alignItems: 'stretch',
         gap: 'var(--spacing-xs)',
         zIndex: 1000,
@@ -668,7 +668,7 @@ export default function Reports() {
         boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
         flexWrap: 'nowrap'
       }}>
-        <select
+            <select
           className="input"
           value={useCustomDates ? 'custom' : period}
           onChange={(e) => {
@@ -695,7 +695,7 @@ export default function Reports() {
           <option value="quarter">Trimestre</option>
           <option value="year">Ano</option>
           <option value="custom">Personalizado</option>
-        </select>
+            </select>
         
         {useCustomDates ? (
           <>
@@ -732,7 +732,7 @@ export default function Reports() {
                 }}
                 placeholder="Até"
               />
-            </div>
+          </div>
           </>
         ) : null}
         
@@ -750,7 +750,7 @@ export default function Reports() {
               zIndex: 1
             }}
           />
-          <select
+            <select
             className="input"
             value={autoRefresh}
             onChange={(e) => setAutoRefresh(e.target.value)}
@@ -773,8 +773,8 @@ export default function Reports() {
             <option value="60">60s</option>
             <option value="90">90s</option>
             <option value="120">120s</option>
-          </select>
-        </div>
+            </select>
+          </div>
         
         {/* Botão PDF */}
         <button
@@ -787,7 +787,7 @@ export default function Reports() {
             borderRadius: 'var(--radius-sm)',
             color: '#FFFFFF',
             cursor: loading || !overview ? 'not-allowed' : 'pointer',
-            display: 'flex',
+            display: 'flex', 
             alignItems: 'center',
             gap: 'var(--spacing-xs)',
             fontSize: '0.8125rem',
@@ -809,7 +809,7 @@ export default function Reports() {
         >
           <FileDown size={14} />
           PDF
-        </button>
+            </button>
       </div>
 
       {/* Espaço para os filtros fixos */}
@@ -817,88 +817,88 @@ export default function Reports() {
 
       {/* Cards de Métricas Principais */}
       {overview && (
-        <div style={{
-          display: 'grid',
+      <div style={{
+        display: 'grid',
           gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
-          gap: 'var(--spacing-lg)',
+        gap: 'var(--spacing-lg)',
           marginBottom: 'var(--spacing-xl)'
-        }}>
-          <div className="card slide-in" style={{ 
-            border: '1px solid var(--border-primary)',
+      }}>
+        <div className="card slide-in" style={{ 
+          border: '1px solid var(--border-primary)',
             padding: 'var(--spacing-lg)',
-            animationDelay: '0ms'
+          animationDelay: '0ms'
+        }}>
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'space-between',
+            marginBottom: 'var(--spacing-md)' 
           }}>
-            <div style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              justifyContent: 'space-between',
-              marginBottom: 'var(--spacing-md)' 
-            }}>
-              <div style={{
-                padding: 'var(--spacing-md)',
+            <div style={{
+              padding: 'var(--spacing-md)',
                 background: 'var(--blue-light)',
-                borderRadius: 'var(--radius-md)',
+              borderRadius: 'var(--radius-md)',
                 border: '1px solid rgba(59, 130, 246, 0.2)'
-              }}>
+            }}>
                 <Ticket size={24} color="var(--blue)" strokeWidth={2} />
-              </div>
-            </div>
-            <h3 style={{ 
-              fontSize: '0.8125rem', 
-              color: 'var(--text-secondary)',
-              fontWeight: '500',
-              marginBottom: 'var(--spacing-sm)',
-              textTransform: 'uppercase',
-              letterSpacing: '0.05em'
-            }}>
-              Total de Tickets
-            </h3>
-            <div style={{ 
-              fontSize: '2.5rem', 
-              fontWeight: '800',
-              color: 'var(--blue)',
-              lineHeight: '1'
-            }}>
-              {overview.totalTickets}
             </div>
           </div>
-
-          <div className="card slide-in" style={{ 
-            border: '1px solid var(--border-primary)',
-            padding: 'var(--spacing-lg)',
-            animationDelay: '100ms'
+          <h3 style={{ 
+            fontSize: '0.8125rem', 
+            color: 'var(--text-secondary)',
+            fontWeight: '500',
+            marginBottom: 'var(--spacing-sm)',
+            textTransform: 'uppercase',
+            letterSpacing: '0.05em'
           }}>
-            <div style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              justifyContent: 'space-between',
-              marginBottom: 'var(--spacing-md)' 
-            }}>
-              <div style={{
-                padding: 'var(--spacing-md)',
-                background: 'var(--green-light)',
-                borderRadius: 'var(--radius-md)',
+              Total de Tickets
+          </h3>
+          <div style={{ 
+            fontSize: '2.5rem', 
+            fontWeight: '800',
+              color: 'var(--blue)',
+            lineHeight: '1'
+          }}>
+              {overview.totalTickets}
+          </div>
+        </div>
+
+        <div className="card slide-in" style={{ 
+          border: '1px solid var(--border-primary)',
+            padding: 'var(--spacing-lg)',
+          animationDelay: '100ms'
+        }}>
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'space-between',
+            marginBottom: 'var(--spacing-md)' 
+          }}>
+            <div style={{
+              padding: 'var(--spacing-md)',
+              background: 'var(--green-light)',
+              borderRadius: 'var(--radius-md)',
                 border: '1px solid rgba(34, 197, 94, 0.2)'
-              }}>
+            }}>
                 <CheckCircle size={24} color="var(--green)" strokeWidth={2} />
-              </div>
             </div>
-            <h3 style={{ 
-              fontSize: '0.8125rem', 
-              color: 'var(--text-secondary)',
-              fontWeight: '500',
-              marginBottom: 'var(--spacing-sm)',
-              textTransform: 'uppercase',
-              letterSpacing: '0.05em'
-            }}>
+          </div>
+          <h3 style={{ 
+            fontSize: '0.8125rem', 
+            color: 'var(--text-secondary)',
+            fontWeight: '500',
+            marginBottom: 'var(--spacing-sm)',
+            textTransform: 'uppercase',
+            letterSpacing: '0.05em'
+          }}>
               Taxa de Resolução
-            </h3>
-            <div style={{ 
-              fontSize: '2.5rem', 
-              fontWeight: '800',
-              color: 'var(--green)',
-              lineHeight: '1'
-            }}>
+          </h3>
+          <div style={{ 
+            fontSize: '2.5rem', 
+            fontWeight: '800',
+            color: 'var(--green)',
+            lineHeight: '1'
+          }}>
               {overview.resolutionRate.toFixed(1)}%
             </div>
             <div style={{ 
@@ -907,55 +907,55 @@ export default function Reports() {
               marginTop: 'var(--spacing-xs)'
             }}>
               {overview.resolvedTickets} de {overview.totalTickets} resolvidos
+          </div>
+        </div>
+
+        <div className="card slide-in" style={{ 
+          border: '1px solid var(--border-primary)',
+            padding: 'var(--spacing-lg)',
+          animationDelay: '200ms'
+        }}>
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'space-between',
+            marginBottom: 'var(--spacing-md)' 
+          }}>
+            <div style={{
+              padding: 'var(--spacing-md)',
+                background: 'var(--purple-light)',
+              borderRadius: 'var(--radius-md)',
+                border: '1px solid rgba(145, 71, 255, 0.2)'
+            }}>
+                <Clock size={24} color="var(--purple)" strokeWidth={2} />
             </div>
           </div>
-
-          <div className="card slide-in" style={{ 
-            border: '1px solid var(--border-primary)',
-            padding: 'var(--spacing-lg)',
-            animationDelay: '200ms'
+          <h3 style={{ 
+            fontSize: '0.8125rem', 
+            color: 'var(--text-secondary)',
+            fontWeight: '500',
+            marginBottom: 'var(--spacing-sm)',
+            textTransform: 'uppercase',
+            letterSpacing: '0.05em'
           }}>
-            <div style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              justifyContent: 'space-between',
-              marginBottom: 'var(--spacing-md)' 
-            }}>
-              <div style={{
-                padding: 'var(--spacing-md)',
-                background: 'var(--purple-light)',
-                borderRadius: 'var(--radius-md)',
-                border: '1px solid rgba(145, 71, 255, 0.2)'
-              }}>
-                <Clock size={24} color="var(--purple)" strokeWidth={2} />
-              </div>
-            </div>
-            <h3 style={{ 
-              fontSize: '0.8125rem', 
-              color: 'var(--text-secondary)',
-              fontWeight: '500',
-              marginBottom: 'var(--spacing-sm)',
-              textTransform: 'uppercase',
-              letterSpacing: '0.05em'
-            }}>
               Tempo Médio
-            </h3>
-            <div style={{ 
-              fontSize: '2.5rem', 
-              fontWeight: '800',
+          </h3>
+          <div style={{ 
+            fontSize: '2.5rem', 
+            fontWeight: '800',
               color: 'var(--purple)',
-              lineHeight: '1'
-            }}>
+            lineHeight: '1'
+          }}>
               {formatHours(overview.avgResolutionTimeHours)}
-            </div>
+          </div>
             <div style={{ 
               fontSize: '0.875rem',
               color: 'var(--text-tertiary)',
               marginTop: 'var(--spacing-xs)'
             }}>
               Tempo médio de resolução
-            </div>
-          </div>
+        </div>
+      </div>
 
           <div className="card slide-in" style={{ 
             border: '1px solid var(--border-primary)',
@@ -1012,10 +1012,10 @@ export default function Reports() {
             border: '1px solid var(--border-primary)',
             padding: 'var(--spacing-lg)'
           }}>
-            <h2 style={{ 
+        <h2 style={{ 
               fontSize: '1.25rem',
-              fontWeight: '700',
-              color: 'var(--text-primary)',
+          fontWeight: '700',
+          color: 'var(--text-primary)',
               marginBottom: 'var(--spacing-lg)',
               display: 'flex',
               alignItems: 'center',
@@ -1023,7 +1023,7 @@ export default function Reports() {
             }}>
               <PieChart size={20} color="var(--purple)" />
               Tickets por Status
-            </h2>
+        </h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-sm)' }}>
               {overview.ticketsByStatus.map((item) => (
                 <div key={item.status} style={{
@@ -1048,7 +1048,7 @@ export default function Reports() {
                     <span style={{ fontSize: '0.875rem', color: 'var(--text-primary)' }}>
                       {getStatusLabel(item.status)}
                     </span>
-                  </div>
+      </div>
                   <strong style={{ fontSize: '1rem', color: 'var(--text-primary)' }}>
                     {item.count}
                   </strong>
@@ -1096,7 +1096,7 @@ export default function Reports() {
                     <span style={{ fontSize: '0.875rem', color: 'var(--text-primary)' }}>
                       {getPriorityLabel(item.priority)}
                     </span>
-                  </div>
+          </div>
                   <strong style={{ fontSize: '1rem', color: 'var(--text-primary)' }}>
                     {item.count}
                   </strong>
@@ -1109,7 +1109,7 @@ export default function Reports() {
 
       {/* Tickets por Formulário */}
       <div className="card" style={{ 
-        border: '1px solid var(--border-primary)',
+              border: '1px solid var(--border-primary)',
         padding: 'var(--spacing-lg)',
         marginBottom: 'var(--spacing-xl)'
       }}>
@@ -1118,8 +1118,8 @@ export default function Reports() {
           fontWeight: '700',
           color: 'var(--text-primary)',
           marginBottom: 'var(--spacing-lg)',
-          display: 'flex',
-          alignItems: 'center',
+              display: 'flex',
+              alignItems: 'center',
           gap: 'var(--spacing-sm)'
         }}>
           <FileBarChart size={20} color="var(--purple)" />
@@ -1220,8 +1220,8 @@ export default function Reports() {
             fontWeight: '700',
             color: 'var(--text-primary)',
             marginBottom: 'var(--spacing-lg)',
-            display: 'flex',
-            alignItems: 'center',
+                  display: 'flex', 
+                  alignItems: 'center', 
             gap: 'var(--spacing-sm)'
           }}>
             <Users size={20} color="var(--purple)" />
@@ -1241,7 +1241,7 @@ export default function Reports() {
                   <th style={{ 
                     padding: 'var(--spacing-sm)',
                     textAlign: 'center',
-                    fontSize: '0.875rem',
+                  fontSize: '0.875rem',
                     fontWeight: '600',
                     color: 'var(--text-secondary)'
                   }}>Total</th>
@@ -1293,8 +1293,8 @@ export default function Reports() {
                           <strong style={{ color: 'var(--text-primary)' }}>{agent.name}</strong>
                           <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
                             {agent.email}
-                          </div>
-                        </div>
+                </div>
+              </div>
                       </td>
                       <td style={{ padding: 'var(--spacing-sm)', textAlign: 'center' }}>
                         {agent.total_tickets}
@@ -1331,10 +1331,10 @@ export default function Reports() {
             fontWeight: '700',
             color: 'var(--text-primary)',
             marginBottom: 'var(--spacing-lg)',
-            display: 'flex',
+                display: 'flex', 
             alignItems: 'center',
-            gap: 'var(--spacing-sm)'
-          }}>
+                gap: 'var(--spacing-sm)'
+              }}>
             <Zap size={20} color="var(--purple)" />
             Tempo de Resposta por Prioridade
           </h2>
@@ -1399,7 +1399,7 @@ export default function Reports() {
                         <strong style={{ color: 'var(--text-primary)' }}>
                           {getPriorityLabel(item.priority)}
                         </strong>
-                      </div>
+              </div>
                     </td>
                     <td style={{ padding: 'var(--spacing-sm)', textAlign: 'center' }}>
                       {item.total_tickets}
@@ -1417,7 +1417,7 @@ export default function Reports() {
                 ))}
               </tbody>
             </table>
-          </div>
+            </div>
         </div>
       )}
 

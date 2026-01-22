@@ -12,6 +12,7 @@ import accessProfileRoutes from './routes/access-profiles';
 import groupRoutes from './routes/groups';
 import ticketMessageRoutes from './routes/ticket-messages';
 import reportRoutes from './routes/reports';
+import calendarRoutes from './routes/calendar';
 
 dotenv.config();
 
@@ -41,6 +42,7 @@ app.use('/api/access-profiles', accessProfileRoutes);
 app.use('/api/groups', groupRoutes);
 app.use('/api/ticket-messages', ticketMessageRoutes);
 app.use('/api/reports', reportRoutes);
+app.use('/api/calendar', calendarRoutes);
 
 // Rota de health check
 app.get('/api/health', (req, res) => {

@@ -153,6 +153,26 @@ export interface TicketMessage {
   updated_at: string;
 }
 
+export interface CalendarEvent {
+  id: number;
+  title: string;
+  description: string | null;
+  start_time: string;
+  end_time: string;
+  type: 'event' | 'ticket' | 'work';
+  color: string | null;
+  created_by: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EventUser {
+  id: number;
+  event_id: number;
+  user_id: number;
+  created_at: string;
+}
+
 // Função para obter timestamp atual em horário de Brasília (UTC-3)
 export function getBrasiliaTimestamp(): string {
   const now = new Date();
@@ -615,6 +635,43 @@ const initSQLite = async () => {
     )
   `);
 
+  // Tabela de eventos do calendário
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS calendar_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      description TEXT,
+      start_time DATETIME NOT NULL,
+      end_time DATETIME NOT NULL,
+      type TEXT NOT NULL DEFAULT 'event',
+      color TEXT,
+      created_by INTEGER NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+
+  // Tabela de relacionamento entre eventos e usuários
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS event_users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      event_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (event_id) REFERENCES calendar_events(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      UNIQUE(event_id, user_id)
+    )
+  `);
+
+  // Adicionar coluna scheduled_at na tabela tickets (SQLite)
+  try {
+    await dbRun(`ALTER TABLE tickets ADD COLUMN scheduled_at DATETIME`);
+  } catch (error) {
+    // Coluna já existe, ignorar erro
+  }
+
   await seedDatabase();
 };
 
@@ -807,6 +864,36 @@ const initPostgreSQL = async () => {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (access_profile_id) REFERENCES access_profiles(id) ON DELETE CASCADE,
       UNIQUE(access_profile_id, page_path)
+    )
+  `);
+
+  // Tabela de eventos do calendário
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS calendar_events (
+      id SERIAL PRIMARY KEY,
+      title VARCHAR(255) NOT NULL,
+      description TEXT,
+      start_time TIMESTAMP NOT NULL,
+      end_time TIMESTAMP NOT NULL,
+      type VARCHAR(50) NOT NULL DEFAULT 'event',
+      color VARCHAR(50),
+      created_by INTEGER NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+
+  // Tabela de relacionamento entre eventos e usuários
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS event_users (
+      id SERIAL PRIMARY KEY,
+      event_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (event_id) REFERENCES calendar_events(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      UNIQUE(event_id, user_id)
     )
   `);
 
