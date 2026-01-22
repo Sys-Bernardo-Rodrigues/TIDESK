@@ -53,9 +53,21 @@ function App() {
               </PrivateRoute>
             }
           >
-            <Route index element={<Dashboard />} />
-            <Route path="tickets" element={<Tickets />} />
-            <Route path="tickets/:id" element={<TicketDetail />} />
+            <Route index element={
+              <ProtectedRoute resource={RESOURCES.TICKETS} action={ACTIONS.VIEW}>
+                <Dashboard />
+              </ProtectedRoute>
+            } />
+            <Route path="tickets" element={
+              <ProtectedRoute resource={RESOURCES.TICKETS} action={ACTIONS.VIEW}>
+                <Tickets />
+              </ProtectedRoute>
+            } />
+            <Route path="tickets/:id" element={
+              <ProtectedRoute resource={RESOURCES.TICKETS} action={ACTIONS.VIEW}>
+                <TicketDetail />
+              </ProtectedRoute>
+            } />
             <Route 
               path="create/pages" 
               element={

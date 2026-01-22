@@ -1,4 +1,4 @@
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { usePermissions, RESOURCES, ACTIONS } from '../hooks/usePermissions';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -16,7 +16,8 @@ export default function ProtectedRoute({
   fallback 
 }: ProtectedRouteProps) {
   const { user, loading: authLoading } = useAuth();
-  const { hasPermission, loading: permLoading } = usePermissions();
+  const { hasPermission, hasPageAccess, getAllowedPages, loading: permLoading } = usePermissions();
+  const location = useLocation();
 
   if (authLoading || permLoading) {
     return (
@@ -34,6 +35,54 @@ export default function ProtectedRoute({
 
   if (!user) {
     return <Navigate to="/login" />;
+  }
+
+  // Verificar acesso à página
+  const currentPath = location.pathname;
+  if (!hasPageAccess(currentPath)) {
+    // Redirecionar para a primeira página permitida
+    const allowedPages = getAllowedPages();
+    if (allowedPages.length > 0) {
+      return <Navigate to={allowedPages[0]} replace />;
+    }
+    
+    if (fallback) {
+      return <>{fallback}</>;
+    }
+    
+    return (
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'var(--bg-primary)',
+        padding: 'var(--spacing-2xl)'
+      }}>
+        <div className="card" style={{
+          maxWidth: '600px',
+          textAlign: 'center',
+          padding: 'var(--spacing-2xl)',
+          border: '1px solid var(--border-primary)'
+        }}>
+          <h1 style={{
+            fontSize: '2rem',
+            fontWeight: '700',
+            color: 'var(--red)',
+            marginBottom: 'var(--spacing-md)'
+          }}>
+            Acesso Negado
+          </h1>
+          <p style={{
+            color: 'var(--text-secondary)',
+            fontSize: '1rem',
+            marginBottom: 'var(--spacing-lg)'
+          }}>
+            Você não tem permissão para acessar esta página.
+          </p>
+        </div>
+      </div>
+    );
   }
 
   if (!hasPermission(resource, action)) {

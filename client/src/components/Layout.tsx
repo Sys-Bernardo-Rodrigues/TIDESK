@@ -1,12 +1,12 @@
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { usePermissions, RESOURCES, ACTIONS } from '../hooks/usePermissions';
+import { usePermissions } from '../hooks/usePermissions';
 import { LogOut, Ticket, Home, Plus, FileText, FileEdit, ChevronDown, ChevronRight, Settings, Shield, User, FileBarChart, Menu, X, LayoutDashboard, Calendar, CalendarDays, Database, RefreshCw, Eye, CheckCircle, Users, History } from 'lucide-react';
 import { useState, useEffect } from 'react';
 
 export default function Layout() {
   const { user, logout } = useAuth();
-  const { hasPermission } = usePermissions();
+  const { hasPageAccess } = usePermissions();
   const navigate = useNavigate();
   const location = useLocation();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -164,6 +164,7 @@ export default function Layout() {
          </div>
 
         <nav style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 'var(--spacing-xs)' }}>
+          {hasPageAccess('/') && (
           <Link
             to="/"
             className={`nav-link ${location.pathname === '/' ? 'active' : ''} ${sidebarCollapsed ? 'tooltip' : ''}`}
@@ -199,6 +200,8 @@ export default function Layout() {
             <Home size={sidebarCollapsed ? 28 : 20} strokeWidth={location.pathname === '/' ? 2.5 : 2} />
             {!sidebarCollapsed && <span>Dashboard</span>}
           </Link>
+          )}
+          {hasPageAccess('/tickets') && (
           <Link
             to="/tickets"
             className={`nav-link ${location.pathname.startsWith('/tickets') ? 'active' : ''} ${sidebarCollapsed ? 'tooltip' : ''}`}
@@ -234,9 +237,10 @@ export default function Layout() {
             <Ticket size={sidebarCollapsed ? 28 : 20} strokeWidth={location.pathname.startsWith('/tickets') ? 2.5 : 2} />
             {!sidebarCollapsed && <span>Tickets</span>}
           </Link>
+          )}
 
           {/* Create Menu */}
-          {!sidebarCollapsed && (
+          {(hasPageAccess('/create/pages') || hasPageAccess('/create/forms')) && !sidebarCollapsed && (
             <div style={{ marginTop: 'var(--spacing-xs)' }}>
               <button
                 onClick={() => setCreateMenuOpen(!createMenuOpen)}
@@ -289,7 +293,7 @@ export default function Layout() {
                   flexDirection: 'column',
                   gap: 'var(--spacing-xs)'
                 }}>
-                  {hasPermission(RESOURCES.PAGES, ACTIONS.VIEW) && (
+                  {hasPageAccess('/create/pages') && (
                     <Link
                       to="/create/pages"
                       className={`nav-link ${isPagesActive ? 'active' : ''}`}
@@ -323,7 +327,7 @@ export default function Layout() {
                       Páginas
                     </Link>
                   )}
-                  {hasPermission(RESOURCES.FORMS, ACTIONS.VIEW) && (
+                  {hasPageAccess('/create/forms') && (
                     <Link
                       to="/create/forms"
                       className={`nav-link ${isFormsActive ? 'active' : ''}`}
@@ -363,9 +367,9 @@ export default function Layout() {
           )}
 
           {/* Create Menu - Colapsado (apenas ícones) */}
-          {(hasPermission(RESOURCES.PAGES, ACTIONS.VIEW) || hasPermission(RESOURCES.FORMS, ACTIONS.VIEW)) && sidebarCollapsed && (
+          {(hasPageAccess('/create/pages') || hasPageAccess('/create/forms')) && sidebarCollapsed && (
             <div style={{ marginTop: 'var(--spacing-xs)', display: 'flex', flexDirection: 'column', gap: 'var(--spacing-xs)' }}>
-              {hasPermission(RESOURCES.PAGES, ACTIONS.VIEW) && (
+              {hasPageAccess('/create/pages') && (
                 <Link
                   to="/create/pages"
                   className={`nav-link ${isPagesActive ? 'active' : ''} tooltip`}
@@ -387,7 +391,7 @@ export default function Layout() {
                   <FileText size={28} strokeWidth={isPagesActive ? 2.5 : 2} />
                 </Link>
               )}
-              {hasPermission(RESOURCES.FORMS, ACTIONS.VIEW) && (
+              {hasPageAccess('/create/forms') && (
                 <Link
                   to="/create/forms"
                   className={`nav-link ${isFormsActive ? 'active' : ''} tooltip`}
@@ -413,7 +417,7 @@ export default function Layout() {
           )}
 
           {/* Config Menu */}
-          {hasPermission(RESOURCES.CONFIG, ACTIONS.VIEW) && !sidebarCollapsed && (
+          {(hasPageAccess('/config/perfil-de-acesso') || hasPageAccess('/config/usuarios') || hasPageAccess('/config/backup') || hasPageAccess('/config/atualizar') || hasPageAccess('/config/grupos')) && !sidebarCollapsed && (
             <div style={{ marginTop: 'var(--spacing-xs)' }}>
               <button
                 onClick={() => setConfigMenuOpen(!configMenuOpen)}
@@ -466,6 +470,7 @@ export default function Layout() {
                   flexDirection: 'column',
                   gap: 'var(--spacing-xs)'
                 }}>
+                  {hasPageAccess('/config/perfil-de-acesso') && (
                   <Link
                     to="/config/perfil-de-acesso"
                     className={`nav-link ${isAccessProfileActive ? 'active' : ''}`}
@@ -498,6 +503,8 @@ export default function Layout() {
                     <Shield size={16} strokeWidth={isAccessProfileActive ? 2.5 : 2} />
                     Perfil de Acesso
                   </Link>
+                  )}
+                  {hasPageAccess('/config/usuarios') && (
                   <Link
                     to="/config/usuarios"
                     className={`nav-link ${isUsersActive ? 'active' : ''}`}
@@ -530,6 +537,8 @@ export default function Layout() {
                     <User size={16} strokeWidth={isUsersActive ? 2.5 : 2} />
                     Usuários
                   </Link>
+                  )}
+                  {hasPageAccess('/config/backup') && (
                   <Link
                     to="/config/backup"
                     className={`nav-link ${isBackupActive ? 'active' : ''}`}
@@ -562,6 +571,8 @@ export default function Layout() {
                     <Database size={16} strokeWidth={isBackupActive ? 2.5 : 2} />
                     Backup
                   </Link>
+                  )}
+                  {hasPageAccess('/config/atualizar') && (
                   <Link
                     to="/config/atualizar"
                     className={`nav-link ${isAtualizarActive ? 'active' : ''}`}
@@ -594,6 +605,8 @@ export default function Layout() {
                     <RefreshCw size={16} strokeWidth={isAtualizarActive ? 2.5 : 2} />
                     Atualizar
                   </Link>
+                  )}
+                  {hasPageAccess('/config/grupos') && (
                   <Link
                     to="/config/grupos"
                     className={`nav-link ${isGruposActive ? 'active' : ''}`}
@@ -626,14 +639,16 @@ export default function Layout() {
                     <Users size={16} strokeWidth={isGruposActive ? 2.5 : 2} />
                     Grupos
                   </Link>
+                  )}
                 </div>
               )}
             </div>
           )}
 
           {/* Config Menu - Colapsado (apenas ícones) */}
-          {hasPermission(RESOURCES.CONFIG, ACTIONS.VIEW) && sidebarCollapsed && (
+          {(hasPageAccess('/config/perfil-de-acesso') || hasPageAccess('/config/usuarios') || hasPageAccess('/config/backup') || hasPageAccess('/config/atualizar') || hasPageAccess('/config/grupos')) && sidebarCollapsed && (
             <div style={{ marginTop: 'var(--spacing-xs)', display: 'flex', flexDirection: 'column', gap: 'var(--spacing-xs)' }}>
+              {hasPageAccess('/config/perfil-de-acesso') && (
               <Link
                 to="/config/perfil-de-acesso"
                 className={`nav-link ${isAccessProfileActive ? 'active' : ''} tooltip`}
@@ -654,6 +669,8 @@ export default function Layout() {
               >
                 <Shield size={28} strokeWidth={isAccessProfileActive ? 2.5 : 2} />
               </Link>
+              )}
+              {hasPageAccess('/config/usuarios') && (
               <Link
                 to="/config/usuarios"
                 className={`nav-link ${isUsersActive ? 'active' : ''} tooltip`}
@@ -674,6 +691,8 @@ export default function Layout() {
               >
                 <User size={28} strokeWidth={isUsersActive ? 2.5 : 2} />
               </Link>
+              )}
+              {hasPageAccess('/config/backup') && (
               <Link
                 to="/config/backup"
                 className={`nav-link ${isBackupActive ? 'active' : ''} tooltip`}
@@ -694,6 +713,8 @@ export default function Layout() {
               >
                 <Database size={28} strokeWidth={isBackupActive ? 2.5 : 2} />
               </Link>
+              )}
+              {hasPageAccess('/config/atualizar') && (
               <Link
                 to="/config/atualizar"
                 className={`nav-link ${isAtualizarActive ? 'active' : ''} tooltip`}
@@ -714,6 +735,8 @@ export default function Layout() {
               >
                 <RefreshCw size={28} strokeWidth={isAtualizarActive ? 2.5 : 2} />
               </Link>
+              )}
+              {hasPageAccess('/config/grupos') && (
               <Link
                 to="/config/grupos"
                 className={`nav-link ${isGruposActive ? 'active' : ''} tooltip`}
@@ -734,11 +757,12 @@ export default function Layout() {
               >
                 <Users size={28} strokeWidth={isGruposActive ? 2.5 : 2} />
               </Link>
+              )}
             </div>
           )}
 
           {/* Agenda Menu */}
-          {hasPermission(RESOURCES.AGENDA, ACTIONS.VIEW) && !sidebarCollapsed && (
+          {(hasPageAccess('/agenda/calendario-de-servico') || hasPageAccess('/agenda/calendario-de-plantoes')) && !sidebarCollapsed && (
             <div style={{ marginTop: 'var(--spacing-xs)' }}>
               <button
                 onClick={() => setAgendaMenuOpen(!agendaMenuOpen)}
@@ -791,6 +815,7 @@ export default function Layout() {
                   flexDirection: 'column',
                   gap: 'var(--spacing-xs)'
                 }}>
+                  {hasPageAccess('/agenda/calendario-de-servico') && (
                   <Link
                     to="/agenda/calendario-de-servico"
                     className={`nav-link ${isServiceCalendarActive ? 'active' : ''}`}
@@ -823,6 +848,8 @@ export default function Layout() {
                     <Calendar size={16} strokeWidth={isServiceCalendarActive ? 2.5 : 2} />
                     Calendário de Serviço
                   </Link>
+                  )}
+                  {hasPageAccess('/agenda/calendario-de-plantoes') && (
                   <Link
                     to="/agenda/calendario-de-plantoes"
                     className={`nav-link ${isShiftCalendarActive ? 'active' : ''}`}
@@ -855,14 +882,16 @@ export default function Layout() {
                     <CalendarDays size={16} strokeWidth={isShiftCalendarActive ? 2.5 : 2} />
                     Calendário de Plantões
                   </Link>
+                  )}
                 </div>
               )}
             </div>
           )}
 
           {/* Agenda Menu - Colapsado (apenas ícones) */}
-          {hasPermission(RESOURCES.AGENDA, ACTIONS.VIEW) && sidebarCollapsed && (
+          {(hasPageAccess('/agenda/calendario-de-servico') || hasPageAccess('/agenda/calendario-de-plantoes')) && sidebarCollapsed && (
             <div style={{ marginTop: 'var(--spacing-xs)', display: 'flex', flexDirection: 'column', gap: 'var(--spacing-xs)' }}>
+              {hasPageAccess('/agenda/calendario-de-servico') && (
               <Link
                 to="/agenda/calendario-de-servico"
                 className={`nav-link ${isServiceCalendarActive ? 'active' : ''} tooltip`}
@@ -883,6 +912,8 @@ export default function Layout() {
               >
                 <Calendar size={28} strokeWidth={isServiceCalendarActive ? 2.5 : 2} />
               </Link>
+              )}
+              {hasPageAccess('/agenda/calendario-de-plantoes') && (
               <Link
                 to="/agenda/calendario-de-plantoes"
                 className={`nav-link ${isShiftCalendarActive ? 'active' : ''} tooltip`}
@@ -903,11 +934,12 @@ export default function Layout() {
               >
                 <CalendarDays size={28} strokeWidth={isShiftCalendarActive ? 2.5 : 2} />
               </Link>
+              )}
             </div>
           )}
 
           {/* Acompanhar Menu */}
-          {(hasPermission(RESOURCES.APPROVE, ACTIONS.VIEW) || hasPermission(RESOURCES.TRACK, ACTIONS.VIEW)) && !sidebarCollapsed && (
+          {(hasPageAccess('/acompanhar/aprovar') || hasPageAccess('/acompanhar/acompanhar-tratativa')) && !sidebarCollapsed && (
             <div style={{ marginTop: 'var(--spacing-xs)' }}>
               <button
                 onClick={() => setAcompanharMenuOpen(!acompanharMenuOpen)}
@@ -960,7 +992,7 @@ export default function Layout() {
                   flexDirection: 'column',
                   gap: 'var(--spacing-xs)'
                 }}>
-                  {hasPermission(RESOURCES.APPROVE, ACTIONS.VIEW) && (
+                  {hasPageAccess('/acompanhar/aprovar') && (
                     <Link
                       to="/acompanhar/aprovar"
                       className={`nav-link ${isAprovarActive ? 'active' : ''}`}
@@ -994,7 +1026,7 @@ export default function Layout() {
                       Aprovar
                     </Link>
                   )}
-                  {hasPermission(RESOURCES.TRACK, ACTIONS.VIEW) && (
+                  {hasPageAccess('/acompanhar/acompanhar-tratativa') && (
                     <Link
                       to="/acompanhar/acompanhar-tratativa"
                       className={`nav-link ${isAcompanharTratativaActive ? 'active' : ''}`}
@@ -1034,9 +1066,9 @@ export default function Layout() {
           )}
 
           {/* Acompanhar Menu - Colapsado (apenas ícones) */}
-          {(hasPermission(RESOURCES.APPROVE, ACTIONS.VIEW) || hasPermission(RESOURCES.TRACK, ACTIONS.VIEW)) && sidebarCollapsed && (
+          {(hasPageAccess('/acompanhar/aprovar') || hasPageAccess('/acompanhar/acompanhar-tratativa')) && sidebarCollapsed && (
             <div style={{ marginTop: 'var(--spacing-xs)', display: 'flex', flexDirection: 'column', gap: 'var(--spacing-xs)' }}>
-              {hasPermission(RESOURCES.APPROVE, ACTIONS.VIEW) && (
+              {hasPageAccess('/acompanhar/aprovar') && (
                 <Link
                   to="/acompanhar/aprovar"
                   className={`nav-link ${isAprovarActive ? 'active' : ''} tooltip`}
@@ -1058,7 +1090,7 @@ export default function Layout() {
                   <CheckCircle size={28} strokeWidth={isAprovarActive ? 2.5 : 2} />
                 </Link>
               )}
-              {hasPermission(RESOURCES.TRACK, ACTIONS.VIEW) && (
+              {hasPageAccess('/acompanhar/acompanhar-tratativa') && (
                 <Link
                   to="/acompanhar/acompanhar-tratativa"
                   className={`nav-link ${isAcompanharTratativaActive ? 'active' : ''} tooltip`}
@@ -1084,7 +1116,7 @@ export default function Layout() {
           )}
 
           {/* Histórico Link */}
-          {hasPermission(RESOURCES.HISTORY, ACTIONS.VIEW) && (
+          {hasPageAccess('/historico') && (
             <Link
               to="/historico"
               className={`nav-link ${location.pathname === '/historico' ? 'active' : ''} ${sidebarCollapsed ? 'tooltip' : ''}`}
@@ -1123,7 +1155,7 @@ export default function Layout() {
           )}
 
           {/* Relatórios Link */}
-          {hasPermission(RESOURCES.REPORTS, ACTIONS.VIEW) && (
+          {hasPageAccess('/relatorios') && (
             <Link
               to="/relatorios"
               className={`nav-link ${location.pathname === '/relatorios' ? 'active' : ''} ${sidebarCollapsed ? 'tooltip' : ''}`}

@@ -33,7 +33,7 @@ export default function Users() {
     name: '',
     email: '',
     password: '',
-    role: 'user'
+    access_profile_ids: [] as number[]
   });
 
   useEffect(() => {
@@ -117,14 +117,6 @@ export default function Users() {
     }
   };
 
-  const getRoleBadge = (role: string) => {
-    const badges: Record<string, { color: string; label: string }> = {
-      admin: { color: 'var(--purple)', label: 'Administrador' },
-      agent: { color: 'var(--blue)', label: 'Agente' },
-      user: { color: 'var(--green)', label: 'Usuário' }
-    };
-    return badges[role] || { color: 'var(--text-secondary)', label: role };
-  };
 
   const filteredUsers = users.filter(user =>
     user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -136,14 +128,15 @@ export default function Users() {
     return selectedUser.access_profiles.some(p => p.id === profileId);
   };
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     setFormData({
       name: '',
       email: '',
       password: '',
-      role: 'user'
+      access_profile_ids: []
     });
     setEditingUser(null);
+    await fetchAvailableProfiles();
     setShowUserModal(true);
   };
 
@@ -152,9 +145,10 @@ export default function Users() {
       name: user.name,
       email: user.email,
       password: '',
-      role: user.role
+      access_profile_ids: user.access_profiles?.map(p => p.id) || []
     });
     setEditingUser(user);
+    await fetchAvailableProfiles();
     setShowUserModal(true);
   };
 
@@ -184,11 +178,16 @@ export default function Users() {
       return;
     }
 
+    if (formData.access_profile_ids.length === 0) {
+      alert('Selecione pelo menos um perfil de acesso');
+      return;
+    }
+
     try {
       const payload: any = {
         name: formData.name,
         email: formData.email,
-        role: formData.role
+        access_profile_ids: formData.access_profile_ids
       };
 
       if (formData.password) {
@@ -316,7 +315,6 @@ export default function Users() {
             </div>
           ) : (
             filteredUsers.map((user) => {
-              const roleBadge = getRoleBadge(user.role);
               return (
                 <div key={user.id} className="card" style={{ 
                   border: '1px solid var(--border-primary)',
@@ -350,15 +348,6 @@ export default function Users() {
                       }}>
                         {user.name}
                       </h3>
-                      <span className="badge" style={{
-                        fontSize: '0.6875rem',
-                        padding: '0.25rem 0.5rem',
-                        backgroundColor: roleBadge.color + '20',
-                        color: roleBadge.color,
-                        border: `1px solid ${roleBadge.color}40`
-                      }}>
-                        {roleBadge.label}
-                      </span>
                     </div>
                     <div style={{ 
                       display: 'flex', 
@@ -743,16 +732,87 @@ export default function Users() {
               </div>
 
               <div>
-                <label className="label">Perfil *</label>
-                <select
-                  className="select"
-                  value={formData.role}
-                  onChange={(e) => setFormData({ ...formData, role: e.target.value })}
-                >
-                  <option value="user">Usuário</option>
-                  <option value="agent">Agente</option>
-                  <option value="admin">Administrador</option>
-                </select>
+                <label className="label">Perfis de Acesso *</label>
+                {loadingProfiles ? (
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Carregando perfis...</p>
+                ) : (
+                  <div style={{ 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    gap: 'var(--spacing-sm)',
+                    maxHeight: '200px',
+                    overflowY: 'auto',
+                    border: '1px solid var(--border-primary)',
+                    borderRadius: 'var(--radius-md)',
+                    padding: 'var(--spacing-sm)'
+                  }}>
+                    {availableProfiles.map(profile => {
+                      const isSelected = formData.access_profile_ids.includes(profile.id);
+                      return (
+                        <label
+                          key={profile.id}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 'var(--spacing-sm)',
+                            padding: 'var(--spacing-sm)',
+                            cursor: 'pointer',
+                            borderRadius: 'var(--radius-sm)',
+                            backgroundColor: isSelected ? 'var(--purple-light)' : 'transparent',
+                            transition: 'all var(--transition-base)'
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setFormData({
+                                  ...formData,
+                                  access_profile_ids: [...formData.access_profile_ids, profile.id]
+                                });
+                              } else {
+                                setFormData({
+                                  ...formData,
+                                  access_profile_ids: formData.access_profile_ids.filter(id => id !== profile.id)
+                                });
+                              }
+                            }}
+                            style={{ cursor: 'pointer' }}
+                          />
+                          <div style={{ flex: 1 }}>
+                            <div style={{ 
+                              fontWeight: '500', 
+                              color: 'var(--text-primary)',
+                              fontSize: '0.9375rem'
+                            }}>
+                              {profile.name}
+                            </div>
+                            {profile.description && (
+                              <div style={{ 
+                                fontSize: '0.8125rem', 
+                                color: 'var(--text-secondary)',
+                                marginTop: '0.125rem'
+                              }}>
+                                {profile.description}
+                              </div>
+                            )}
+                          </div>
+                        </label>
+                      );
+                    })}
+                    {availableProfiles.length === 0 && (
+                      <p style={{ 
+                        color: 'var(--text-tertiary)', 
+                        fontSize: '0.875rem',
+                        textAlign: 'center',
+                        padding: 'var(--spacing-md)'
+                      }}>
+                        Nenhum perfil de acesso disponível. Crie perfis em /config/perfil-de-acesso
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 

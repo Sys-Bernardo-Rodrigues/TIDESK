@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { Shield, Plus, Search, Edit, Trash2, Users, X, Save, CheckSquare, Square } from 'lucide-react';
+import { Shield, Plus, Search, Edit, Trash2, Users, X, Save, CheckSquare, Square, Home, Ticket, FileEdit, FileText, User, Database, RefreshCw, CheckCircle, Eye, History, FileBarChart, Calendar, CalendarDays } from 'lucide-react';
 import { RESOURCES, ACTIONS } from '../hooks/usePermissions';
 
 interface Permission {
@@ -42,6 +42,25 @@ const ACTION_LABELS: Record<string, string> = {
   reject: 'Rejeitar'
 };
 
+// Lista de páginas do sistema com seus ícones
+const SYSTEM_PAGES = [
+  { path: '/', label: 'Dashboard', Icon: Home },
+  { path: '/tickets', label: 'Tickets', Icon: Ticket },
+  { path: '/create/forms', label: 'Formulários', Icon: FileEdit },
+  { path: '/create/pages', label: 'Páginas', Icon: FileText },
+  { path: '/config/perfil-de-acesso', label: 'Perfil de Acesso', Icon: Shield },
+  { path: '/config/usuarios', label: 'Usuários', Icon: User },
+  { path: '/config/backup', label: 'Backup', Icon: Database },
+  { path: '/config/atualizar', label: 'Atualizar', Icon: RefreshCw },
+  { path: '/config/grupos', label: 'Grupos', Icon: Users },
+  { path: '/acompanhar/aprovar', label: 'Aprovar', Icon: CheckCircle },
+  { path: '/acompanhar/acompanhar-tratativa', label: 'Acompanhar Tratativa', Icon: Eye },
+  { path: '/historico', label: 'Histórico', Icon: History },
+  { path: '/relatorios', label: 'Relatórios', Icon: FileBarChart },
+  { path: '/agenda/calendario-de-servico', label: 'Calendário de Serviço', Icon: Calendar },
+  { path: '/agenda/calendario-de-plantoes', label: 'Calendário de Plantões', Icon: CalendarDays }
+];
+
 export default function AccessProfile() {
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
@@ -52,7 +71,8 @@ export default function AccessProfile() {
   const [formData, setFormData] = useState({
     name: '',
     description: '',
-    permissions: [] as Permission[]
+    permissions: [] as Permission[],
+    pages: [] as string[]
   });
 
   useEffect(() => {
@@ -88,7 +108,8 @@ export default function AccessProfile() {
     setFormData({
       name: '',
       description: '',
-      permissions: []
+      permissions: [],
+      pages: []
     });
     setEditingProfile(null);
     setShowModal(true);
@@ -101,7 +122,8 @@ export default function AccessProfile() {
       setFormData({
         name: profile.name,
         description: profile.description || '',
-        permissions: profile.permissions || []
+        permissions: profile.permissions || [],
+        pages: profile.pages || []
       });
       setEditingProfile(profile);
       setShowModal(true);
@@ -163,7 +185,8 @@ export default function AccessProfile() {
       const payload = {
         name: formData.name,
         description: formData.description || null,
-        permissions: formData.permissions
+        permissions: formData.permissions,
+        pages: formData.pages
       };
 
       if (editingProfile) {
@@ -543,6 +566,100 @@ export default function AccessProfile() {
                       </div>
                     </div>
                   ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="label">Páginas Visíveis</label>
+                <p style={{
+                  fontSize: '0.875rem',
+                  color: 'var(--text-secondary)',
+                  marginBottom: 'var(--spacing-md)'
+                }}>
+                  Selecione quais páginas este perfil tem direito de visualizar no menu
+                </p>
+                <div style={{
+                  border: '1px solid var(--border-primary)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: 'var(--spacing-lg)',
+                  maxHeight: '300px',
+                  overflow: 'auto',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 'var(--spacing-sm)'
+                }}>
+                  {SYSTEM_PAGES.map((page) => {
+                    const isSelected = formData.pages.includes(page.path);
+                    return (
+                      <label
+                        key={page.path}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 'var(--spacing-sm)',
+                          padding: 'var(--spacing-sm)',
+                          borderRadius: 'var(--radius-sm)',
+                          cursor: 'pointer',
+                          backgroundColor: isSelected ? 'var(--purple-light)' : 'transparent',
+                          transition: 'all var(--transition-base)'
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!isSelected) {
+                            e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!isSelected) {
+                            e.currentTarget.style.backgroundColor = 'transparent';
+                          }
+                        }}
+                      >
+                        {isSelected ? (
+                          <CheckSquare size={18} color="var(--purple)" />
+                        ) : (
+                          <Square size={18} color="var(--text-tertiary)" />
+                        )}
+                        <page.Icon 
+                          size={18} 
+                          color={isSelected ? 'var(--purple)' : 'var(--text-secondary)'}
+                          style={{ marginRight: 'var(--spacing-xs)', flexShrink: 0 }}
+                        />
+                        <span style={{
+                          fontSize: '0.875rem',
+                          color: isSelected ? 'var(--text-primary)' : 'var(--text-secondary)',
+                          fontWeight: isSelected ? '500' : '400',
+                          flex: 1
+                        }}>
+                          {page.label}
+                        </span>
+                        <span style={{
+                          fontSize: '0.75rem',
+                          color: 'var(--text-tertiary)',
+                          fontFamily: 'monospace'
+                        }}>
+                          {page.path}
+                        </span>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => {
+                            if (isSelected) {
+                              setFormData({
+                                ...formData,
+                                pages: formData.pages.filter(p => p !== page.path)
+                              });
+                            } else {
+                              setFormData({
+                                ...formData,
+                                pages: [...formData.pages, page.path]
+                              });
+                            }
+                          }}
+                          style={{ display: 'none' }}
+                        />
+                      </label>
+                    );
+                  })}
                 </div>
               </div>
             </div>

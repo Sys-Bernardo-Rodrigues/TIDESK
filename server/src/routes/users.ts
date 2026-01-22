@@ -179,7 +179,8 @@ router.post('/', [
   body('name').notEmpty().withMessage('Nome é obrigatório'),
   body('email').isEmail().withMessage('Email inválido'),
   body('password').isLength({ min: 6 }).withMessage('Senha deve ter no mínimo 6 caracteres'),
-  body('role').optional().isIn(['admin', 'agent', 'user']).withMessage('Role inválido')
+  body('access_profile_ids').isArray().withMessage('Perfis de acesso devem ser um array'),
+  body('access_profile_ids.*').isInt().withMessage('IDs de perfis devem ser números inteiros')
 ], async (req: AuthRequest, res) => {
   try {
     const errors = validationResult(req);
@@ -187,7 +188,7 @@ router.post('/', [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { name, email, password, role } = req.body;
+    const { name, email, password, access_profile_ids } = req.body;
 
     // Verificar se email já existe
     const existingUser = await dbGet('SELECT id FROM users WHERE email = ?', [email]);
@@ -195,24 +196,59 @@ router.post('/', [
       return res.status(400).json({ error: 'Email já cadastrado' });
     }
 
+    // Verificar se pelo menos um perfil foi selecionado
+    if (!access_profile_ids || access_profile_ids.length === 0) {
+      return res.status(400).json({ error: 'Selecione pelo menos um perfil de acesso' });
+    }
+
+    // Verificar se todos os perfis existem
+    for (const profileId of access_profile_ids) {
+      const profile = await dbGet('SELECT id FROM access_profiles WHERE id = ?', [profileId]);
+      if (!profile) {
+        return res.status(400).json({ error: `Perfil de acesso com ID ${profileId} não encontrado` });
+      }
+    }
+
     // Hash da senha
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Criar usuário
+    // Criar usuário (role padrão 'user' para compatibilidade, mas não será usado)
     const result = await dbRun(
       'INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)',
-      [name, email, hashedPassword, role || 'user']
+      [name, email, hashedPassword, 'user']
     );
 
     const userId = (result as any).lastID || (result as any).id;
 
-    // Buscar usuário criado
+    // Vincular perfis de acesso
+    for (const profileId of access_profile_ids) {
+      await dbRun(
+        'INSERT INTO user_access_profiles (user_id, access_profile_id) VALUES (?, ?)',
+        [userId, profileId]
+      );
+    }
+
+    // Invalidar cache de permissões
+    const { invalidateUserPermissions } = await import('../middleware/permissions');
+    invalidateUserPermissions(userId);
+
+    // Buscar usuário criado com perfis
     const user = await dbGet(
       'SELECT id, name, email, role, created_at FROM users WHERE id = ?',
       [userId]
     );
 
-    res.status(201).json(user);
+    const profiles = await dbAll(`
+      SELECT ap.id, ap.name, ap.description
+      FROM user_access_profiles uap
+      JOIN access_profiles ap ON uap.access_profile_id = ap.id
+      WHERE uap.user_id = ?
+    `, [userId]);
+
+    res.status(201).json({
+      ...user,
+      access_profiles: profiles
+    });
   } catch (error) {
     console.error('Erro ao criar usuário:', error);
     res.status(500).json({ error: 'Erro ao criar usuário' });
@@ -225,7 +261,8 @@ router.put('/:id', [
   body('name').notEmpty().withMessage('Nome é obrigatório'),
   body('email').isEmail().withMessage('Email inválido'),
   body('password').optional().isLength({ min: 6 }).withMessage('Senha deve ter no mínimo 6 caracteres'),
-  body('role').optional().isIn(['admin', 'agent', 'user']).withMessage('Role inválido')
+  body('access_profile_ids').optional().isArray().withMessage('Perfis de acesso devem ser um array'),
+  body('access_profile_ids.*').optional().isInt().withMessage('IDs de perfis devem ser números inteiros')
 ], async (req: AuthRequest, res) => {
   try {
     const errors = validationResult(req);
@@ -233,7 +270,7 @@ router.put('/:id', [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { name, email, password, role } = req.body;
+    const { name, email, password, access_profile_ids } = req.body;
 
     // Verificar se usuário existe
     const existingUser = await dbGet('SELECT id, email FROM users WHERE id = ?', [req.params.id]);
@@ -249,31 +286,67 @@ router.put('/:id', [
       }
     }
 
-    // Atualizar usuário
+    // Atualizar dados do usuário
     if (password) {
       const hashedPassword = await bcrypt.hash(password, 10);
       await dbRun(
-        'UPDATE users SET name = ?, email = ?, password = ?, role = ? WHERE id = ?',
-        [name, email, hashedPassword, role || existingUser.role, req.params.id]
+        'UPDATE users SET name = ?, email = ?, password = ? WHERE id = ?',
+        [name, email, hashedPassword, req.params.id]
       );
     } else {
       await dbRun(
-        'UPDATE users SET name = ?, email = ?, role = ? WHERE id = ?',
-        [name, email, role || existingUser.role, req.params.id]
+        'UPDATE users SET name = ?, email = ? WHERE id = ?',
+        [name, email, req.params.id]
       );
+    }
+
+    // Atualizar perfis de acesso se fornecidos
+    if (access_profile_ids !== undefined) {
+      if (access_profile_ids.length === 0) {
+        return res.status(400).json({ error: 'Selecione pelo menos um perfil de acesso' });
+      }
+
+      // Verificar se todos os perfis existem
+      for (const profileId of access_profile_ids) {
+        const profile = await dbGet('SELECT id FROM access_profiles WHERE id = ?', [profileId]);
+        if (!profile) {
+          return res.status(400).json({ error: `Perfil de acesso com ID ${profileId} não encontrado` });
+        }
+      }
+
+      // Remover todos os perfis atuais
+      await dbRun('DELETE FROM user_access_profiles WHERE user_id = ?', [req.params.id]);
+
+      // Vincular novos perfis
+      for (const profileId of access_profile_ids) {
+        await dbRun(
+          'INSERT INTO user_access_profiles (user_id, access_profile_id) VALUES (?, ?)',
+          [req.params.id, profileId]
+        );
+      }
     }
 
     // Invalidar cache de permissões
     const { invalidateUserPermissions } = await import('../middleware/permissions');
     invalidateUserPermissions(parseInt(req.params.id));
 
-    // Buscar usuário atualizado
+    // Buscar usuário atualizado com perfis
     const user = await dbGet(
       'SELECT id, name, email, role, created_at FROM users WHERE id = ?',
       [req.params.id]
     );
 
-    res.json(user);
+    const profiles = await dbAll(`
+      SELECT ap.id, ap.name, ap.description
+      FROM user_access_profiles uap
+      JOIN access_profiles ap ON uap.access_profile_id = ap.id
+      WHERE uap.user_id = ?
+    `, [req.params.id]);
+
+    res.json({
+      ...user,
+      access_profiles: profiles
+    });
   } catch (error) {
     console.error('Erro ao atualizar usuário:', error);
     res.status(500).json({ error: 'Erro ao atualizar usuário' });

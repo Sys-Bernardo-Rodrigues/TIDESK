@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import axios from 'axios';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -17,7 +18,52 @@ export default function Login() {
 
     try {
       await login(email, password);
-      navigate('/');
+      
+      // Buscar páginas permitidas do usuário
+      try {
+        const response = await axios.get('/api/access-profiles/me/permissions');
+        const allowedPages = response.data.pages || [];
+        
+        // Ordem de prioridade das páginas
+        const pagePriority = [
+          '/',
+          '/tickets',
+          '/create/forms',
+          '/create/pages',
+          '/config/perfil-de-acesso',
+          '/config/usuarios',
+          '/acompanhar/aprovar',
+          '/acompanhar/acompanhar-tratativa',
+          '/historico',
+          '/relatorios',
+          '/agenda/calendario-de-servico',
+          '/agenda/calendario-de-plantoes'
+        ];
+        
+        // Se admin, tem acesso a todas as páginas
+        const user = JSON.parse(localStorage.getItem('user') || '{}');
+        if (user.role === 'admin') {
+          navigate('/');
+          return;
+        }
+        
+        // Encontrar a primeira página permitida na ordem de prioridade
+        const firstAllowedPage = pagePriority.find(page => allowedPages.includes(page));
+        
+        if (firstAllowedPage) {
+          navigate(firstAllowedPage);
+        } else if (allowedPages.length > 0) {
+          // Se não encontrou na ordem de prioridade, usar a primeira disponível
+          navigate(allowedPages[0]);
+        } else {
+          // Se não tem nenhuma página permitida, ir para dashboard (será bloqueado pelo ProtectedRoute)
+          navigate('/');
+        }
+      } catch (permError) {
+        console.error('Erro ao buscar páginas permitidas:', permError);
+        // Em caso de erro, tentar ir para dashboard
+        navigate('/');
+      }
     } catch (err: any) {
       setError(err.response?.data?.error || 'Erro ao fazer login');
     } finally {

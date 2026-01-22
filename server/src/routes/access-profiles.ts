@@ -55,6 +55,13 @@ router.get('/:id', authenticate, requireAdmin, async (req: AuthRequest, res) => 
       ORDER BY resource, action
     `, [profile.id]);
 
+    const pages = await dbAll(`
+      SELECT page_path
+      FROM access_profile_pages
+      WHERE access_profile_id = ?
+      ORDER BY page_path
+    `, [profile.id]);
+
     const users = await dbAll(`
       SELECT u.id, u.name, u.email
       FROM user_access_profiles uap
@@ -68,6 +75,7 @@ router.get('/:id', authenticate, requireAdmin, async (req: AuthRequest, res) => 
         resource: p.resource,
         action: p.action
       })),
+      pages: pages.map((p: any) => p.page_path),
       users: users
     });
   } catch (error) {
@@ -88,7 +96,7 @@ router.post('/', [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { name, description, permissions } = req.body;
+    const { name, description, permissions, pages } = req.body;
 
     // Verificar se nome já existe
     const existing = await dbGet('SELECT id FROM access_profiles WHERE name = ?', [name]);
@@ -123,6 +131,24 @@ router.post('/', [
       }
     }
 
+    // Criar páginas permitidas
+    if (pages && Array.isArray(pages)) {
+      for (const pagePath of pages) {
+        if (pagePath && typeof pagePath === 'string') {
+          try {
+            await dbRun(`
+              INSERT INTO access_profile_pages (access_profile_id, page_path)
+              VALUES (?, ?)
+            `, [profileId, pagePath]);
+          } catch (error: any) {
+            if (!error.message?.includes('UNIQUE')) {
+              throw error;
+            }
+          }
+        }
+      }
+    }
+
     invalidateAllPermissions();
 
     const profile = await dbGet('SELECT * FROM access_profiles WHERE id = ?', [profileId]);
@@ -145,7 +171,7 @@ router.put('/:id', [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { name, description, permissions } = req.body;
+    const { name, description, permissions, pages } = req.body;
 
     // Verificar se perfil existe
     const existing = await dbGet('SELECT id FROM access_profiles WHERE id = ?', [req.params.id]);
@@ -178,6 +204,45 @@ router.put('/:id', [
               INSERT INTO permissions (access_profile_id, resource, action)
               VALUES (?, ?, ?)
             `, [req.params.id, perm.resource, perm.action]);
+          } catch (error: any) {
+            if (!error.message?.includes('UNIQUE')) {
+              throw error;
+            }
+          }
+        }
+      }
+    }
+
+    // Remover páginas antigas
+    await dbRun('DELETE FROM access_profile_pages WHERE access_profile_id = ?', [req.params.id]);
+
+    // Criar novas páginas
+    if (pages && Array.isArray(pages)) {
+      for (const pagePath of pages) {
+        if (pagePath && typeof pagePath === 'string') {
+          try {
+            await dbRun(`
+              INSERT INTO access_profile_pages (access_profile_id, page_path)
+              VALUES (?, ?)
+            `, [req.params.id, pagePath]);
+          } catch (error: any) {
+            if (!error.message?.includes('UNIQUE')) {
+              throw error;
+            }
+          }
+        }
+      }
+    }
+
+    // Criar novas páginas
+    if (pages && Array.isArray(pages)) {
+      for (const pagePath of pages) {
+        if (pagePath && typeof pagePath === 'string') {
+          try {
+            await dbRun(`
+              INSERT INTO access_profile_pages (access_profile_id, page_path)
+              VALUES (?, ?)
+            `, [req.params.id, pagePath]);
           } catch (error: any) {
             if (!error.message?.includes('UNIQUE')) {
               throw error;
@@ -299,8 +364,18 @@ router.get('/me/permissions', authenticate, async (req: AuthRequest, res) => {
     const { getUserPermissions } = await import('../middleware/permissions');
     const permissions = await getUserPermissions(req.userId!);
     
+    // Buscar páginas permitidas do usuário
+    const pages = await dbAll(`
+      SELECT DISTINCT app.page_path
+      FROM access_profile_pages app
+      JOIN user_access_profiles uap ON app.access_profile_id = uap.access_profile_id
+      WHERE uap.user_id = ?
+      ORDER BY app.page_path
+    `, [req.userId]);
+    
     res.json({
       permissions: Array.from(permissions),
+      pages: pages.map((p: any) => p.page_path),
       userId: req.userId
     });
   } catch (error) {

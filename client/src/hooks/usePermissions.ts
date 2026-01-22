@@ -28,6 +28,7 @@ export const ACTIONS = {
 export const usePermissions = () => {
   const { user } = useAuth();
   const [permissions, setPermissions] = useState<Set<string>>(new Set());
+  const [allowedPages, setAllowedPages] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -35,6 +36,7 @@ export const usePermissions = () => {
       fetchPermissions();
     } else {
       setPermissions(new Set());
+      setAllowedPages(new Set());
       setLoading(false);
     }
   }, [user]);
@@ -43,6 +45,18 @@ export const usePermissions = () => {
     try {
       const response = await axios.get('/api/access-profiles/me/permissions');
       setPermissions(new Set(response.data.permissions));
+      // Se admin, dar acesso a todas as páginas
+      if (user?.role === 'admin') {
+        const allPages = new Set<string>([
+          '/', '/tickets', '/create/forms', '/create/pages', '/config/perfil-de-acesso',
+          '/config/usuarios', '/config/backup', '/config/atualizar', '/config/grupos',
+          '/acompanhar/aprovar', '/acompanhar/acompanhar-tratativa', '/historico',
+          '/relatorios', '/agenda/calendario-de-servico', '/agenda/calendario-de-plantoes'
+        ]);
+        setAllowedPages(allPages);
+      } else {
+        setAllowedPages(new Set(response.data.pages || []));
+      }
     } catch (error) {
       console.error('Erro ao buscar permissões:', error);
       // Se admin, dar todas as permissões
@@ -54,6 +68,13 @@ export const usePermissions = () => {
           });
         });
         setPermissions(allPerms);
+        const allPages = new Set<string>([
+          '/', '/tickets', '/create/forms', '/create/pages', '/config/perfil-de-acesso',
+          '/config/usuarios', '/config/backup', '/config/atualizar', '/config/grupos',
+          '/acompanhar/aprovar', '/acompanhar/acompanhar-tratativa', '/historico',
+          '/relatorios', '/agenda/calendario-de-servico', '/agenda/calendario-de-plantoes'
+        ]);
+        setAllowedPages(allPages);
       }
     } finally {
       setLoading(false);
@@ -74,10 +95,24 @@ export const usePermissions = () => {
     return perms.some(({ resource, action }) => permissions.has(`${resource}:${action}`));
   };
 
+  const hasPageAccess = (pagePath: string): boolean => {
+    if (user?.role === 'admin') {
+      return true; // Admin tem acesso a todas as páginas
+    }
+    return allowedPages.has(pagePath);
+  };
+
+  const getAllowedPages = (): string[] => {
+    return Array.from(allowedPages);
+  };
+
   return {
     permissions,
+    allowedPages,
     hasPermission,
     hasAnyPermission,
+    hasPageAccess,
+    getAllowedPages,
     loading
   };
 };

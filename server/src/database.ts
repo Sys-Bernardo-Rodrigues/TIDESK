@@ -119,6 +119,13 @@ export interface UserAccessProfile {
   created_at: string;
 }
 
+export interface AccessProfilePage {
+  id: number;
+  access_profile_id: number;
+  page_path: string; // Ex: '/', '/tickets', '/create/forms', etc.
+  created_at: string;
+}
+
 export interface Group {
   id: number;
   name: string;
@@ -533,6 +540,18 @@ const initSQLite = async () => {
     )
   `);
 
+  // Tabela de páginas permitidas por perfil de acesso
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS access_profile_pages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      access_profile_id INTEGER NOT NULL,
+      page_path TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (access_profile_id) REFERENCES access_profiles(id) ON DELETE CASCADE,
+      UNIQUE(access_profile_id, page_path)
+    )
+  `);
+
   await seedDatabase();
 };
 
@@ -680,6 +699,18 @@ const initPostgreSQL = async () => {
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE CASCADE,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+
+  // Tabela de páginas permitidas por perfil de acesso
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS access_profile_pages (
+      id SERIAL PRIMARY KEY,
+      access_profile_id INTEGER NOT NULL,
+      page_path TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (access_profile_id) REFERENCES access_profiles(id) ON DELETE CASCADE,
+      UNIQUE(access_profile_id, page_path)
     )
   `);
 
