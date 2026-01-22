@@ -31,32 +31,90 @@ export default function Login() {
       alignItems: 'center',
       justifyContent: 'center',
       minHeight: '100vh',
-      backgroundColor: 'var(--bg)'
+      background: 'linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 100%)',
+      padding: 'var(--spacing-lg)',
+      position: 'relative',
+      overflow: 'hidden'
     }}>
-      <div className="card" style={{ width: '100%', maxWidth: '400px' }}>
-        <h1 style={{ fontSize: '2rem', fontWeight: 'bold', marginBottom: '0.5rem', textAlign: 'center', color: 'var(--primary)' }}>
-          TIDESK
-        </h1>
-        <p style={{ textAlign: 'center', color: 'var(--text-light)', marginBottom: '2rem' }}>
-          Sistema de Helpdesk Profissional
-        </p>
+      <div style={{
+        position: 'absolute',
+        top: '-50%',
+        right: '-50%',
+        width: '800px',
+        height: '800px',
+        background: 'radial-gradient(circle, rgba(145, 71, 255, 0.1) 0%, transparent 70%)',
+        borderRadius: '50%',
+        pointerEvents: 'none'
+      }} />
+      <div style={{
+        position: 'absolute',
+        bottom: '-50%',
+        left: '-50%',
+        width: '600px',
+        height: '600px',
+        background: 'radial-gradient(circle, rgba(59, 130, 246, 0.1) 0%, transparent 70%)',
+        borderRadius: '50%',
+        pointerEvents: 'none'
+      }} />
+      
+      <div className="card glass fade-in" style={{ 
+        width: '100%', 
+        maxWidth: '440px',
+        border: '1px solid var(--border-primary)',
+        position: 'relative',
+        zIndex: 1,
+        boxShadow: 'var(--shadow-xl)'
+      }}>
+        <div style={{ textAlign: 'center', marginBottom: 'var(--spacing-2xl)' }}>
+          <h1 style={{ 
+            fontSize: '2.5rem', 
+            fontWeight: '800', 
+            marginBottom: 'var(--spacing-sm)', 
+            background: 'linear-gradient(135deg, var(--purple) 0%, var(--blue) 100%)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            backgroundClip: 'text',
+            letterSpacing: '-0.03em'
+          }}>
+            TIDESK
+          </h1>
+          <p style={{ 
+            color: 'var(--text-secondary)', 
+            fontSize: '1rem',
+            fontWeight: '400'
+          }}>
+            Sistema de Helpdesk Profissional
+          </p>
+        </div>
 
         {error && (
           <div style={{
-            padding: '0.75rem',
-            backgroundColor: '#fee2e2',
-            color: '#991b1b',
-            borderRadius: '0.375rem',
-            marginBottom: '1rem',
-            fontSize: '0.875rem'
+            padding: 'var(--spacing-md)',
+            backgroundColor: 'var(--red-light)',
+            color: 'var(--red)',
+            borderRadius: 'var(--radius-md)',
+            marginBottom: 'var(--spacing-lg)',
+            fontSize: '0.875rem',
+            border: '1px solid rgba(239, 68, 68, 0.3)',
+            fontWeight: '500',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 'var(--spacing-sm)'
           }}>
+            <span style={{ fontSize: '1.125rem' }}>⚠️</span>
             {error}
           </div>
         )}
 
         <form onSubmit={handleSubmit}>
-          <div style={{ marginBottom: '1rem' }}>
-            <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: '500' }}>
+          <div style={{ marginBottom: '1.25rem' }}>
+            <label style={{ 
+              display: 'block', 
+              marginBottom: '0.5rem', 
+              fontSize: '0.875rem', 
+              fontWeight: '500',
+              color: 'var(--text-secondary)'
+            }}>
               Email
             </label>
             <input
@@ -70,7 +128,13 @@ export default function Login() {
           </div>
 
           <div style={{ marginBottom: '1.5rem' }}>
-            <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: '500' }}>
+            <label style={{ 
+              display: 'block', 
+              marginBottom: '0.5rem', 
+              fontSize: '0.875rem', 
+              fontWeight: '500',
+              color: 'var(--text-secondary)'
+            }}>
               Senha
             </label>
             <input
@@ -93,9 +157,18 @@ export default function Login() {
           </button>
         </form>
 
-        <p style={{ textAlign: 'center', marginTop: '1.5rem', fontSize: '0.875rem', color: 'var(--text-light)' }}>
+        <p style={{ 
+          textAlign: 'center', 
+          marginTop: '1.5rem', 
+          fontSize: '0.875rem', 
+          color: 'var(--text-secondary)' 
+        }}>
           Não tem uma conta?{' '}
-          <Link to="/register" style={{ color: 'var(--primary)', textDecoration: 'none' }}>
+          <Link to="/register" style={{ 
+            color: 'var(--purple)', 
+            textDecoration: 'none',
+            fontWeight: '600'
+          }}>
             Cadastre-se
           </Link>
         </p>

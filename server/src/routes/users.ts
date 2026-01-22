@@ -1,6 +1,8 @@
 import express from 'express';
-import { authenticate, AuthRequest, requireAdmin } from '../middleware/auth';
-import { dbAll, dbGet } from '../database';
+import { body, validationResult } from 'express-validator';
+import bcrypt from 'bcryptjs';
+import { authenticate, AuthRequest, requireAdmin, requireAgent } from '../middleware/auth';
+import { dbAll, dbGet, dbRun } from '../database';
 
 const router = express.Router();
 
@@ -13,7 +15,23 @@ router.get('/', requireAdmin, async (req: AuthRequest, res) => {
     const users = await dbAll(
       'SELECT id, name, email, role, created_at FROM users ORDER BY created_at DESC'
     );
-    res.json(users);
+
+    // Buscar perfis de acesso de cada usuário
+    const usersWithProfiles = await Promise.all(users.map(async (user: any) => {
+      const profiles = await dbAll(`
+        SELECT ap.id, ap.name, ap.description
+        FROM user_access_profiles uap
+        JOIN access_profiles ap ON uap.access_profile_id = ap.id
+        WHERE uap.user_id = ?
+      `, [user.id]);
+
+      return {
+        ...user,
+        access_profiles: profiles
+      };
+    }));
+
+    res.json(usersWithProfiles);
   } catch (error) {
     console.error('Erro ao listar usuários:', error);
     res.status(500).json({ error: 'Erro ao buscar usuários' });
@@ -30,7 +48,19 @@ router.get('/me', async (req: AuthRequest, res) => {
     if (!user) {
       return res.status(404).json({ error: 'Usuário não encontrado' });
     }
-    res.json(user);
+
+    // Buscar perfis de acesso
+    const profiles = await dbAll(`
+      SELECT ap.id, ap.name, ap.description
+      FROM user_access_profiles uap
+      JOIN access_profiles ap ON uap.access_profile_id = ap.id
+      WHERE uap.user_id = ?
+    `, [req.userId]);
+
+    res.json({
+      ...user,
+      access_profiles: profiles
+    });
   } catch (error) {
     console.error('Erro ao buscar usuário:', error);
     res.status(500).json({ error: 'Erro ao buscar usuário' });
@@ -38,7 +68,7 @@ router.get('/me', async (req: AuthRequest, res) => {
 });
 
 // Listar agentes (para atribuição de tickets)
-router.get('/agents', requireAdmin, async (req: AuthRequest, res) => {
+router.get('/agents', requireAgent, async (req: AuthRequest, res) => {
   try {
     const agents = await dbAll(
       'SELECT id, name, email FROM users WHERE role IN ("admin", "agent") ORDER BY name'
@@ -47,6 +77,230 @@ router.get('/agents', requireAdmin, async (req: AuthRequest, res) => {
   } catch (error) {
     console.error('Erro ao listar agentes:', error);
     res.status(500).json({ error: 'Erro ao buscar agentes' });
+  }
+});
+
+// Obter usuário específico com perfis
+router.get('/:id', requireAdmin, async (req: AuthRequest, res) => {
+  try {
+    const user = await dbGet(
+      'SELECT id, name, email, role, created_at FROM users WHERE id = ?',
+      [req.params.id]
+    );
+    if (!user) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    // Buscar perfis de acesso
+    const profiles = await dbAll(`
+      SELECT ap.id, ap.name, ap.description
+      FROM user_access_profiles uap
+      JOIN access_profiles ap ON uap.access_profile_id = ap.id
+      WHERE uap.user_id = ?
+    `, [req.params.id]);
+
+    res.json({
+      ...user,
+      access_profiles: profiles
+    });
+  } catch (error) {
+    console.error('Erro ao buscar usuário:', error);
+    res.status(500).json({ error: 'Erro ao buscar usuário' });
+  }
+});
+
+// Vincular usuário a perfil de acesso
+router.post('/:id/access-profiles', requireAdmin, async (req: AuthRequest, res) => {
+  try {
+    const { access_profile_id } = req.body;
+
+    if (!access_profile_id) {
+      return res.status(400).json({ error: 'ID do perfil de acesso é obrigatório' });
+    }
+
+    // Verificar se usuário existe
+    const user = await dbGet('SELECT id FROM users WHERE id = ?', [req.params.id]);
+    if (!user) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    // Verificar se perfil existe
+    const profile = await dbGet('SELECT id FROM access_profiles WHERE id = ?', [access_profile_id]);
+    if (!profile) {
+      return res.status(404).json({ error: 'Perfil de acesso não encontrado' });
+    }
+
+    // Vincular
+    try {
+      await dbRun(`
+        INSERT INTO user_access_profiles (user_id, access_profile_id)
+        VALUES (?, ?)
+      `, [req.params.id, access_profile_id]);
+
+      // Invalidar cache de permissões
+      const { invalidateUserPermissions } = await import('../middleware/permissions');
+      invalidateUserPermissions(parseInt(req.params.id));
+
+      res.status(201).json({ message: 'Perfil vinculado com sucesso' });
+    } catch (error: any) {
+      if (error.message?.includes('UNIQUE')) {
+        return res.status(400).json({ error: 'Usuário já está vinculado a este perfil' });
+      }
+      throw error;
+    }
+  } catch (error) {
+    console.error('Erro ao vincular perfil:', error);
+    res.status(500).json({ error: 'Erro ao vincular perfil de acesso' });
+  }
+});
+
+// Desvincular usuário de perfil de acesso
+router.delete('/:id/access-profiles/:profileId', requireAdmin, async (req: AuthRequest, res) => {
+  try {
+    await dbRun(`
+      DELETE FROM user_access_profiles
+      WHERE user_id = ? AND access_profile_id = ?
+    `, [req.params.id, req.params.profileId]);
+
+    // Invalidar cache de permissões
+    const { invalidateUserPermissions } = await import('../middleware/permissions');
+    invalidateUserPermissions(parseInt(req.params.id));
+
+    res.json({ message: 'Perfil desvinculado com sucesso' });
+  } catch (error) {
+    console.error('Erro ao desvincular perfil:', error);
+    res.status(500).json({ error: 'Erro ao desvincular perfil de acesso' });
+  }
+});
+
+// Criar usuário
+router.post('/', [
+  requireAdmin,
+  body('name').notEmpty().withMessage('Nome é obrigatório'),
+  body('email').isEmail().withMessage('Email inválido'),
+  body('password').isLength({ min: 6 }).withMessage('Senha deve ter no mínimo 6 caracteres'),
+  body('role').optional().isIn(['admin', 'agent', 'user']).withMessage('Role inválido')
+], async (req: AuthRequest, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { name, email, password, role } = req.body;
+
+    // Verificar se email já existe
+    const existingUser = await dbGet('SELECT id FROM users WHERE email = ?', [email]);
+    if (existingUser) {
+      return res.status(400).json({ error: 'Email já cadastrado' });
+    }
+
+    // Hash da senha
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Criar usuário
+    const result = await dbRun(
+      'INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)',
+      [name, email, hashedPassword, role || 'user']
+    );
+
+    const userId = (result as any).lastID || (result as any).id;
+
+    // Buscar usuário criado
+    const user = await dbGet(
+      'SELECT id, name, email, role, created_at FROM users WHERE id = ?',
+      [userId]
+    );
+
+    res.status(201).json(user);
+  } catch (error) {
+    console.error('Erro ao criar usuário:', error);
+    res.status(500).json({ error: 'Erro ao criar usuário' });
+  }
+});
+
+// Atualizar usuário
+router.put('/:id', [
+  requireAdmin,
+  body('name').notEmpty().withMessage('Nome é obrigatório'),
+  body('email').isEmail().withMessage('Email inválido'),
+  body('password').optional().isLength({ min: 6 }).withMessage('Senha deve ter no mínimo 6 caracteres'),
+  body('role').optional().isIn(['admin', 'agent', 'user']).withMessage('Role inválido')
+], async (req: AuthRequest, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { name, email, password, role } = req.body;
+
+    // Verificar se usuário existe
+    const existingUser = await dbGet('SELECT id, email FROM users WHERE id = ?', [req.params.id]);
+    if (!existingUser) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    // Verificar se email já existe em outro usuário
+    if (email !== existingUser.email) {
+      const emailExists = await dbGet('SELECT id FROM users WHERE email = ? AND id != ?', [email, req.params.id]);
+      if (emailExists) {
+        return res.status(400).json({ error: 'Email já cadastrado' });
+      }
+    }
+
+    // Atualizar usuário
+    if (password) {
+      const hashedPassword = await bcrypt.hash(password, 10);
+      await dbRun(
+        'UPDATE users SET name = ?, email = ?, password = ?, role = ? WHERE id = ?',
+        [name, email, hashedPassword, role || existingUser.role, req.params.id]
+      );
+    } else {
+      await dbRun(
+        'UPDATE users SET name = ?, email = ?, role = ? WHERE id = ?',
+        [name, email, role || existingUser.role, req.params.id]
+      );
+    }
+
+    // Invalidar cache de permissões
+    const { invalidateUserPermissions } = await import('../middleware/permissions');
+    invalidateUserPermissions(parseInt(req.params.id));
+
+    // Buscar usuário atualizado
+    const user = await dbGet(
+      'SELECT id, name, email, role, created_at FROM users WHERE id = ?',
+      [req.params.id]
+    );
+
+    res.json(user);
+  } catch (error) {
+    console.error('Erro ao atualizar usuário:', error);
+    res.status(500).json({ error: 'Erro ao atualizar usuário' });
+  }
+});
+
+// Excluir usuário
+router.delete('/:id', requireAdmin, async (req: AuthRequest, res) => {
+  try {
+    // Verificar se usuário existe
+    const user = await dbGet('SELECT id FROM users WHERE id = ?', [req.params.id]);
+    if (!user) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    // Não permitir excluir a si mesmo
+    if (parseInt(req.params.id) === req.userId) {
+      return res.status(400).json({ error: 'Você não pode excluir seu próprio usuário' });
+    }
+
+    // Excluir usuário (perfis serão desvinculados em cascata)
+    await dbRun('DELETE FROM users WHERE id = ?', [req.params.id]);
+
+    res.json({ message: 'Usuário excluído com sucesso' });
+  } catch (error) {
+    console.error('Erro ao excluir usuário:', error);
+    res.status(500).json({ error: 'Erro ao excluir usuário' });
   }
 });
 

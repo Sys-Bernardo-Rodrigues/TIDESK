@@ -43,6 +43,11 @@ SQLITE_DB_PATH=./tidesk.db
 PORT=5000
 JWT_SECRET=tidesk-secret-key-change-in-production
 NODE_ENV=development
+
+# Usuário Administrador Padrão
+ADMIN_EMAIL=admin@tidesk.com
+ADMIN_PASSWORD=admin123
+ADMIN_NAME=Administrador
 ```
 
 **Para PostgreSQL (recomendado para produção):**
@@ -57,6 +62,11 @@ POSTGRES_SSL=false
 PORT=5000
 JWT_SECRET=tidesk-secret-key-change-in-production
 NODE_ENV=development
+
+# Usuário Administrador Padrão
+ADMIN_EMAIL=admin@tidesk.com
+ADMIN_PASSWORD=admin123
+ADMIN_NAME=Administrador
 ```
 
 📖 **Veja mais detalhes em:** `server/CONFIGURACAO_BANCO.md`
@@ -96,12 +106,15 @@ npm run build
 
 ## 👤 Usuário Padrão
 
-Ao iniciar o sistema pela primeira vez, um usuário administrador é criado automaticamente:
+Ao iniciar o sistema pela primeira vez, um usuário administrador é criado automaticamente usando as credenciais configuradas no arquivo `.env`:
 
-- **Email**: admin@tidesk.com
-- **Senha**: admin123
+- **Email**: `admin@tidesk.com` (configurável via `ADMIN_EMAIL`)
+- **Senha**: `admin123` (configurável via `ADMIN_PASSWORD`)
+- **Nome**: `Administrador` (configurável via `ADMIN_NAME`)
 
-⚠️ **IMPORTANTE**: Altere a senha do administrador após o primeiro acesso!
+⚠️ **IMPORTANTE**: 
+- Altere as credenciais no arquivo `.env` antes de iniciar o sistema em produção
+- Altere a senha do administrador após o primeiro acesso!
 
 ## 🎯 Estrutura do Projeto
 

@@ -126,6 +126,12 @@ POSTGRES_SSL=false
 PORT=5000
 JWT_SECRET=tidesk-secret-key-change-in-production
 NODE_ENV=development
+
+# Usuário Administrador Padrão
+# Estas credenciais serão usadas para criar o usuário admin inicial
+ADMIN_EMAIL=admin@tidesk.com
+ADMIN_PASSWORD=admin123
+ADMIN_NAME=Administrador
 ```
 
 ## ⚠️ Notas Importantes

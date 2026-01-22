@@ -5,8 +5,26 @@ import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import Tickets from './pages/Tickets';
 import TicketDetail from './pages/TicketDetail';
-import NewTicket from './pages/NewTicket';
+import Pages from './pages/Pages';
+import Forms from './pages/Forms';
+import FormBuilder from './pages/FormBuilder';
+import AccessProfile from './pages/AccessProfile';
+import Users from './pages/Users';
+import Backup from './pages/Backup';
+import Atualizar from './pages/Atualizar';
+import Grupos from './pages/Grupos';
+import Aprovar from './pages/Aprovar';
+import AcompanharTratativa from './pages/AcompanharTratativa';
+import Reports from './pages/Reports';
+import ServiceCalendar from './pages/ServiceCalendar';
+import ShiftCalendar from './pages/ShiftCalendar';
+import PublicForm from './pages/PublicForm';
+import Historico from './pages/Historico';
+import PageBuilder from './pages/PageBuilder';
+import PublicPage from './pages/PublicPage';
 import Layout from './components/Layout';
+import ProtectedRoute from './components/ProtectedRoute';
+import { RESOURCES, ACTIONS } from './hooks/usePermissions';
 
 const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, loading } = useAuth();
@@ -25,6 +43,8 @@ function App() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/form/:formId" element={<PublicForm />} />
+          <Route path="/page/:slug" element={<PublicPage />} />
           <Route
             path="/"
             element={
@@ -35,8 +55,143 @@ function App() {
           >
             <Route index element={<Dashboard />} />
             <Route path="tickets" element={<Tickets />} />
-            <Route path="tickets/new" element={<NewTicket />} />
             <Route path="tickets/:id" element={<TicketDetail />} />
+            <Route 
+              path="create/pages" 
+              element={
+                <ProtectedRoute resource={RESOURCES.PAGES} action={ACTIONS.VIEW}>
+                  <Pages />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="create/pages/builder" 
+              element={
+                <ProtectedRoute resource={RESOURCES.PAGES} action={ACTIONS.CREATE}>
+                  <PageBuilder />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="create/pages/builder/:id" 
+              element={
+                <ProtectedRoute resource={RESOURCES.PAGES} action={ACTIONS.EDIT}>
+                  <PageBuilder />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="create/forms" 
+              element={
+                <ProtectedRoute resource={RESOURCES.FORMS} action={ACTIONS.VIEW}>
+                  <Forms />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="create/forms/builder" 
+              element={
+                <ProtectedRoute resource={RESOURCES.FORMS} action={ACTIONS.CREATE}>
+                  <FormBuilder />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="create/forms/builder/:id" 
+              element={
+                <ProtectedRoute resource={RESOURCES.FORMS} action={ACTIONS.EDIT}>
+                  <FormBuilder />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="config/perfil-de-acesso" 
+              element={
+                <ProtectedRoute resource={RESOURCES.CONFIG} action={ACTIONS.VIEW}>
+                  <AccessProfile />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="config/usuarios" 
+              element={
+                <ProtectedRoute resource={RESOURCES.USERS} action={ACTIONS.VIEW}>
+                  <Users />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="config/backup" 
+              element={
+                <ProtectedRoute resource={RESOURCES.CONFIG} action={ACTIONS.VIEW}>
+                  <Backup />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="config/atualizar" 
+              element={
+                <ProtectedRoute resource={RESOURCES.CONFIG} action={ACTIONS.VIEW}>
+                  <Atualizar />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="config/grupos" 
+              element={
+                <ProtectedRoute resource={RESOURCES.CONFIG} action={ACTIONS.VIEW}>
+                  <Grupos />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="acompanhar/aprovar" 
+              element={
+                <ProtectedRoute resource={RESOURCES.APPROVE} action={ACTIONS.VIEW}>
+                  <Aprovar />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="acompanhar/acompanhar-tratativa" 
+              element={
+                <ProtectedRoute resource={RESOURCES.TRACK} action={ACTIONS.VIEW}>
+                  <AcompanharTratativa />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="historico" 
+              element={
+                <ProtectedRoute resource={RESOURCES.HISTORY} action={ACTIONS.VIEW}>
+                  <Historico />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="relatorios" 
+              element={
+                <ProtectedRoute resource={RESOURCES.REPORTS} action={ACTIONS.VIEW}>
+                  <Reports />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="agenda/calendario-de-servico" 
+              element={
+                <ProtectedRoute resource={RESOURCES.AGENDA} action={ACTIONS.VIEW}>
+                  <ServiceCalendar />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="agenda/calendario-de-plantoes" 
+              element={
+                <ProtectedRoute resource={RESOURCES.AGENDA} action={ACTIONS.VIEW}>
+                  <ShiftCalendar />
+                </ProtectedRoute>
+              } 
+            />
           </Route>
         </Routes>
       </Router>

@@ -1,0 +1,457 @@
+import express from 'express';
+import { body, validationResult } from 'express-validator';
+import { authenticate, AuthRequest, requireAdmin } from '../middleware/auth';
+import { dbGet, dbAll, dbRun } from '../database';
+import { invalidateAllPermissions } from '../middleware/permissions';
+
+const router = express.Router();
+
+// Listar perfis de acesso
+router.get('/', authenticate, requireAdmin, async (req: AuthRequest, res) => {
+  try {
+    const profiles = await dbAll(`
+      SELECT ap.*,
+             (SELECT COUNT(*) FROM user_access_profiles uap WHERE uap.access_profile_id = ap.id) as users_count,
+             (SELECT COUNT(*) FROM permissions p WHERE p.access_profile_id = ap.id) as permissions_count
+      FROM access_profiles ap
+      ORDER BY ap.created_at DESC
+    `);
+
+    // Buscar permissões de cada perfil
+    const profilesWithPermissions = await Promise.all(profiles.map(async (profile: any) => {
+      const permissions = await dbAll(`
+        SELECT resource, action
+        FROM permissions
+        WHERE access_profile_id = ?
+        ORDER BY resource, action
+      `, [profile.id]);
+
+      return {
+        ...profile,
+        permissions: permissions.map((p: any) => `${p.resource}:${p.action}`)
+      };
+    }));
+
+    res.json(profilesWithPermissions);
+  } catch (error) {
+    console.error('Erro ao listar perfis:', error);
+    res.status(500).json({ error: 'Erro ao buscar perfis de acesso' });
+  }
+});
+
+// Obter perfil específico
+router.get('/:id', authenticate, requireAdmin, async (req: AuthRequest, res) => {
+  try {
+    const profile = await dbGet('SELECT * FROM access_profiles WHERE id = ?', [req.params.id]);
+    
+    if (!profile) {
+      return res.status(404).json({ error: 'Perfil não encontrado' });
+    }
+
+    const permissions = await dbAll(`
+      SELECT resource, action
+      FROM permissions
+      WHERE access_profile_id = ?
+      ORDER BY resource, action
+    `, [profile.id]);
+
+    const users = await dbAll(`
+      SELECT u.id, u.name, u.email
+      FROM user_access_profiles uap
+      JOIN users u ON uap.user_id = u.id
+      WHERE uap.access_profile_id = ?
+    `, [profile.id]);
+
+    res.json({
+      ...profile,
+      permissions: permissions.map((p: any) => ({
+        resource: p.resource,
+        action: p.action
+      })),
+      users: users
+    });
+  } catch (error) {
+    console.error('Erro ao buscar perfil:', error);
+    res.status(500).json({ error: 'Erro ao buscar perfil' });
+  }
+});
+
+// Criar perfil de acesso
+router.post('/', [
+  authenticate,
+  requireAdmin,
+  body('name').notEmpty().withMessage('Nome é obrigatório')
+], async (req: AuthRequest, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { name, description, permissions } = req.body;
+
+    // Verificar se nome já existe
+    const existing = await dbGet('SELECT id FROM access_profiles WHERE name = ?', [name]);
+    if (existing) {
+      return res.status(400).json({ error: 'Já existe um perfil com este nome' });
+    }
+
+    // Criar perfil
+    const profileResult = await dbRun(`
+      INSERT INTO access_profiles (name, description)
+      VALUES (?, ?)
+    `, [name, description || null]);
+
+    const profileId = (profileResult as any).lastID || (profileResult as any).id;
+
+    // Criar permissões
+    if (permissions && Array.isArray(permissions)) {
+      for (const perm of permissions) {
+        if (perm.resource && perm.action) {
+          try {
+            await dbRun(`
+              INSERT INTO permissions (access_profile_id, resource, action)
+              VALUES (?, ?, ?)
+            `, [profileId, perm.resource, perm.action]);
+          } catch (error: any) {
+            // Ignorar erro de duplicata
+            if (!error.message?.includes('UNIQUE')) {
+              throw error;
+            }
+          }
+        }
+      }
+    }
+
+    invalidateAllPermissions();
+
+    const profile = await dbGet('SELECT * FROM access_profiles WHERE id = ?', [profileId]);
+    res.status(201).json(profile);
+  } catch (error) {
+    console.error('Erro ao criar perfil:', error);
+    res.status(500).json({ error: 'Erro ao criar perfil de acesso' });
+  }
+});
+
+// Atualizar perfil de acesso
+router.put('/:id', [
+  authenticate,
+  requireAdmin,
+  body('name').notEmpty().withMessage('Nome é obrigatório')
+], async (req: AuthRequest, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { name, description, permissions } = req.body;
+
+    // Verificar se perfil existe
+    const existing = await dbGet('SELECT id FROM access_profiles WHERE id = ?', [req.params.id]);
+    if (!existing) {
+      return res.status(404).json({ error: 'Perfil não encontrado' });
+    }
+
+    // Verificar se nome já existe em outro perfil
+    const nameExists = await dbGet('SELECT id FROM access_profiles WHERE name = ? AND id != ?', [name, req.params.id]);
+    if (nameExists) {
+      return res.status(400).json({ error: 'Já existe um perfil com este nome' });
+    }
+
+    // Atualizar perfil
+    await dbRun(`
+      UPDATE access_profiles
+      SET name = ?, description = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `, [name, description || null, req.params.id]);
+
+    // Remover permissões antigas
+    await dbRun('DELETE FROM permissions WHERE access_profile_id = ?', [req.params.id]);
+
+    // Criar novas permissões
+    if (permissions && Array.isArray(permissions)) {
+      for (const perm of permissions) {
+        if (perm.resource && perm.action) {
+          try {
+            await dbRun(`
+              INSERT INTO permissions (access_profile_id, resource, action)
+              VALUES (?, ?, ?)
+            `, [req.params.id, perm.resource, perm.action]);
+          } catch (error: any) {
+            if (!error.message?.includes('UNIQUE')) {
+              throw error;
+            }
+          }
+        }
+      }
+    }
+
+    invalidateAllPermissions();
+
+    const profile = await dbGet('SELECT * FROM access_profiles WHERE id = ?', [req.params.id]);
+    res.json(profile);
+  } catch (error) {
+    console.error('Erro ao atualizar perfil:', error);
+    res.status(500).json({ error: 'Erro ao atualizar perfil de acesso' });
+  }
+});
+
+// Excluir perfil de acesso
+router.delete('/:id', authenticate, requireAdmin, async (req: AuthRequest, res) => {
+  try {
+    const profile = await dbGet('SELECT id FROM access_profiles WHERE id = ?', [req.params.id]);
+    if (!profile) {
+      return res.status(404).json({ error: 'Perfil não encontrado' });
+    }
+
+    // Verificar se há usuários vinculados
+    const usersCount = await dbGet(`
+      SELECT COUNT(*) as count FROM user_access_profiles WHERE access_profile_id = ?
+    `, [req.params.id]) as any;
+
+    if (usersCount && usersCount.count > 0) {
+      return res.status(400).json({ 
+        error: 'Não é possível excluir perfil com usuários vinculados. Remova os usuários primeiro.' 
+      });
+    }
+
+    // Excluir perfil (permissões serão excluídas em cascata)
+    await dbRun('DELETE FROM access_profiles WHERE id = ?', [req.params.id]);
+
+    invalidateAllPermissions();
+
+    res.json({ message: 'Perfil excluído com sucesso' });
+  } catch (error) {
+    console.error('Erro ao excluir perfil:', error);
+    res.status(500).json({ error: 'Erro ao excluir perfil de acesso' });
+  }
+});
+
+// Vincular usuário a perfil
+router.post('/:id/users', [
+  authenticate,
+  requireAdmin,
+  body('userId').isInt().withMessage('ID do usuário é obrigatório')
+], async (req: AuthRequest, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { userId } = req.body;
+
+    // Verificar se perfil existe
+    const profile = await dbGet('SELECT id FROM access_profiles WHERE id = ?', [req.params.id]);
+    if (!profile) {
+      return res.status(404).json({ error: 'Perfil não encontrado' });
+    }
+
+    // Verificar se usuário existe
+    const user = await dbGet('SELECT id FROM users WHERE id = ?', [userId]);
+    if (!user) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    // Vincular
+    try {
+      await dbRun(`
+        INSERT INTO user_access_profiles (user_id, access_profile_id)
+        VALUES (?, ?)
+      `, [userId, req.params.id]);
+
+      invalidateAllPermissions();
+
+      res.status(201).json({ message: 'Usuário vinculado ao perfil com sucesso' });
+    } catch (error: any) {
+      if (error.message?.includes('UNIQUE')) {
+        return res.status(400).json({ error: 'Usuário já está vinculado a este perfil' });
+      }
+      throw error;
+    }
+  } catch (error) {
+    console.error('Erro ao vincular usuário:', error);
+    res.status(500).json({ error: 'Erro ao vincular usuário ao perfil' });
+  }
+});
+
+// Desvincular usuário de perfil
+router.delete('/:id/users/:userId', authenticate, requireAdmin, async (req: AuthRequest, res) => {
+  try {
+    await dbRun(`
+      DELETE FROM user_access_profiles
+      WHERE access_profile_id = ? AND user_id = ?
+    `, [req.params.id, req.params.userId]);
+
+    invalidateAllPermissions();
+
+    res.json({ message: 'Usuário desvinculado do perfil com sucesso' });
+  } catch (error) {
+    console.error('Erro ao desvincular usuário:', error);
+    res.status(500).json({ error: 'Erro ao desvincular usuário do perfil' });
+  }
+});
+
+// Obter permissões do usuário atual
+router.get('/me/permissions', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const { getUserPermissions } = await import('../middleware/permissions');
+    const permissions = await getUserPermissions(req.userId!);
+    
+    res.json({
+      permissions: Array.from(permissions),
+      userId: req.userId
+    });
+  } catch (error) {
+    console.error('Erro ao buscar permissões:', error);
+    res.status(500).json({ error: 'Erro ao buscar permissões' });
+  }
+});
+
+// Criar perfis padrão (endpoint para forçar criação)
+router.post('/seed-default', authenticate, requireAdmin, async (req: AuthRequest, res) => {
+  try {
+    const { dbGet, dbRun, dbAll } = await import('../database');
+    
+    // Verificar e criar cada perfil individualmente
+    const adminProfileExists = await dbGet('SELECT id FROM access_profiles WHERE name = ?', ['Administrador']);
+    const agentProfileExists = await dbGet('SELECT id FROM access_profiles WHERE name = ?', ['Agente']);
+    const userProfileExists = await dbGet('SELECT id FROM access_profiles WHERE name = ?', ['Usuário']);
+
+    let adminProfileId: number | null = null;
+    let agentProfileId: number | null = null;
+    let userProfileId: number | null = null;
+
+    // Criar perfil Administrador se não existir
+    if (!adminProfileExists) {
+      const adminProfileResult = await dbRun(
+        'INSERT INTO access_profiles (name, description) VALUES (?, ?)',
+        ['Administrador', 'Perfil com acesso total ao sistema']
+      );
+      adminProfileId = (adminProfileResult as any).lastID || (adminProfileResult as any).id;
+    } else {
+      adminProfileId = (adminProfileExists as any).id;
+    }
+
+    // Criar perfil Agente se não existir
+    if (!agentProfileExists) {
+      const agentProfileResult = await dbRun(
+        'INSERT INTO access_profiles (name, description) VALUES (?, ?)',
+        ['Agente', 'Perfil para agentes de suporte com permissões para gerenciar tickets']
+      );
+      agentProfileId = (agentProfileResult as any).lastID || (agentProfileResult as any).id;
+    } else {
+      agentProfileId = (agentProfileExists as any).id;
+    }
+
+    // Criar perfil Usuário se não existir
+    if (!userProfileExists) {
+      const userProfileResult = await dbRun(
+        'INSERT INTO access_profiles (name, description) VALUES (?, ?)',
+        ['Usuário', 'Perfil básico para usuários do sistema']
+      );
+      userProfileId = (userProfileResult as any).lastID || (userProfileResult as any).id;
+    } else {
+      userProfileId = (userProfileExists as any).id;
+    }
+
+    // Configurar permissões para Administrador
+    if (adminProfileId) {
+      const adminPermsCount = await dbGet('SELECT COUNT(*) as count FROM permissions WHERE access_profile_id = ?', [adminProfileId]) as any;
+      if (!adminPermsCount || adminPermsCount.count === 0) {
+        const allResources = ['tickets', 'forms', 'pages', 'users', 'categories', 'reports', 'history', 'approve', 'track', 'config', 'agenda'];
+        const allActions = ['create', 'view', 'edit', 'delete', 'approve', 'reject'];
+        
+        for (const resource of allResources) {
+          for (const action of allActions) {
+            if ((action === 'approve' || action === 'reject') && resource !== 'approve') {
+              continue;
+            }
+            try {
+              await dbRun(
+                'INSERT INTO permissions (access_profile_id, resource, action) VALUES (?, ?, ?)',
+                [adminProfileId, resource, action]
+              );
+            } catch (error: any) {
+              // Ignorar erros de duplicata
+            }
+          }
+        }
+      }
+    }
+
+    // Configurar permissões para Agente
+    if (agentProfileId) {
+      const agentPermsCount = await dbGet('SELECT COUNT(*) as count FROM permissions WHERE access_profile_id = ?', [agentProfileId]) as any;
+      if (!agentPermsCount || agentPermsCount.count === 0) {
+        const agentPermissions = [
+          { resource: 'tickets', action: 'view' },
+          { resource: 'tickets', action: 'edit' },
+          { resource: 'approve', action: 'view' },
+          { resource: 'approve', action: 'approve' },
+          { resource: 'approve', action: 'reject' },
+          { resource: 'track', action: 'view' },
+          { resource: 'track', action: 'edit' },
+          { resource: 'history', action: 'view' },
+          { resource: 'reports', action: 'view' },
+          { resource: 'forms', action: 'view' },
+          { resource: 'pages', action: 'view' }
+        ];
+
+        for (const perm of agentPermissions) {
+          try {
+            await dbRun(
+              'INSERT INTO permissions (access_profile_id, resource, action) VALUES (?, ?, ?)',
+              [agentProfileId, perm.resource, perm.action]
+            );
+          } catch (error: any) {
+            // Ignorar erros de duplicata
+          }
+        }
+      }
+    }
+
+    // Configurar permissões para Usuário
+    if (userProfileId) {
+      const userPermsCount = await dbGet('SELECT COUNT(*) as count FROM permissions WHERE access_profile_id = ?', [userProfileId]) as any;
+      if (!userPermsCount || userPermsCount.count === 0) {
+        const userPermissions = [
+          { resource: 'tickets', action: 'view' },
+          { resource: 'tickets', action: 'create' },
+          { resource: 'history', action: 'view' },
+          { resource: 'forms', action: 'view' },
+          { resource: 'pages', action: 'view' }
+        ];
+
+        for (const perm of userPermissions) {
+          try {
+            await dbRun(
+              'INSERT INTO permissions (access_profile_id, resource, action) VALUES (?, ?, ?)',
+              [userProfileId, perm.resource, perm.action]
+            );
+          } catch (error: any) {
+            // Ignorar erros de duplicata
+          }
+        }
+      }
+    }
+
+    const { invalidateAllPermissions } = await import('../middleware/permissions');
+    invalidateAllPermissions();
+
+    res.json({ 
+      message: 'Perfis padrão criados/verificados com sucesso',
+      created: {
+        admin: !adminProfileExists,
+        agent: !agentProfileExists,
+        user: !userProfileExists
+      }
+    });
+  } catch (error) {
+    console.error('Erro ao criar perfis padrão:', error);
+    res.status(500).json({ error: 'Erro ao criar perfis padrão' });
+  }
+});
+
+export default router;
