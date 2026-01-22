@@ -14,6 +14,7 @@ import {
 
 interface Ticket {
   id: number;
+  ticket_number: number | null;
   title: string;
   description: string;
   status: 'open' | 'in_progress' | 'resolved' | 'closed' | 'pending_approval' | 'scheduled';
@@ -25,6 +26,21 @@ interface Ticket {
   form_name: string | null;
   created_at: string;
   updated_at: string;
+}
+
+// Função para formatar ID do ticket no formato ano/mês/dia/número
+function formatTicketId(ticket: Ticket): string {
+  if (!ticket.ticket_number || !ticket.created_at) {
+    return `#${ticket.id}`;
+  }
+  
+  const date = new Date(ticket.created_at);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const number = String(ticket.ticket_number).padStart(3, '0');
+  
+  return `${year}/${month}/${day}/${number}`;
 }
 
 interface TicketMessage {
@@ -320,8 +336,10 @@ export default function TicketDetail() {
               fontSize: '0.8125rem',
               color: 'var(--text-secondary)',
               marginLeft: '2.5rem',
-              flexWrap: 'wrap'
+              flexWrap: 'wrap',
+              alignItems: 'center'
             }}>
+              <span><strong>ID:</strong> {formatTicketId(ticket)}</span>
               <span><strong>Criado por:</strong> {ticket.user_name}</span>
               {ticket.assigned_name && <span><strong>Atribuído a:</strong> {ticket.assigned_name}</span>}
               {ticket.form_name && (

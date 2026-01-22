@@ -34,6 +34,7 @@ export default function PublicForm() {
   const [submitted, setSubmitted] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [publicUrl, setPublicUrl] = useState<string>('');
+  const [ticketInfo, setTicketInfo] = useState<{ ticket_number: number | null; created_at: string | null } | null>(null);
 
   useEffect(() => {
     const fetchForm = async () => {
@@ -161,8 +162,11 @@ export default function PublicForm() {
         }
       });
 
-      const { needsApproval: apiNeedsApproval } = response.data;
+      const { needsApproval: apiNeedsApproval, ticket_number, created_at } = response.data;
+      
+      console.log('[PublicForm] Resposta do servidor:', { ticket_number, created_at, fullResponse: response.data });
 
+      setTicketInfo({ ticket_number, created_at });
       setSubmitted(true);
     } catch (error) {
       console.error('Erro ao submeter formulário:', error);
@@ -233,6 +237,40 @@ export default function PublicForm() {
           }}>
             Formulário Enviado com Sucesso!
           </h2>
+          {ticketInfo && ticketInfo.ticket_number !== null && ticketInfo.ticket_number !== undefined && ticketInfo.created_at && (() => {
+            const date = new Date(ticketInfo.created_at);
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            const number = String(ticketInfo.ticket_number).padStart(3, '0');
+            const formattedId = `${year}/${month}/${day}/${number}`;
+            
+            return (
+              <div style={{
+                backgroundColor: 'var(--bg-secondary)',
+                border: '1px solid var(--border-primary)',
+                borderRadius: 'var(--radius-md)',
+                padding: 'var(--spacing-md)',
+                marginBottom: 'var(--spacing-md)'
+              }}>
+                <p style={{
+                  color: 'var(--text-primary)',
+                  fontSize: '0.9375rem',
+                  marginBottom: 'var(--spacing-xs)'
+                }}>
+                  <strong>ID do Ticket:</strong>
+                </p>
+                <p style={{
+                  color: 'var(--purple)',
+                  fontSize: '1.25rem',
+                  fontWeight: '700',
+                  fontFamily: 'monospace'
+                }}>
+                  {formattedId}
+                </p>
+              </div>
+            );
+          })()}
           <p style={{
             color: 'var(--text-secondary)',
             fontSize: '1rem',

@@ -507,10 +507,27 @@ router.post('/public/:url/submit', uploadMultiple, async (req, res) => {
     console.log(`  - needsApproval: ${needsApproval}`);
     console.log(`  - ticketStatus: ${ticketStatus}`);
 
+    // Gerar número do ticket do dia
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    const dateStr = `${year}-${month}-${day}`;
+    
+    // Contar quantos tickets foram criados hoje
+    // Usar DATE() para garantir compatibilidade com SQLite e PostgreSQL
+    const countResult = await dbGet(
+      `SELECT COUNT(*) as count FROM tickets WHERE DATE(created_at) = ?`,
+      [dateStr]
+    );
+    
+    const count = (countResult as any)?.count || 0;
+    const ticketNumber = count + 1;
+
     // Criar ticket
     const ticketResult = await dbRun(`
-      INSERT INTO tickets (title, description, status, priority, form_id, form_submission_id, user_id, needs_approval)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO tickets (title, description, status, priority, form_id, form_submission_id, user_id, needs_approval, ticket_number)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       ticketTitle,
       ticketDescription,
@@ -519,14 +536,34 @@ router.post('/public/:url/submit', uploadMultiple, async (req, res) => {
       form.id,
       submissionId,
       1, // Usuário anônimo (pode ser ajustado)
-      needsApproval ? 1 : 0
+      needsApproval ? 1 : 0,
+      ticketNumber
     ]);
 
     const ticketId = (ticketResult as any).lastID || (ticketResult as any).id;
+    const createdAt = new Date().toISOString();
+
+    // Buscar ticket criado para retornar informações completas (com fallback)
+    let finalTicketNumber = ticketNumber;
+    let finalCreatedAt = createdAt;
+    
+    try {
+      const createdTicket = await dbGet('SELECT * FROM tickets WHERE id = ?', [ticketId]);
+      if (createdTicket) {
+        finalTicketNumber = (createdTicket as any).ticket_number || ticketNumber;
+        finalCreatedAt = (createdTicket as any).created_at || createdAt;
+      }
+    } catch (error) {
+      console.error('[Form Submit] Erro ao buscar ticket criado, usando valores calculados:', error);
+    }
+    
+    console.log(`[Form Submit] Ticket criado - ID: ${ticketId}, ticket_number: ${finalTicketNumber}, created_at: ${finalCreatedAt}`);
 
     res.status(201).json({
       message: 'Formulário enviado com sucesso',
       ticketId,
+      ticket_number: finalTicketNumber,
+      created_at: finalCreatedAt,
       needsApproval,
       submissionId
     });

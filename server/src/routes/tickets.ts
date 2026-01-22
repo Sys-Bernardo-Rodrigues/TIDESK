@@ -6,6 +6,37 @@ import { dbGet, dbAll, dbRun } from '../database';
 
 const router = express.Router();
 
+// Função para gerar número do ticket do dia
+async function generateTicketNumber(): Promise<number> {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  const dateStr = `${year}-${month}-${day}`;
+  
+  // Contar quantos tickets foram criados hoje
+  // Usar CAST para garantir compatibilidade com SQLite e PostgreSQL
+  const countResult = await dbGet(
+    `SELECT COUNT(*) as count FROM tickets WHERE DATE(created_at) = ?`,
+    [dateStr]
+  );
+  
+  const count = (countResult as any)?.count || 0;
+  return count + 1;
+}
+
+// Função para gerar ID do ticket no formato ano/mês/dia/número
+async function generateTicketId(): Promise<string> {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  const ticketNumber = await generateTicketNumber();
+  const numberStr = String(ticketNumber).padStart(3, '0');
+  
+  return `${year}${month}${day}${numberStr}`;
+}
+
 // Todas as rotas requerem autenticação
 router.use(authenticate);
 
@@ -177,10 +208,13 @@ router.post('/', [
 
     const { title, description, priority = 'medium', category_id } = req.body;
 
+    // Gerar número do ticket do dia
+    const ticketNumber = await generateTicketNumber();
+
     const result = await dbRun(
-      `INSERT INTO tickets (title, description, status, priority, category_id, user_id) 
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [title, description, 'open', priority, category_id || null, req.userId]
+      `INSERT INTO tickets (title, description, status, priority, category_id, user_id, ticket_number) 
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [title, description, 'open', priority, category_id || null, req.userId, ticketNumber]
     );
 
     const ticketId = (result as any).lastID;

@@ -20,6 +20,7 @@ export interface User {
 
 export interface Ticket {
   id: number;
+  ticket_number: number | null;
   title: string;
   description: string;
   status: 'open' | 'in_progress' | 'resolved' | 'closed' | 'pending_approval' | 'scheduled';
@@ -342,6 +343,7 @@ const initSQLite = async () => {
   await dbRun(`
     CREATE TABLE IF NOT EXISTS tickets (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ticket_number INTEGER,
       title TEXT NOT NULL,
       description TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'open',
@@ -500,6 +502,15 @@ const initSQLite = async () => {
     // Coluna já existe, ignorar erro
   }
 
+  // Adicionar coluna ticket_number na tabela tickets (SQLite não suporta ALTER TABLE ADD COLUMN IF NOT EXISTS)
+  try {
+    await dbRun(`
+      ALTER TABLE tickets ADD COLUMN ticket_number INTEGER
+    `);
+  } catch (error) {
+    // Coluna já existe, ignorar erro
+  }
+
   // Tabela de grupos
   await dbRun(`
     CREATE TABLE IF NOT EXISTS groups (
@@ -582,6 +593,7 @@ const initPostgreSQL = async () => {
   await dbRun(`
     CREATE TABLE IF NOT EXISTS tickets (
       id SERIAL PRIMARY KEY,
+      ticket_number INTEGER,
       title VARCHAR(255) NOT NULL,
       description TEXT NOT NULL,
       status VARCHAR(50) NOT NULL DEFAULT 'open',
@@ -601,6 +613,15 @@ const initPostgreSQL = async () => {
       FOREIGN KEY (form_submission_id) REFERENCES form_submissions(id) ON DELETE SET NULL
     )
   `);
+
+  // Adicionar coluna ticket_number na tabela tickets (PostgreSQL)
+  try {
+    await dbRun(`
+      ALTER TABLE tickets ADD COLUMN IF NOT EXISTS ticket_number INTEGER
+    `);
+  } catch (error) {
+    // Coluna já existe, ignorar erro
+  }
 
   // Tabela de formulários
   await dbRun(`

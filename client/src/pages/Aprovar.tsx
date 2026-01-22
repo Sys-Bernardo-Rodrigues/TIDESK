@@ -34,9 +34,20 @@ export default function Aprovar() {
 
         console.log(`[Aprovar] Processando ticket #${ticket.id}: status=${ticket.status}, needs_approval=${ticket.needs_approval}, linkedTo=${linkedTo}`);
 
+        // Formatar ID do ticket
+        let ticketId = `#${ticket.id}`;
+        if (ticket.ticket_number && ticket.created_at) {
+          const date = new Date(ticket.created_at);
+          const year = date.getFullYear();
+          const month = String(date.getMonth() + 1).padStart(2, '0');
+          const day = String(date.getDate()).padStart(2, '0');
+          const number = String(ticket.ticket_number).padStart(3, '0');
+          ticketId = `${year}/${month}/${day}/${number}`;
+        }
+
         return {
           id: ticket.id,
-          ticketId: `#${ticket.id}`,
+          ticketId: ticketId,
           title: ticket.title,
           type: ticket.form_id ? 'Formulário' : 'Ticket',
           requester: ticket.user_name || 'Usuário Anônimo',

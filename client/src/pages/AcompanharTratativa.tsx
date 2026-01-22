@@ -4,6 +4,7 @@ import { Eye, Search, Clock, User, Ticket, Filter, TrendingUp, X, FileText, Mess
 
 interface TicketDetail {
   id: number;
+  ticket_number: number | null;
   title: string;
   description: string;
   status: 'open' | 'in_progress' | 'resolved' | 'closed' | 'pending_approval' | 'scheduled';
@@ -14,6 +15,21 @@ interface TicketDetail {
   form_name: string | null;
   created_at: string;
   updated_at: string;
+}
+
+// Função para formatar ID do ticket no formato ano/mês/dia/número
+function formatTicketId(ticket: TicketDetail): string {
+  if (!ticket.ticket_number || !ticket.created_at) {
+    return `#${ticket.id}`;
+  }
+  
+  const date = new Date(ticket.created_at);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const number = String(ticket.ticket_number).padStart(3, '0');
+  
+  return `${year}/${month}/${day}/${number}`;
 }
 
 interface TicketMessage {
@@ -43,20 +59,33 @@ export default function AcompanharTratativa() {
   const fetchTreatments = async () => {
     try {
       const response = await axios.get('/api/tickets/in-treatment');
-      const tickets = response.data.map((ticket: any) => ({
-        id: ticket.id,
-        ticket: `#${ticket.id}`,
-        title: ticket.title,
-        agent: ticket.assigned_name || 'Não atribuído',
-        status: ticket.status === 'in_progress' ? 'Em Tratamento' : ticket.status === 'open' ? 'Aberto' : ticket.status,
-        priority: ticket.priority === 'high' || ticket.priority === 'urgent' ? 'Alta' : ticket.priority === 'medium' ? 'Média' : 'Baixa',
-        createdAt: ticket.created_at,
-        lastUpdate: ticket.updated_at,
-        timeElapsed: calculateTimeElapsed(ticket.created_at),
-        source: ticket.form_id ? 'formulário' : undefined,
-        formName: ticket.form_name,
-        wasApproved: ticket.needs_approval === 1 && ticket.status === 'open'
-      }));
+      const tickets = response.data.map((ticket: any) => {
+        // Formatar ID do ticket
+        let ticketId = `#${ticket.id}`;
+        if (ticket.ticket_number && ticket.created_at) {
+          const date = new Date(ticket.created_at);
+          const year = date.getFullYear();
+          const month = String(date.getMonth() + 1).padStart(2, '0');
+          const day = String(date.getDate()).padStart(2, '0');
+          const number = String(ticket.ticket_number).padStart(3, '0');
+          ticketId = `${year}/${month}/${day}/${number}`;
+        }
+
+        return {
+          id: ticket.id,
+          ticket: ticketId,
+          title: ticket.title,
+          agent: ticket.assigned_name || 'Não atribuído',
+          status: ticket.status === 'in_progress' ? 'Em Tratamento' : ticket.status === 'open' ? 'Aberto' : ticket.status,
+          priority: ticket.priority === 'high' || ticket.priority === 'urgent' ? 'Alta' : ticket.priority === 'medium' ? 'Média' : 'Baixa',
+          createdAt: ticket.created_at,
+          lastUpdate: ticket.updated_at,
+          timeElapsed: calculateTimeElapsed(ticket.created_at),
+          source: ticket.form_id ? 'formulário' : undefined,
+          formName: ticket.form_name,
+          wasApproved: ticket.needs_approval === 1 && ticket.status === 'open'
+        };
+      });
       setTreatments(tickets);
     } catch (error) {
       console.error('Erro ao buscar tratativas:', error);
@@ -488,6 +517,13 @@ export default function AcompanharTratativa() {
               flexShrink: 0
             }}>
               <div style={{ flex: 1 }}>
+                <div style={{
+                  fontSize: '0.875rem',
+                  color: 'var(--text-secondary)',
+                  marginBottom: 'var(--spacing-xs)'
+                }}>
+                  <strong>ID:</strong> {formatTicketId(selectedTicket)}
+                </div>
                 <h2 style={{
                   fontSize: '1.5rem',
                   fontWeight: '700',
