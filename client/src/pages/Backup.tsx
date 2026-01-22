@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Database, Download, Clock, HardDrive } from 'lucide-react';
+import { formatDateBR } from '../utils/dateUtils';
 
 export default function Backup() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -133,7 +134,7 @@ export default function Backup() {
                 }}>
                   <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                     <Clock size={14} />
-                    {new Date(backup.date).toLocaleString('pt-BR')}
+                    {formatDateBR(backup.date, { includeTime: true })}
                   </span>
                   <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                     <HardDrive size={14} />

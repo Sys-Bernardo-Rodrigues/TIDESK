@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Eye, Search, Clock, User, Ticket, Filter, TrendingUp, X, FileText, MessageSquare } from 'lucide-react';
+import { Eye, Search, Clock, User, Ticket, Filter, TrendingUp, X, FileText, MessageSquare, Download, Image as ImageIcon, CheckCircle } from 'lucide-react';
+import { formatDateBR } from '../utils/dateUtils';
 
 interface TicketDetail {
   id: number;
@@ -13,23 +14,52 @@ interface TicketDetail {
   user_email: string;
   assigned_name: string | null;
   form_name: string | null;
+  form_submission_id: number | null;
   created_at: string;
   updated_at: string;
 }
 
-// Função para formatar ID do ticket no formato ano/mês/dia/número
+interface FormAttachment {
+  id: number;
+  form_submission_id: number;
+  field_id: number;
+  file_name: string;
+  file_path: string;
+  file_size: number;
+  mime_type: string;
+  field_label?: string;
+}
+
+// Função para gerar ID completo do ticket (sem barras) - usado em URLs
+function getTicketFullId(ticket: TicketDetail): string {
+  if (!ticket.ticket_number || !ticket.created_at) {
+    return ticket.id.toString();
+  }
+  
+  const date = new Date(ticket.created_at);
+  // Usar timezone de Brasília para extrair ano, mês e dia
+  const year = parseInt(date.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo', year: 'numeric' }));
+  const month = parseInt(date.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo', month: '2-digit' }));
+  const day = parseInt(date.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo', day: '2-digit' }));
+  const number = String(ticket.ticket_number).padStart(3, '0');
+  
+  return `${year}${String(month).padStart(2, '0')}${String(day).padStart(2, '0')}${number}`;
+}
+
+// Função para formatar ID do ticket para exibição (com barras)
 function formatTicketId(ticket: TicketDetail): string {
   if (!ticket.ticket_number || !ticket.created_at) {
     return `#${ticket.id}`;
   }
   
   const date = new Date(ticket.created_at);
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
+  // Usar timezone de Brasília para extrair ano, mês e dia
+  const year = parseInt(date.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo', year: 'numeric' }));
+  const month = parseInt(date.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo', month: '2-digit' }));
+  const day = parseInt(date.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo', day: '2-digit' }));
   const number = String(ticket.ticket_number).padStart(3, '0');
   
-  return `${year}/${month}/${day}/${number}`;
+  return `${year}/${String(month).padStart(2, '0')}/${String(day).padStart(2, '0')}/${number}`;
 }
 
 interface TicketMessage {
@@ -41,6 +71,16 @@ interface TicketMessage {
   user_email: string;
   created_at: string;
   updated_at: string;
+  attachments?: MessageAttachment[];
+}
+
+interface MessageAttachment {
+  id: number;
+  message_id: number;
+  file_name: string;
+  file_path: string;
+  file_size: number;
+  mime_type: string;
 }
 
 export default function AcompanharTratativa() {
@@ -51,6 +91,7 @@ export default function AcompanharTratativa() {
   const [selectedTicket, setSelectedTicket] = useState<TicketDetail | null>(null);
   const [ticketMessages, setTicketMessages] = useState<TicketMessage[]>([]);
   const [loadingDetails, setLoadingDetails] = useState(false);
+  const [attachments, setAttachments] = useState<FormAttachment[]>([]);
 
   useEffect(() => {
     fetchTreatments();
@@ -60,15 +101,15 @@ export default function AcompanharTratativa() {
     try {
       const response = await axios.get('/api/tickets/in-treatment');
       const tickets = response.data.map((ticket: any) => {
-        // Formatar ID do ticket
+        // Formatar ID do ticket usando timezone de Brasília
         let ticketId = `#${ticket.id}`;
         if (ticket.ticket_number && ticket.created_at) {
           const date = new Date(ticket.created_at);
-          const year = date.getFullYear();
-          const month = String(date.getMonth() + 1).padStart(2, '0');
-          const day = String(date.getDate()).padStart(2, '0');
+          const year = parseInt(date.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo', year: 'numeric' }));
+          const month = parseInt(date.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo', month: '2-digit' }));
+          const day = parseInt(date.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo', day: '2-digit' }));
           const number = String(ticket.ticket_number).padStart(3, '0');
-          ticketId = `${year}/${month}/${day}/${number}`;
+          ticketId = `${year}/${String(month).padStart(2, '0')}/${String(day).padStart(2, '0')}/${number}`;
         }
 
         return {
@@ -76,14 +117,18 @@ export default function AcompanharTratativa() {
           ticket: ticketId,
           title: ticket.title,
           agent: ticket.assigned_name || 'Não atribuído',
-          status: ticket.status === 'in_progress' ? 'Em Tratamento' : ticket.status === 'open' ? 'Aberto' : ticket.status,
+          status: ticket.status === 'in_progress' ? 'Em Tratamento' : 
+                  ticket.status === 'open' ? 'Aberto' : 
+                  ticket.status === 'closed' ? 'Finalizado' : 
+                  ticket.status,
           priority: ticket.priority === 'high' || ticket.priority === 'urgent' ? 'Alta' : ticket.priority === 'medium' ? 'Média' : 'Baixa',
           createdAt: ticket.created_at,
           lastUpdate: ticket.updated_at,
           timeElapsed: calculateTimeElapsed(ticket.created_at),
           source: ticket.form_id ? 'formulário' : undefined,
           formName: ticket.form_name,
-          wasApproved: ticket.needs_approval === 1 && ticket.status === 'open'
+          wasApproved: ticket.needs_approval === 1 && ticket.status === 'open',
+          isClosed: ticket.status === 'closed'
         };
       });
       setTreatments(tickets);
@@ -112,7 +157,21 @@ export default function AcompanharTratativa() {
     try {
       // Buscar detalhes do ticket
       const ticketResponse = await axios.get(`/api/tickets/${ticketId}`);
-      setSelectedTicket(ticketResponse.data);
+      const ticket = ticketResponse.data;
+      setSelectedTicket(ticket);
+
+      // Buscar anexos do formulário se houver
+      if (ticket.form_submission_id) {
+        try {
+          const attachmentsResponse = await axios.get(`/api/tickets/${ticketId}/attachments`);
+          setAttachments(attachmentsResponse.data);
+        } catch (error) {
+          console.error('Erro ao buscar anexos:', error);
+          setAttachments([]);
+        }
+      } else {
+        setAttachments([]);
+      }
 
       // Buscar mensagens do ticket
       try {
@@ -131,14 +190,120 @@ export default function AcompanharTratativa() {
   };
 
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleString('pt-BR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
+    return formatDateBR(dateString, { includeTime: true });
+  };
+
+  // Função para parsear descrição markdown e extrair dados do formulário
+  const parseFormDescription = (description: string) => {
+    const lines = description.split('\n');
+    const formData: Array<{ label: string; value: string }> = [];
+    const attachmentsList: string[] = [];
+    let inAttachmentsSection = false;
+
+    lines.forEach((line) => {
+      const trimmedLine = line.trim();
+      
+      if (trimmedLine.includes('**Arquivos anexados:**') || trimmedLine.includes('**Arquivos anexados::**')) {
+        inAttachmentsSection = true;
+        return;
+      }
+      
+      if (inAttachmentsSection) {
+        if (trimmedLine.startsWith('- ')) {
+          attachmentsList.push(trimmedLine.substring(2));
+        }
+        return;
+      }
+
+      const match = line.match(/\*\*(.+?):+?\*\*\s*(.+)/);
+      if (match) {
+        const label = match[1].trim();
+        let value = match[2].trim();
+        
+        if (value.startsWith('[Arquivo]')) {
+          value = value.replace('[Arquivo]', '').trim();
+        }
+        
+        formData.push({ label, value });
+      }
     });
+
+    return { formData, attachmentsList };
+  };
+
+  // Verificar se um arquivo é uma imagem
+  const isImage = (mimeType: string): boolean => {
+    return mimeType?.startsWith('image/') || false;
+  };
+
+  // Formatar tamanho do arquivo
+  const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+  };
+
+  // Normalizar caminho do arquivo
+  const normalizeFilePath = (filePath: string): string => {
+    if (!filePath) return '';
+    
+    // Se já começa com /uploads/ ou é uma URL completa, retornar como está
+    if (filePath.startsWith('/uploads/') || filePath.startsWith('http://') || filePath.startsWith('https://')) {
+      return filePath;
+    }
+    
+    // Se começa com /, retornar como está (pode ser /uploads/messages/...)
+    if (filePath.startsWith('/')) {
+      return filePath;
+    }
+    
+    // Se começa com uploads/, adicionar /
+    if (filePath.startsWith('uploads/')) {
+      return `/${filePath}`;
+    }
+    
+    // Caso contrário, adicionar /uploads/
+    return `/uploads/${filePath}`;
+  };
+
+  // Download de arquivo
+  const handleDownload = async (attachment: FormAttachment) => {
+    try {
+      const response = await axios.get(`/api/forms/attachments/${attachment.id}`, {
+        responseType: 'blob'
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', attachment.file_name);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err: any) {
+      console.error('Erro ao baixar arquivo:', err);
+      alert('Erro ao baixar arquivo');
+    }
+  };
+
+  // Download de anexo de mensagem
+  const handleDownloadMessageAttachment = async (attachment: MessageAttachment) => {
+    try {
+      const response = await axios.get(`/api/ticket-messages/attachments/${attachment.id}`, {
+        responseType: 'blob'
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', attachment.file_name);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err: any) {
+      console.error('Erro ao baixar arquivo:', err);
+      alert('Erro ao baixar arquivo');
+    }
   };
 
   const filteredTreatments = treatments.filter(treatment => {
@@ -222,8 +387,8 @@ export default function AcompanharTratativa() {
             >
               <option value="all">Todos os Status</option>
               <option value="Em Tratamento">Em Tratamento</option>
-              <option value="Aguardando Cliente">Aguardando Cliente</option>
-              <option value="Pausado">Pausado</option>
+              <option value="Aberto">Aberto</option>
+              <option value="Finalizado">Finalizado</option>
             </select>
           </div>
         </div>
@@ -311,6 +476,45 @@ export default function AcompanharTratativa() {
             lineHeight: '1'
           }}>
             {treatments.filter(t => t.status === 'Em Tratamento').length}
+          </div>
+        </div>
+
+        <div className="card slide-in" style={{ 
+          border: '1px solid var(--border-primary)',
+          animationDelay: '200ms'
+        }}>
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'space-between',
+            marginBottom: 'var(--spacing-md)' 
+          }}>
+            <div style={{
+              padding: 'var(--spacing-md)',
+              background: 'rgba(34, 197, 94, 0.15)',
+              borderRadius: 'var(--radius-md)',
+              border: '1px solid rgba(34, 197, 94, 0.2)'
+            }}>
+              <CheckCircle size={24} color="var(--green)" strokeWidth={2} />
+            </div>
+          </div>
+          <h3 style={{ 
+            fontSize: '0.8125rem', 
+            color: 'var(--text-secondary)',
+            fontWeight: '500',
+            marginBottom: 'var(--spacing-sm)',
+            textTransform: 'uppercase',
+            letterSpacing: '0.05em'
+          }}>
+            Finalizados
+          </h3>
+          <div style={{ 
+            fontSize: '2.5rem', 
+            fontWeight: '800',
+            color: 'var(--green)',
+            lineHeight: '1'
+          }}>
+            {treatments.filter(t => t.status === 'Finalizado').length}
           </div>
         </div>
       </div>
@@ -419,20 +623,24 @@ export default function AcompanharTratativa() {
                     borderRadius: 'var(--radius-full)',
                     background: treatment.status === 'Em Tratamento' 
                       ? 'var(--orange-light)' 
-                      : treatment.status === 'Aguardando Cliente'
-                      ? 'var(--blue-light)'
+                      : treatment.status === 'Aberto'
+                      ? 'var(--red-light)'
+                      : treatment.status === 'Finalizado'
+                      ? 'rgba(34, 197, 94, 0.15)'
                       : 'var(--purple-light)',
                     color: treatment.status === 'Em Tratamento' 
                       ? 'var(--orange)' 
-                      : treatment.status === 'Aguardando Cliente'
-                      ? 'var(--blue)'
+                      : treatment.status === 'Aberto'
+                      ? 'var(--red)'
+                      : treatment.status === 'Finalizado'
+                      ? 'var(--green)'
                       : 'var(--purple)',
                     fontWeight: '600'
                   }}>
                     {treatment.status}
                   </span>
                   <span style={{ fontSize: '0.8125rem' }}>
-                    Última atualização: {new Date(treatment.lastUpdate).toLocaleString('pt-BR')}
+                    Última atualização: {formatDateBR(treatment.lastUpdate, { includeTime: true })}
                   </span>
                   {treatment.source === 'formulário' && (
                     <span style={{
@@ -498,12 +706,13 @@ export default function AcompanharTratativa() {
             backgroundColor: 'var(--bg-secondary)',
             borderRadius: 'var(--radius-lg)',
             width: '100%',
-            maxWidth: '900px',
+            maxWidth: '1200px',
             maxHeight: '90vh',
             display: 'flex',
             flexDirection: 'column',
             boxShadow: 'var(--shadow-xl)',
-            border: '1px solid var(--border-primary)'
+            border: '1px solid var(--border-primary)',
+            overflow: 'hidden'
           }}
           onClick={(e) => e.stopPropagation()}
           >
@@ -556,6 +765,7 @@ export default function AcompanharTratativa() {
                 onClick={() => {
                   setSelectedTicket(null);
                   setTicketMessages([]);
+                  setAttachments([]);
                 }}
                 style={{ padding: 'var(--spacing-xs) var(--spacing-sm)' }}
               >
@@ -563,11 +773,16 @@ export default function AcompanharTratativa() {
               </button>
             </div>
 
-            {/* Conteúdo do Modal */}
+            {/* Conteúdo do Modal - Estilo WhatsApp */}
             <div style={{
               flex: 1,
               overflowY: 'auto',
-              padding: 'var(--spacing-lg)'
+              background: 'linear-gradient(180deg, var(--bg-primary) 0%, #0F0F11 100%)',
+              backgroundImage: 'radial-gradient(circle at 20% 50%, rgba(145, 71, 255, 0.03) 0%, transparent 50%), radial-gradient(circle at 80% 80%, rgba(145, 71, 255, 0.03) 0%, transparent 50%)',
+              padding: 'var(--spacing-md)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 'var(--spacing-sm)'
             }}>
               {loadingDetails ? (
                 <div style={{ textAlign: 'center', padding: 'var(--spacing-2xl)' }}>
@@ -575,90 +790,542 @@ export default function AcompanharTratativa() {
                 </div>
               ) : (
                 <>
-                  {/* Descrição Inicial */}
-                  <div style={{
-                    marginBottom: 'var(--spacing-xl)',
-                    padding: 'var(--spacing-md)',
-                    backgroundColor: 'var(--bg-tertiary)',
-                    borderRadius: 'var(--radius-md)',
-                    border: '1px solid var(--border-primary)'
-                  }}>
-                    <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 'var(--spacing-sm)',
-                      marginBottom: 'var(--spacing-sm)'
-                    }}>
-                      <User size={16} color="var(--text-secondary)" />
-                      <strong style={{ color: 'var(--text-primary)' }}>{selectedTicket.user_name}</strong>
-                      <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
-                        {formatDate(selectedTicket.created_at)}
-                      </span>
-                    </div>
-                    <div style={{
-                      color: 'var(--text-primary)',
-                      whiteSpace: 'pre-wrap',
-                      lineHeight: '1.6'
-                    }}>
-                      {selectedTicket.description}
-                    </div>
-                  </div>
-
-                  {/* Mensagens do Chat */}
-                  {ticketMessages.length > 0 && (
-                    <div>
-                      <h3 style={{
-                        fontSize: '1rem',
-                        fontWeight: '600',
-                        color: 'var(--text-primary)',
-                        marginBottom: 'var(--spacing-md)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 'var(--spacing-sm)'
-                      }}>
-                        <MessageSquare size={18} />
-                        Mensagens ({ticketMessages.length})
-                      </h3>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
-                        {ticketMessages.map((message) => (
-                          <div key={message.id} style={{
-                            padding: 'var(--spacing-md)',
-                            backgroundColor: 'var(--bg-tertiary)',
-                            borderRadius: 'var(--radius-md)',
-                            border: '1px solid var(--border-primary)'
+                  {/* Mensagem inicial (descrição do ticket) - Estilo WhatsApp */}
+                  {selectedTicket.form_name || attachments.length > 0 ? (
+                    (() => {
+                      const { formData } = parseFormDescription(selectedTicket.description);
+                      return (
+                        <>
+                          {/* Mensagem de boas-vindas do formulário */}
+                          <div style={{
+                            display: 'flex',
+                            justifyContent: 'flex-start',
+                            marginBottom: 'var(--spacing-xs)'
                           }}>
                             <div style={{
+                              maxWidth: '75%',
                               display: 'flex',
-                              alignItems: 'center',
-                              gap: 'var(--spacing-sm)',
-                              marginBottom: 'var(--spacing-xs)'
+                              gap: 'var(--spacing-xs)',
+                              alignItems: 'flex-end'
                             }}>
-                              <User size={14} color="var(--text-secondary)" />
-                              <strong style={{ color: 'var(--text-primary)', fontSize: '0.875rem' }}>
-                                {message.user_name}
-                              </strong>
-                              <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
-                                {formatDate(message.created_at)}
-                              </span>
-                              {message.updated_at !== message.created_at && (
-                                <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>
-                                  (editado)
-                                </span>
-                              )}
-                            </div>
-                            <div style={{
-                              color: 'var(--text-primary)',
-                              whiteSpace: 'pre-wrap',
-                              lineHeight: '1.6',
-                              fontSize: '0.875rem'
-                            }}>
-                              {message.message}
+                              <div style={{
+                                width: '32px',
+                                height: '32px',
+                                borderRadius: '50%',
+                                backgroundColor: 'var(--purple)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                flexShrink: 0,
+                                marginBottom: '2px'
+                              }}>
+                                <FileText size={16} color="#FFFFFF" />
+                              </div>
+                              <div>
+                                <div style={{
+                                  backgroundColor: '#1E1E22',
+                                  padding: '0.5rem 0.75rem',
+                                  borderRadius: '0.5rem 0.5rem 0.5rem 0.125rem',
+                                  color: 'var(--text-primary)',
+                                  fontSize: '0.875rem',
+                                  lineHeight: '1.4',
+                                  boxShadow: '0 1px 2px rgba(0, 0, 0, 0.3)'
+                                }}>
+                                  <strong style={{ color: 'var(--purple)' }}>
+                                    {selectedTicket.form_name ? `Formulário: ${selectedTicket.form_name}` : 'Dados do Formulário'}
+                                  </strong>
+                                  <p style={{ marginTop: '0.25rem', color: 'var(--text-secondary)' }}>
+                                    Olá! Recebemos sua submissão. Abaixo estão os detalhes:
+                                  </p>
+                                </div>
+                                <div style={{
+                                  fontSize: '0.6875rem',
+                                  color: 'var(--text-tertiary)',
+                                  paddingLeft: '0.5rem',
+                                  marginTop: '0.25rem'
+                                }}>
+                                  {formatDate(selectedTicket.created_at)}
+                                </div>
+                              </div>
                             </div>
                           </div>
-                        ))}
+
+                          {/* Dados do formulário em mensagens separadas */}
+                          {formData.map((item, index) => {
+                            const fileNameMatch = item.value.match(/([^\s(]+\.(png|jpg|jpeg|gif|pdf|doc|docx|xls|xlsx|zip|rar|txt|mp4|mp3|avi|mov|webp|svg|bmp|ico|jfif|heic|heif))/i);
+                            const fileName = fileNameMatch ? fileNameMatch[1] : null;
+                            
+                            const attachment = attachments.find(att => {
+                              if (fileName && att.file_name === fileName) return true;
+                              if (fileName && att.file_name.replace(/\.[^/.]+$/, '') === fileName.replace(/\.[^/.]+$/, '')) return true;
+                              if (att.field_label === item.label) return true;
+                              if (item.value.includes(att.file_name)) return true;
+                              return false;
+                            });
+
+                            return (
+                              <div key={index} style={{
+                                display: 'flex',
+                                justifyContent: 'flex-start',
+                                marginBottom: 'var(--spacing-xs)'
+                              }}>
+                                <div style={{
+                                  maxWidth: '75%',
+                                  display: 'flex',
+                                  gap: 'var(--spacing-xs)',
+                                  alignItems: 'flex-end'
+                                }}>
+                                  <div style={{ width: '32px', flexShrink: 0 }} />
+                                  <div style={{ flex: 1 }}>
+                                    {attachment ? (
+                                      <div style={{
+                                        backgroundColor: '#1E1E22',
+                                        padding: attachment && isImage(attachment.mime_type) ? '0' : '0.5rem 0.75rem',
+                                        borderRadius: '0.5rem 0.5rem 0.5rem 0.125rem',
+                                        color: 'var(--text-primary)',
+                                        fontSize: '0.875rem',
+                                        boxShadow: '0 1px 2px rgba(0, 0, 0, 0.3)',
+                                        overflow: 'hidden'
+                                      }}>
+                                        {isImage(attachment.mime_type) ? (
+                                          <div>
+                                            <img 
+                                              src={normalizeFilePath(attachment.file_path)}
+                                              alt={attachment.file_name}
+                                              style={{
+                                                width: '100%',
+                                                maxHeight: '300px',
+                                                objectFit: 'cover',
+                                                display: 'block',
+                                                cursor: 'pointer',
+                                                borderRadius: '0.375rem 0.375rem 0 0'
+                                              }}
+                                              onClick={() => window.open(normalizeFilePath(attachment.file_path), '_blank')}
+                                              onError={(e) => {
+                                                console.error('Erro ao carregar imagem:', attachment.file_path, 'Tentando:', normalizeFilePath(attachment.file_path));
+                                                const img = e.target as HTMLImageElement;
+                                                const normalizedPath = normalizeFilePath(attachment.file_path);
+                                                // Tentar caminho alternativo
+                                                if (img.src !== normalizedPath) {
+                                                  img.src = normalizedPath;
+                                                } else {
+                                                  // Se ainda falhar, tentar sem normalização
+                                                  const altPath = attachment.file_path.startsWith('/') 
+                                                    ? attachment.file_path 
+                                                    : `/${attachment.file_path}`;
+                                                  if (img.src !== altPath) {
+                                                    img.src = altPath;
+                                                  } else {
+                                                    img.style.display = 'none';
+                                                  }
+                                                }
+                                              }}
+                                            />
+                                            <div style={{
+                                              padding: '0.5rem 0.75rem',
+                                              backgroundColor: '#1E1E22'
+                                            }}>
+                                              <div style={{
+                                                fontSize: '0.8125rem',
+                                                fontWeight: '600',
+                                                marginBottom: '0.25rem',
+                                                color: 'var(--text-primary)'
+                                              }}>
+                                                {item.label}
+                                              </div>
+                                              <div style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'space-between',
+                                                gap: '0.5rem'
+                                              }}>
+                                                <span style={{
+                                                  fontSize: '0.75rem',
+                                                  color: 'var(--text-tertiary)',
+                                                  flex: 1
+                                                }}>
+                                                  {attachment.file_name} • {formatFileSize(attachment.file_size)}
+                                                </span>
+                                                <button
+                                                  onClick={() => handleDownload(attachment)}
+                                                  style={{
+                                                    padding: '0.25rem 0.5rem',
+                                                    backgroundColor: 'var(--purple)',
+                                                    border: 'none',
+                                                    borderRadius: '0.25rem',
+                                                    color: '#FFFFFF',
+                                                    cursor: 'pointer',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '0.25rem',
+                                                    fontSize: '0.75rem',
+                                                    transition: 'all 0.2s'
+                                                  }}
+                                                >
+                                                  <Download size={12} />
+                                                  Baixar
+                                                </button>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        ) : (
+                                          <div style={{
+                                            fontSize: '0.8125rem',
+                                            fontWeight: '600',
+                                            marginBottom: '0.5rem',
+                                            color: 'var(--text-primary)'
+                                          }}>
+                                            {item.label}
+                                            <div style={{
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                              gap: '0.5rem',
+                                              padding: '0.5rem',
+                                              backgroundColor: 'var(--bg-tertiary)',
+                                              borderRadius: '0.375rem',
+                                              marginTop: '0.5rem'
+                                            }}>
+                                              <FileText size={18} color="var(--purple)" />
+                                              <div style={{ flex: 1 }}>
+                                                <div style={{
+                                                  fontSize: '0.8125rem',
+                                                  fontWeight: '500',
+                                                  color: 'var(--text-primary)'
+                                                }}>
+                                                  {attachment.file_name}
+                                                </div>
+                                                <div style={{
+                                                  fontSize: '0.75rem',
+                                                  color: 'var(--text-tertiary)'
+                                                }}>
+                                                  {formatFileSize(attachment.file_size)}
+                                                </div>
+                                              </div>
+                                              <button
+                                                onClick={() => handleDownload(attachment)}
+                                                style={{
+                                                  padding: '0.375rem',
+                                                  backgroundColor: 'var(--purple)',
+                                                  border: 'none',
+                                                  borderRadius: '0.25rem',
+                                                  color: '#FFFFFF',
+                                                  cursor: 'pointer',
+                                                  display: 'flex',
+                                                  alignItems: 'center',
+                                                  transition: 'all 0.2s'
+                                                }}
+                                              >
+                                                <Download size={14} />
+                                              </button>
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      <div style={{
+                                        backgroundColor: '#1E1E22',
+                                        padding: '0.5rem 0.75rem',
+                                        borderRadius: '0.5rem 0.5rem 0.5rem 0.125rem',
+                                        color: 'var(--text-primary)',
+                                        fontSize: '0.875rem',
+                                        boxShadow: '0 1px 2px rgba(0, 0, 0, 0.3)'
+                                      }}>
+                                        <div style={{
+                                          fontSize: '0.8125rem',
+                                          fontWeight: '600',
+                                          marginBottom: '0.25rem',
+                                          color: 'var(--purple)'
+                                        }}>
+                                          {item.label}
+                                        </div>
+                                        <div style={{
+                                          fontSize: '0.875rem',
+                                          color: 'var(--text-secondary)',
+                                          whiteSpace: 'pre-wrap',
+                                          wordBreak: 'break-word'
+                                        }}>
+                                          {item.value}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </>
+                      );
+                    })()
+                  ) : (
+                    // Mensagem normal (não é formulário)
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'flex-start',
+                      marginBottom: 'var(--spacing-sm)'
+                    }}>
+                      <div style={{
+                        maxWidth: '75%',
+                        display: 'flex',
+                        gap: 'var(--spacing-xs)',
+                        alignItems: 'flex-end'
+                      }}>
+                        <div style={{
+                          width: '32px',
+                          height: '32px',
+                          borderRadius: '50%',
+                          backgroundColor: 'var(--purple)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0,
+                          marginBottom: '2px'
+                        }}>
+                          <User size={16} color="#FFFFFF" />
+                        </div>
+                        <div>
+                          <div style={{
+                            backgroundColor: '#1E1E22',
+                            padding: '0.5rem 0.75rem',
+                            borderRadius: '0.5rem 0.5rem 0.5rem 0.125rem',
+                            color: 'var(--text-primary)',
+                            fontSize: '0.875rem',
+                            lineHeight: '1.4',
+                            boxShadow: '0 1px 2px rgba(0, 0, 0, 0.3)',
+                            whiteSpace: 'pre-wrap',
+                            wordBreak: 'break-word'
+                          }}>
+                            {selectedTicket.description}
+                          </div>
+                          <div style={{
+                            fontSize: '0.6875rem',
+                            color: 'var(--text-tertiary)',
+                            paddingLeft: '0.5rem',
+                            marginTop: '0.25rem'
+                          }}>
+                            {formatDate(selectedTicket.created_at)}
+                          </div>
+                        </div>
                       </div>
                     </div>
                   )}
+
+                  {/* Mensagens do Chat - Estilo WhatsApp */}
+                  {ticketMessages.map((message) => {
+                    const isOwnMessage = false; // Sempre à esquerda no modal de visualização
+                    
+                    return (
+                      <div key={message.id} style={{
+                        display: 'flex',
+                        justifyContent: 'flex-start',
+                        marginBottom: 'var(--spacing-xs)'
+                      }}>
+                        <div style={{
+                          maxWidth: '75%',
+                          display: 'flex',
+                          gap: 'var(--spacing-xs)',
+                          alignItems: 'flex-end',
+                          flexDirection: 'row'
+                        }}>
+                          {!isOwnMessage && (
+                            <div style={{
+                              width: '32px',
+                              height: '32px',
+                              borderRadius: '50%',
+                              backgroundColor: 'var(--purple)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              flexShrink: 0,
+                              marginBottom: '2px'
+                            }}>
+                              <User size={16} color="#FFFFFF" />
+                            </div>
+                          )}
+                          <div style={{ flex: 1 }}>
+                            <div style={{
+                              backgroundColor: '#1E1E22',
+                              padding: message.attachments && message.attachments.length > 0 && message.attachments.some(a => isImage(a.mime_type)) ? '0' : '0.5rem 0.75rem',
+                              borderRadius: '0.5rem 0.5rem 0.5rem 0.125rem',
+                              color: 'var(--text-primary)',
+                              fontSize: '0.875rem',
+                              lineHeight: '1.4',
+                              boxShadow: '0 1px 2px rgba(0, 0, 0, 0.3)',
+                              whiteSpace: 'pre-wrap',
+                              wordBreak: 'break-word',
+                              position: 'relative',
+                              overflow: 'hidden'
+                            }}>
+                              {/* Preview de imagens anexadas */}
+                              {message.attachments && message.attachments.length > 0 && (
+                                <div style={{
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  gap: '0.25rem',
+                                  marginBottom: message.message ? '0.5rem' : '0'
+                                }}>
+                                  {message.attachments.map((attachment) => (
+                                    <div key={attachment.id}>
+                                      {isImage(attachment.mime_type) ? (
+                                        <div>
+                                          <img 
+                                            src={normalizeFilePath(attachment.file_path)}
+                                            alt={attachment.file_name}
+                                            style={{
+                                              width: '100%',
+                                              maxWidth: '300px',
+                                              maxHeight: '300px',
+                                              objectFit: 'cover',
+                                              display: 'block',
+                                              cursor: 'pointer',
+                                              borderRadius: '0.375rem 0.375rem 0 0'
+                                            }}
+                                            onClick={() => {
+                                              window.open(normalizeFilePath(attachment.file_path), '_blank');
+                                            }}
+                                            onError={(e) => {
+                                              console.error('Erro ao carregar imagem:', attachment.file_path, 'Tentando:', normalizeFilePath(attachment.file_path));
+                                              const img = e.target as HTMLImageElement;
+                                              const normalizedPath = normalizeFilePath(attachment.file_path);
+                                              // Tentar caminho alternativo
+                                              if (img.src !== normalizedPath) {
+                                                img.src = normalizedPath;
+                                              } else {
+                                                // Se ainda falhar, tentar sem normalização
+                                                const altPath = attachment.file_path.startsWith('/') 
+                                                  ? attachment.file_path 
+                                                  : `/${attachment.file_path}`;
+                                                if (img.src !== altPath) {
+                                                  img.src = altPath;
+                                                } else {
+                                                  img.style.display = 'none';
+                                                }
+                                              }
+                                            }}
+                                          />
+                                          <div style={{
+                                            padding: '0.5rem 0.75rem',
+                                            backgroundColor: '#1E1E22',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'space-between',
+                                            gap: '0.5rem'
+                                          }}>
+                                            <span style={{
+                                              fontSize: '0.75rem',
+                                              opacity: 0.8,
+                                              flex: 1,
+                                              overflow: 'hidden',
+                                              textOverflow: 'ellipsis',
+                                              whiteSpace: 'nowrap'
+                                            }}>
+                                              {attachment.file_name}
+                                            </span>
+                                            <button
+                                              onClick={() => handleDownloadMessageAttachment(attachment)}
+                                              style={{
+                                                padding: '0.25rem 0.5rem',
+                                                backgroundColor: 'rgba(255, 255, 255, 0.2)',
+                                                border: 'none',
+                                                borderRadius: '0.25rem',
+                                                color: '#FFFFFF',
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '0.25rem',
+                                                fontSize: '0.75rem',
+                                                transition: 'all 0.2s',
+                                                flexShrink: 0
+                                              }}
+                                            >
+                                              <Download size={12} />
+                                            </button>
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <div style={{
+                                          padding: '0.5rem 0.75rem',
+                                          backgroundColor: '#1E1E22',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: '0.5rem',
+                                          borderRadius: '0.375rem'
+                                        }}>
+                                          <FileText size={16} color="var(--purple)" />
+                                          <div style={{ flex: 1 }}>
+                                            <div style={{
+                                              fontSize: '0.8125rem',
+                                              fontWeight: '500',
+                                              color: 'var(--text-primary)',
+                                              marginBottom: '0.25rem'
+                                            }}>
+                                              {attachment.file_name}
+                                            </div>
+                                            <div style={{
+                                              fontSize: '0.75rem',
+                                              opacity: 0.8,
+                                              color: 'var(--text-tertiary)'
+                                            }}>
+                                              {formatFileSize(attachment.file_size)}
+                                            </div>
+                                          </div>
+                                          <button
+                                            onClick={() => handleDownloadMessageAttachment(attachment)}
+                                            style={{
+                                              padding: '0.375rem',
+                                              backgroundColor: 'rgba(255, 255, 255, 0.2)',
+                                              border: 'none',
+                                              borderRadius: '0.25rem',
+                                              color: '#FFFFFF',
+                                              cursor: 'pointer',
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                              transition: 'all 0.2s',
+                                              flexShrink: 0
+                                            }}
+                                          >
+                                            <Download size={14} />
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              
+                              {/* Texto da mensagem */}
+                              {message.message && (
+                                <div style={{
+                                  padding: message.attachments && message.attachments.length > 0 ? '0.5rem 0.75rem' : '0',
+                                  paddingTop: message.attachments && message.attachments.length > 0 ? '0.5rem' : '0'
+                                }}>
+                                  {message.message}
+                                  {message.updated_at !== message.created_at && (
+                                    <span style={{
+                                      fontSize: '0.6875rem',
+                                      opacity: 0.7,
+                                      marginLeft: '0.5rem',
+                                      fontStyle: 'italic'
+                                    }}>
+                                      (editado)
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                            <div style={{
+                              fontSize: '0.6875rem',
+                              color: 'var(--text-tertiary)',
+                              paddingLeft: '0.5rem',
+                              marginTop: '0.25rem',
+                              textAlign: 'left'
+                            }}>
+                              <strong>{message.user_name}</strong> • {formatDate(message.created_at)}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
 
                   {ticketMessages.length === 0 && (
                     <div style={{

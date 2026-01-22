@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Calendar, Plus, Search, Edit, Trash2, Clock, User } from 'lucide-react';
+import { formatDateBR } from '../utils/dateUtils';
 
 export default function ServiceCalendar() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -174,7 +175,7 @@ export default function ServiceCalendar() {
                   }}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                       <Calendar size={14} />
-                      {new Date(service.date).toLocaleDateString('pt-BR')}
+                      {formatDateBR(service.date)}
                     </span>
                     <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                       <Clock size={14} />

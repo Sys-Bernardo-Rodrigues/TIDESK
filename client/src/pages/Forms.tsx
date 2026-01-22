@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { FileEdit, Plus, Search, Edit, Trash2, Eye, Copy, Link as LinkIcon, Users, User } from 'lucide-react';
+import { formatDateBR } from '../utils/dateUtils';
 
 interface FormField {
   id: string;
@@ -284,7 +285,7 @@ export default function Forms() {
                 }}>
                   <span><strong>{form.fields.length}</strong> campos</span>
                   <span><strong>{form.submissions}</strong> submissões</span>
-                  <span><strong>Criado:</strong> {new Date(form.created).toLocaleDateString('pt-BR')}</span>
+                  <span><strong>Criado:</strong> {formatDateBR(form.created)}</span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-xs)' }}>
                     <LinkIcon size={14} />
                     <span style={{ 

@@ -239,10 +239,12 @@ export default function PublicForm() {
           </h2>
           {ticketInfo && ticketInfo.ticket_number !== null && ticketInfo.ticket_number !== undefined && ticketInfo.created_at && (() => {
             const date = new Date(ticketInfo.created_at);
-            const year = date.getFullYear();
-            const month = String(date.getMonth() + 1).padStart(2, '0');
-            const day = String(date.getDate()).padStart(2, '0');
+            // Usar timezone de Brasília para extrair ano, mês e dia
+            const year = parseInt(date.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo', year: 'numeric' }));
+            const month = parseInt(date.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo', month: '2-digit' }));
+            const day = parseInt(date.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo', day: '2-digit' }));
             const number = String(ticketInfo.ticket_number).padStart(3, '0');
+            const fullId = `${year}${month}${day}${number}`;
             const formattedId = `${year}/${month}/${day}/${number}`;
             
             return (
@@ -266,7 +268,14 @@ export default function PublicForm() {
                   fontWeight: '700',
                   fontFamily: 'monospace'
                 }}>
-                  {formattedId}
+                  {fullId}
+                </p>
+                <p style={{
+                  color: 'var(--text-secondary)',
+                  fontSize: '0.875rem',
+                  marginTop: '0.25rem'
+                }}>
+                  (Formato legível: {formattedId})
                 </p>
               </div>
             );

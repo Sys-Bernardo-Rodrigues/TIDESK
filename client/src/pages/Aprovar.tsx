@@ -3,6 +3,21 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { CheckCircle, XCircle, Search, Clock, User, FileText, Eye } from 'lucide-react';
 
+// Função para gerar ID completo do ticket (sem barras) - usado em URLs
+function getTicketFullId(ticket: any): string {
+  if (!ticket.ticket_number || !ticket.created_at) {
+    return ticket.id.toString();
+  }
+  
+  const date = new Date(ticket.created_at);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const number = String(ticket.ticket_number).padStart(3, '0');
+  
+  return `${year}${month}${day}${number}`;
+}
+
 export default function Aprovar() {
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
@@ -34,20 +49,21 @@ export default function Aprovar() {
 
         console.log(`[Aprovar] Processando ticket #${ticket.id}: status=${ticket.status}, needs_approval=${ticket.needs_approval}, linkedTo=${linkedTo}`);
 
-        // Formatar ID do ticket
-        let ticketId = `#${ticket.id}`;
+        // Formatar ID do ticket para exibição (com barras)
+        let ticketIdDisplay = `#${ticket.id}`;
         if (ticket.ticket_number && ticket.created_at) {
           const date = new Date(ticket.created_at);
           const year = date.getFullYear();
           const month = String(date.getMonth() + 1).padStart(2, '0');
           const day = String(date.getDate()).padStart(2, '0');
           const number = String(ticket.ticket_number).padStart(3, '0');
-          ticketId = `${year}/${month}/${day}/${number}`;
+          ticketIdDisplay = `${year}/${month}/${day}/${number}`;
         }
 
         return {
           id: ticket.id,
-          ticketId: ticketId,
+          ticketId: ticketIdDisplay,
+          fullId: getTicketFullId(ticket),
           title: ticket.title,
           type: ticket.form_id ? 'Formulário' : 'Ticket',
           requester: ticket.user_name || 'Usuário Anônimo',
@@ -197,7 +213,7 @@ export default function Aprovar() {
               transition: 'all var(--transition-base)',
               cursor: 'pointer'
             }}
-            onClick={() => navigate(`/tickets/${approval.id}`)}
+            onClick={() => navigate(`/tickets/${approval.fullId || approval.id}`)}
             onMouseEnter={(e) => {
               e.currentTarget.style.borderColor = 'var(--border-secondary)';
               e.currentTarget.style.boxShadow = 'var(--shadow-md)';
@@ -281,7 +297,7 @@ export default function Aprovar() {
                   )}
                   <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                     <Clock size={14} />
-                    {new Date(approval.date).toLocaleString('pt-BR')}
+                    {formatDateBR(approval.date, { includeTime: true })}
                   </span>
                   <span style={{
                     fontSize: '0.75rem',

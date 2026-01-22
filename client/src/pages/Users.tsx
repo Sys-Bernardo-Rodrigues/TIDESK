@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { User, Plus, Search, Edit, Trash2, Mail, Shield, X, Link as LinkIcon, Unlink, Save } from 'lucide-react';
+import { formatDateBR } from '../utils/dateUtils';
 
 interface AccessProfile {
   id: number;
@@ -368,7 +369,7 @@ export default function Users() {
                           <strong>{user.access_profiles.length}</strong> perfil{user.access_profiles.length > 1 ? 's' : ''}
                         </span>
                       )}
-                      <span><strong>Criado:</strong> {new Date(user.created_at).toLocaleDateString('pt-BR')}</span>
+                      <span><strong>Criado:</strong> {formatDateBR(user.created_at)}</span>
                     </div>
                     {user.access_profiles && user.access_profiles.length > 0 && (
                       <div style={{

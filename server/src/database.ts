@@ -551,6 +551,20 @@ const initSQLite = async () => {
     )
   `);
 
+  // Tabela de anexos de mensagens
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS message_attachments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      message_id INTEGER NOT NULL,
+      file_name TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      file_size INTEGER NOT NULL,
+      mime_type TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (message_id) REFERENCES ticket_messages(id) ON DELETE CASCADE
+    )
+  `);
+
   // Tabela de páginas permitidas por perfil de acesso
   await dbRun(`
     CREATE TABLE IF NOT EXISTS access_profile_pages (
@@ -720,6 +734,20 @@ const initPostgreSQL = async () => {
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE CASCADE,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+
+  // Tabela de anexos de mensagens
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS message_attachments (
+      id SERIAL PRIMARY KEY,
+      message_id INTEGER NOT NULL,
+      file_name VARCHAR(255) NOT NULL,
+      file_path VARCHAR(500) NOT NULL,
+      file_size INTEGER NOT NULL,
+      mime_type VARCHAR(100),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (message_id) REFERENCES ticket_messages(id) ON DELETE CASCADE
     )
   `);
 

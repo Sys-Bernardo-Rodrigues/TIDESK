@@ -2,9 +2,11 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
 import { History, Search, Filter, Calendar, User, CheckCircle, XCircle, Clock, FileText } from 'lucide-react';
+import { formatDateBR } from '../utils/dateUtils';
 
 interface Ticket {
   id: number;
+  ticket_number: number | null;
   title: string;
   description: string;
   status: string;
@@ -15,6 +17,21 @@ interface Ticket {
   created_at: string;
   updated_at: string;
   form_name?: string;
+}
+
+// Função para gerar ID completo do ticket (sem barras) - usado em URLs
+function getTicketFullId(ticket: Ticket): string {
+  if (!ticket.ticket_number || !ticket.created_at) {
+    return ticket.id.toString();
+  }
+  
+  const date = new Date(ticket.created_at);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const number = String(ticket.ticket_number).padStart(3, '0');
+  
+  return `${year}${month}${day}${number}`;
 }
 
 export default function Historico() {
@@ -88,14 +105,7 @@ export default function Historico() {
   };
 
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('pt-BR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    return formatDateBR(dateString, { includeTime: true });
   };
 
   const calculateTimeToResolve = (createdAt: string, updatedAt: string) => {
@@ -315,7 +325,7 @@ export default function Historico() {
           filteredTickets.map((ticket) => (
             <Link
               key={ticket.id}
-              to={`/tickets/${ticket.id}`}
+              to={`/tickets/${getTicketFullId(ticket)}`}
               style={{ textDecoration: 'none' }}
             >
               <div className="card" style={{ 

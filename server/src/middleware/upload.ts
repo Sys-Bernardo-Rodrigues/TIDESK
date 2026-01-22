@@ -9,6 +9,12 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
+// Criar diretório de uploads de mensagens se não existir
+const messagesUploadsDir = path.join(process.cwd(), 'uploads', 'messages');
+if (!fs.existsSync(messagesUploadsDir)) {
+  fs.mkdirSync(messagesUploadsDir, { recursive: true });
+}
+
 // Configuração de armazenamento
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -50,3 +56,46 @@ export const uploadMultiple = (req: express.Request, res: express.Response, next
     next();
   });
 };
+
+// Configuração de armazenamento para mensagens
+const messagesStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, messagesUploadsDir);
+  },
+  filename: (req, file, cb) => {
+    // Gerar nome único para o arquivo
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const ext = path.extname(file.originalname);
+    cb(null, `${uniqueSuffix}${ext}`);
+  }
+});
+
+// Configuração do multer para mensagens
+export const uploadMessage = multer({
+  storage: messagesStorage,
+  fileFilter: (req, file, cb) => {
+    // Aceitar apenas imagens e alguns tipos de arquivo
+    const allowedMimes = [
+      'image/jpeg',
+      'image/jpg',
+      'image/png',
+      'image/gif',
+      'image/webp',
+      'image/svg+xml',
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    ];
+    
+    if (allowedMimes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Tipo de arquivo não permitido'));
+    }
+  },
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB para mensagens
+  }
+});

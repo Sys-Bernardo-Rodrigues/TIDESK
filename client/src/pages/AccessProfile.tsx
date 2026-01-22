@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { Shield, Plus, Search, Edit, Trash2, Users, X, Save, CheckSquare, Square, Home, Ticket, FileEdit, FileText, User, Database, RefreshCw, CheckCircle, Eye, History, FileBarChart, Calendar, CalendarDays } from 'lucide-react';
 import { RESOURCES, ACTIONS } from '../hooks/usePermissions';
+import { formatDateBR } from '../utils/dateUtils';
 
 interface Permission {
   resource: string;
@@ -379,7 +380,7 @@ export default function AccessProfile() {
                       <strong>{profile.users_count || 0}</strong> usuários
                     </span>
                     <span><strong>{profile.permissions_count || 0}</strong> permissões</span>
-                    <span><strong>Criado:</strong> {new Date(profile.created_at).toLocaleDateString('pt-BR')}</span>
+                    <span><strong>Criado:</strong> {formatDateBR(profile.created_at)}</span>
                   </div>
                 </div>
                 <div style={{ 

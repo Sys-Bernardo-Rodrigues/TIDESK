@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { CalendarDays, Plus, Search, Edit, Trash2, Clock, Users } from 'lucide-react';
+import { formatDateBR } from '../utils/dateUtils';
 
 export default function ShiftCalendar() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -174,7 +175,7 @@ export default function ShiftCalendar() {
                   }}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                       <CalendarDays size={14} />
-                      {new Date(shift.date).toLocaleDateString('pt-BR')}
+                      {formatDateBR(shift.date)}
                     </span>
                     <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                       <Clock size={14} />

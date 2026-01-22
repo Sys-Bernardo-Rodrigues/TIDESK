@@ -484,7 +484,7 @@ router.post('/public/:url/submit', uploadMultiple, async (req, res) => {
       }
     });
 
-    const ticketDescription = Object.entries(formValues)
+    let ticketDescription = Object.entries(formValues)
       .map(([key, value]) => `**${key}:** ${value}`)
       .join('\n\n');
     
@@ -582,7 +582,12 @@ router.get('/attachments/:id', async (req, res) => {
       return res.status(404).json({ error: 'Arquivo não encontrado' });
     }
 
-    const filePath = attachment.file_path;
+    let filePath = attachment.file_path;
+    
+    // Se o caminho não for absoluto, resolver em relação ao diretório de trabalho
+    if (!path.isAbsolute(filePath)) {
+      filePath = path.join(process.cwd(), filePath);
+    }
     
     // Verificar se arquivo existe
     if (!fs.existsSync(filePath)) {

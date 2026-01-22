@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { FileBarChart, Download, Calendar, Filter, TrendingUp, Users, Ticket, Clock } from 'lucide-react';
+import { formatDateBR } from '../utils/dateUtils';
 
 export default function Reports() {
   const [dateRange, setDateRange] = useState('month');
@@ -335,7 +336,7 @@ export default function Reports() {
                     <Download size={14} />
                     <strong>{report.downloads}</strong> downloads
                   </span>
-                  <span><strong>Gerado em:</strong> {new Date(report.generated).toLocaleDateString('pt-BR')}</span>
+                  <span><strong>Gerado em:</strong> {formatDateBR(report.generated)}</span>
                 </div>
               </div>
               <div style={{ 

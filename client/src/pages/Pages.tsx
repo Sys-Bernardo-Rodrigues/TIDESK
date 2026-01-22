@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { FileText, Plus, Search, Edit, Trash2, Eye, Copy, Link as LinkIcon } from 'lucide-react';
+import { formatDateBR } from '../utils/dateUtils';
 
 interface PageButton {
   id: number;
@@ -250,8 +251,8 @@ export default function Pages() {
                 }}>
                   <span><strong>Slug:</strong> /{page.slug}</span>
                   <span><strong>{page.buttons_count}</strong> botões</span>
-                  <span><strong>Criado:</strong> {new Date(page.created_at).toLocaleDateString('pt-BR')}</span>
-                  <span><strong>Atualizado:</strong> {new Date(page.updated_at).toLocaleDateString('pt-BR')}</span>
+                  <span><strong>Criado:</strong> {formatDateBR(page.created_at)}</span>
+                  <span><strong>Atualizado:</strong> {formatDateBR(page.updated_at)}</span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-xs)' }}>
                     <LinkIcon size={14} />
                     <span style={{ 

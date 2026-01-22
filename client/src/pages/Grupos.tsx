@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Users, Plus, Search, Edit, Trash2, UserPlus, UserMinus, X, Save } from 'lucide-react';
+import { formatDateBR } from '../utils/dateUtils';
 
 interface User {
   id: number;
@@ -333,7 +334,7 @@ export default function Grupos() {
                       color: 'var(--text-tertiary)',
                       marginLeft: '2.25rem'
                     }}>
-                      <strong>Criado por:</strong> {group.created_by_name} • <strong>Data:</strong> {new Date(group.created_at).toLocaleDateString('pt-BR')}
+                      <strong>Criado por:</strong> {group.created_by_name} • <strong>Data:</strong> {formatDateBR(group.created_at)}
                     </div>
                   </div>
                   <div style={{ 
