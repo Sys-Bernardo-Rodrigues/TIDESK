@@ -716,6 +716,43 @@ const initSQLite = async () => {
     // Coluna já existe, ignorar erro
   }
 
+  // Tabela de webhooks
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS webhooks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      description TEXT,
+      webhook_url TEXT UNIQUE NOT NULL,
+      secret_key TEXT,
+      active INTEGER DEFAULT 1,
+      priority TEXT NOT NULL DEFAULT 'medium',
+      category_id INTEGER,
+      assigned_to INTEGER,
+      created_by INTEGER NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL,
+      FOREIGN KEY (assigned_to) REFERENCES users(id) ON DELETE SET NULL,
+      FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+
+  // Tabela de logs de webhooks
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS webhook_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      webhook_id INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'success',
+      response_code INTEGER,
+      payload TEXT,
+      error_message TEXT,
+      ticket_id INTEGER,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (webhook_id) REFERENCES webhooks(id) ON DELETE CASCADE,
+      FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE SET NULL
+    )
+  `);
+
   await seedDatabase();
 };
 
@@ -784,6 +821,43 @@ const initPostgreSQL = async () => {
   } catch (error) {
     // Coluna já existe, ignorar erro
   }
+
+  // Tabela de webhooks
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS webhooks (
+      id SERIAL PRIMARY KEY,
+      name VARCHAR(255) NOT NULL,
+      description TEXT,
+      webhook_url VARCHAR(255) UNIQUE NOT NULL,
+      secret_key VARCHAR(255),
+      active INTEGER DEFAULT 1,
+      priority VARCHAR(50) NOT NULL DEFAULT 'medium',
+      category_id INTEGER,
+      assigned_to INTEGER,
+      created_by INTEGER NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL,
+      FOREIGN KEY (assigned_to) REFERENCES users(id) ON DELETE SET NULL,
+      FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+
+  // Tabela de logs de webhooks
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS webhook_logs (
+      id SERIAL PRIMARY KEY,
+      webhook_id INTEGER NOT NULL,
+      status VARCHAR(50) NOT NULL DEFAULT 'success',
+      response_code INTEGER,
+      payload TEXT,
+      error_message TEXT,
+      ticket_id INTEGER,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (webhook_id) REFERENCES webhooks(id) ON DELETE CASCADE,
+      FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE SET NULL
+    )
+  `);
 
   // Tabela de formulários
   await dbRun(`
@@ -965,6 +1039,43 @@ const initPostgreSQL = async () => {
       FOREIGN KEY (shift_id) REFERENCES shifts(id) ON DELETE CASCADE,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
       UNIQUE(shift_id, user_id)
+    )
+  `);
+
+  // Tabela de webhooks
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS webhooks (
+      id SERIAL PRIMARY KEY,
+      name VARCHAR(255) NOT NULL,
+      description TEXT,
+      webhook_url VARCHAR(255) UNIQUE NOT NULL,
+      secret_key VARCHAR(255),
+      active INTEGER DEFAULT 1,
+      priority VARCHAR(50) NOT NULL DEFAULT 'medium',
+      category_id INTEGER,
+      assigned_to INTEGER,
+      created_by INTEGER NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL,
+      FOREIGN KEY (assigned_to) REFERENCES users(id) ON DELETE SET NULL,
+      FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+
+  // Tabela de logs de webhooks
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS webhook_logs (
+      id SERIAL PRIMARY KEY,
+      webhook_id INTEGER NOT NULL,
+      status VARCHAR(50) NOT NULL DEFAULT 'success',
+      response_code INTEGER,
+      payload TEXT,
+      error_message TEXT,
+      ticket_id INTEGER,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (webhook_id) REFERENCES webhooks(id) ON DELETE CASCADE,
+      FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE SET NULL
     )
   `);
 

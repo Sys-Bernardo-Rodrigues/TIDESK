@@ -12,7 +12,8 @@ import {
   PieChart,
   Zap,
   RefreshCw,
-  FileDown
+  FileDown,
+  Webhook
 } from 'lucide-react';
 
 interface OverviewData {
@@ -73,6 +74,7 @@ export default function Reports() {
   const [agentsData, setAgentsData] = useState<AgentPerformance[]>([]);
   const [timeline, setTimeline] = useState<TimelineData[]>([]);
   const [responseTime, setResponseTime] = useState<ResponseTimeData[]>([]);
+  const [webhooksData, setWebhooksData] = useState<any>(null);
 
   useEffect(() => {
     if (useCustomDates && customDateStart && customDateEnd) {
@@ -103,12 +105,13 @@ export default function Reports() {
         ? `custom&start=${customDateStart}&end=${customDateEnd}`
         : period;
       
-      const [overviewRes, formsRes, agentsRes, timelineRes, responseTimeRes] = await Promise.all([
+      const [overviewRes, formsRes, agentsRes, timelineRes, responseTimeRes, webhooksRes] = await Promise.all([
         axios.get(`/api/reports/overview?period=${periodParam}`),
         axios.get(`/api/reports/by-form?period=${periodParam}`),
         axios.get(`/api/reports/agents-performance?period=${periodParam}`),
         axios.get(`/api/reports/timeline?period=${periodParam}&groupBy=day`),
-        axios.get(`/api/reports/response-time-by-priority?period=${periodParam}`)
+        axios.get(`/api/reports/response-time-by-priority?period=${periodParam}`),
+        axios.get(`/api/reports/webhooks?period=${periodParam}`).catch(() => ({ data: null }))
       ]);
 
       setOverview(overviewRes.data);
@@ -116,6 +119,7 @@ export default function Reports() {
       setAgentsData(agentsRes.data);
       setTimeline(timelineRes.data);
       setResponseTime(responseTimeRes.data);
+      setWebhooksData(webhooksRes.data);
     } catch (error) {
       console.error('Erro ao buscar relatórios:', error);
       alert('Erro ao carregar relatórios');
@@ -558,6 +562,101 @@ export default function Reports() {
         yPos += 8;
       }
       
+      // Estatísticas de Webhooks
+      if (webhooksData) {
+        addPageIfNeeded(60);
+        
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(textColor[0], textColor[1], textColor[2]);
+        doc.text('Estatísticas de Webhooks', margin, yPos);
+        yPos += 12;
+        
+        // Métricas principais
+        const boxWidth = (contentWidth - 9) / 4;
+        const boxHeight = 28;
+        const webhookMetrics = [
+          { label: 'Total', value: webhooksData.totalWebhooks.toString(), color: primaryColor },
+          { label: 'Chamadas', value: webhooksData.totalCalls.toString(), color: secondaryColor },
+          { label: 'Taxa Sucesso', value: `${webhooksData.successRate.toFixed(1)}%`, color: successColor },
+          { label: 'Tickets', value: webhooksData.ticketsCreated.toString(), color: warningColor }
+        ];
+        
+        webhookMetrics.forEach((metric, index) => {
+          const x = margin + (index * (boxWidth + 3));
+          
+          doc.setFillColor(255, 255, 255);
+          doc.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
+          doc.setLineWidth(0.5);
+          doc.roundedRect(x, yPos, boxWidth, boxHeight, 2, 2, 'FD');
+          
+          doc.setFillColor(metric.color[0], metric.color[1], metric.color[2]);
+          doc.roundedRect(x, yPos, boxWidth, 3, 2, 2, 'F');
+          
+          doc.setFontSize(8);
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(textSecondary[0], textSecondary[1], textSecondary[2]);
+          doc.text(metric.label, x + 4, yPos + 10);
+          
+          doc.setFontSize(14);
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(textColor[0], textColor[1], textColor[2]);
+          doc.text(metric.value, x + 4, yPos + 22);
+        });
+        
+        yPos += boxHeight + 15;
+        
+        // Top Webhooks
+        if (webhooksData.topWebhooks && webhooksData.topWebhooks.length > 0) {
+          addPageIfNeeded(40);
+          
+          doc.setFontSize(12);
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(textColor[0], textColor[1], textColor[2]);
+          doc.text('Webhooks Mais Utilizados', margin, yPos);
+          yPos += 10;
+          
+          // Cabeçalho da tabela
+          doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+          doc.roundedRect(margin, yPos, contentWidth, 8, 1, 1, 'F');
+          doc.setFontSize(8);
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(255, 255, 255);
+          doc.text('Webhook', margin + 4, yPos + 5.5);
+          doc.text('Chamadas', margin + contentWidth - 85, yPos + 5.5, { align: 'right' });
+          doc.text('Sucessos', margin + contentWidth - 65, yPos + 5.5, { align: 'right' });
+          doc.text('Erros', margin + contentWidth - 45, yPos + 5.5, { align: 'right' });
+          doc.text('Tickets', margin + contentWidth - 20, yPos + 5.5, { align: 'right' });
+          yPos += 10;
+          
+          // Linhas da tabela
+          doc.setFontSize(8);
+          doc.setFont('helvetica', 'normal');
+          webhooksData.topWebhooks.slice(0, 10).forEach((wh: any, index: number) => {
+            addPageIfNeeded(10);
+            
+            if (index % 2 === 0) {
+              doc.setFillColor(bgLight[0], bgLight[1], bgLight[2]);
+              doc.rect(margin, yPos - 1, contentWidth, 8, 'F');
+            }
+            
+            doc.setTextColor(textColor[0], textColor[1], textColor[2]);
+            const name = wh.name.length > 30 ? wh.name.substring(0, 27) + '...' : wh.name;
+            doc.text(name, margin + 4, yPos + 5);
+            doc.text(wh.total_calls.toString(), margin + contentWidth - 85, yPos + 5, { align: 'right' });
+            doc.setTextColor(successColor[0], successColor[1], successColor[2]);
+            doc.text(wh.success_calls.toString(), margin + contentWidth - 65, yPos + 5, { align: 'right' });
+            doc.setTextColor(dangerColor[0], dangerColor[1], dangerColor[2]);
+            doc.text(wh.error_calls.toString(), margin + contentWidth - 45, yPos + 5, { align: 'right' });
+            doc.setTextColor(textColor[0], textColor[1], textColor[2]);
+            doc.text((wh.tickets_created || 0).toString(), margin + contentWidth - 20, yPos + 5, { align: 'right' });
+            yPos += 9;
+          });
+          
+          yPos += 8;
+        }
+      }
+      
       // Rodapé em todas as páginas
       const totalPages = doc.internal.pages.length - 1;
       const now = new Date();
@@ -576,6 +675,101 @@ export default function Reports() {
         doc.text(`Página ${i} de ${totalPages}`, margin, pageHeight - 6);
         doc.text('TIDESK - Sistema de Gestão de Tickets', pageWidth / 2, pageHeight - 6, { align: 'center' });
         doc.text(now.toLocaleDateString('pt-BR'), pageWidth - margin, pageHeight - 6, { align: 'right' });
+      }
+      
+      // Estatísticas de Webhooks
+      if (webhooksData) {
+        addPageIfNeeded(60);
+        
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(textColor[0], textColor[1], textColor[2]);
+        doc.text('Estatísticas de Webhooks', margin, yPos);
+        yPos += 12;
+        
+        // Métricas principais
+        const boxWidth = (contentWidth - 9) / 4;
+        const boxHeight = 28;
+        const webhookMetrics = [
+          { label: 'Total', value: webhooksData.totalWebhooks.toString(), color: primaryColor },
+          { label: 'Chamadas', value: webhooksData.totalCalls.toString(), color: secondaryColor },
+          { label: 'Taxa Sucesso', value: `${webhooksData.successRate.toFixed(1)}%`, color: successColor },
+          { label: 'Tickets', value: webhooksData.ticketsCreated.toString(), color: warningColor }
+        ];
+        
+        webhookMetrics.forEach((metric, index) => {
+          const x = margin + (index * (boxWidth + 3));
+          
+          doc.setFillColor(255, 255, 255);
+          doc.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
+          doc.setLineWidth(0.5);
+          doc.roundedRect(x, yPos, boxWidth, boxHeight, 2, 2, 'FD');
+          
+          doc.setFillColor(metric.color[0], metric.color[1], metric.color[2]);
+          doc.roundedRect(x, yPos, boxWidth, 3, 2, 2, 'F');
+          
+          doc.setFontSize(8);
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(textSecondary[0], textSecondary[1], textSecondary[2]);
+          doc.text(metric.label, x + 4, yPos + 10);
+          
+          doc.setFontSize(14);
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(textColor[0], textColor[1], textColor[2]);
+          doc.text(metric.value, x + 4, yPos + 22);
+        });
+        
+        yPos += boxHeight + 15;
+        
+        // Top Webhooks
+        if (webhooksData.topWebhooks && webhooksData.topWebhooks.length > 0) {
+          addPageIfNeeded(40);
+          
+          doc.setFontSize(12);
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(textColor[0], textColor[1], textColor[2]);
+          doc.text('Webhooks Mais Utilizados', margin, yPos);
+          yPos += 10;
+          
+          // Cabeçalho da tabela
+          doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+          doc.roundedRect(margin, yPos, contentWidth, 8, 1, 1, 'F');
+          doc.setFontSize(8);
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(255, 255, 255);
+          doc.text('Webhook', margin + 4, yPos + 5.5);
+          doc.text('Chamadas', margin + contentWidth - 85, yPos + 5.5, { align: 'right' });
+          doc.text('Sucessos', margin + contentWidth - 65, yPos + 5.5, { align: 'right' });
+          doc.text('Erros', margin + contentWidth - 45, yPos + 5.5, { align: 'right' });
+          doc.text('Tickets', margin + contentWidth - 20, yPos + 5.5, { align: 'right' });
+          yPos += 10;
+          
+          // Linhas da tabela
+          doc.setFontSize(8);
+          doc.setFont('helvetica', 'normal');
+          webhooksData.topWebhooks.slice(0, 10).forEach((wh: any, index: number) => {
+            addPageIfNeeded(10);
+            
+            if (index % 2 === 0) {
+              doc.setFillColor(bgLight[0], bgLight[1], bgLight[2]);
+              doc.rect(margin, yPos - 1, contentWidth, 8, 'F');
+            }
+            
+            doc.setTextColor(textColor[0], textColor[1], textColor[2]);
+            const name = wh.name.length > 30 ? wh.name.substring(0, 27) + '...' : wh.name;
+            doc.text(name, margin + 4, yPos + 5);
+            doc.text(wh.total_calls.toString(), margin + contentWidth - 85, yPos + 5, { align: 'right' });
+            doc.setTextColor(successColor[0], successColor[1], successColor[2]);
+            doc.text(wh.success_calls.toString(), margin + contentWidth - 65, yPos + 5, { align: 'right' });
+            doc.setTextColor(dangerColor[0], dangerColor[1], dangerColor[2]);
+            doc.text(wh.error_calls.toString(), margin + contentWidth - 45, yPos + 5, { align: 'right' });
+            doc.setTextColor(textColor[0], textColor[1], textColor[2]);
+            doc.text((wh.tickets_created || 0).toString(), margin + contentWidth - 20, yPos + 5, { align: 'right' });
+            yPos += 9;
+          });
+          
+          yPos += 8;
+        }
       }
       
       // Salvar
@@ -1418,6 +1612,174 @@ export default function Reports() {
               </tbody>
             </table>
             </div>
+        </div>
+      )}
+
+      {/* Estatísticas de Webhooks */}
+      {webhooksData && (
+        <div className="card" style={{ 
+          border: '1px solid var(--border-primary)',
+          padding: 'var(--spacing-lg)',
+          marginBottom: 'var(--spacing-xl)'
+        }}>
+          <h2 style={{ 
+            fontSize: '1.25rem',
+            fontWeight: '700',
+            color: 'var(--text-primary)',
+            marginBottom: 'var(--spacing-lg)',
+            display: 'flex', 
+            alignItems: 'center',
+            gap: 'var(--spacing-sm)'
+          }}>
+            <Webhook size={20} color="var(--purple)" />
+            Estatísticas de Webhooks
+          </h2>
+          
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+            gap: 'var(--spacing-lg)',
+            marginBottom: 'var(--spacing-lg)'
+          }}>
+            <div style={{
+              padding: 'var(--spacing-md)',
+              background: 'var(--bg-secondary)',
+              borderRadius: 'var(--radius-md)',
+              border: '1px solid var(--border-primary)'
+            }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: 'var(--spacing-xs)' }}>
+                Total de Webhooks
+              </div>
+              <div style={{ fontSize: '1.5rem', fontWeight: '700', color: 'var(--text-primary)' }}>
+                {webhooksData.totalWebhooks}
+              </div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginTop: 'var(--spacing-xs)' }}>
+                {webhooksData.activeWebhooks} ativos
+              </div>
+            </div>
+
+            <div style={{
+              padding: 'var(--spacing-md)',
+              background: 'var(--bg-secondary)',
+              borderRadius: 'var(--radius-md)',
+              border: '1px solid var(--border-primary)'
+            }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: 'var(--spacing-xs)' }}>
+                Chamadas Recebidas
+              </div>
+              <div style={{ fontSize: '1.5rem', fontWeight: '700', color: 'var(--text-primary)' }}>
+                {webhooksData.totalCalls}
+              </div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginTop: 'var(--spacing-xs)' }}>
+                {webhooksData.successCalls} sucessos • {webhooksData.errorCalls} erros
+              </div>
+            </div>
+
+            <div style={{
+              padding: 'var(--spacing-md)',
+              background: 'var(--bg-secondary)',
+              borderRadius: 'var(--radius-md)',
+              border: '1px solid var(--border-primary)'
+            }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: 'var(--spacing-xs)' }}>
+                Taxa de Sucesso
+              </div>
+              <div style={{ fontSize: '1.5rem', fontWeight: '700', color: 'var(--green)' }}>
+                {webhooksData.successRate.toFixed(1)}%
+              </div>
+            </div>
+
+            <div style={{
+              padding: 'var(--spacing-md)',
+              background: 'var(--bg-secondary)',
+              borderRadius: 'var(--radius-md)',
+              border: '1px solid var(--border-primary)'
+            }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: 'var(--spacing-xs)' }}>
+                Tickets Criados
+              </div>
+              <div style={{ fontSize: '1.5rem', fontWeight: '700', color: 'var(--text-primary)' }}>
+                {webhooksData.ticketsCreated}
+              </div>
+            </div>
+          </div>
+
+          {webhooksData.topWebhooks && webhooksData.topWebhooks.length > 0 && (
+            <div>
+              <h3 style={{ 
+                fontSize: '1rem',
+                fontWeight: '600',
+                color: 'var(--text-primary)',
+                marginBottom: 'var(--spacing-md)'
+              }}>
+                Webhooks Mais Utilizados
+              </h3>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '2px solid var(--border-primary)' }}>
+                      <th style={{ 
+                        padding: 'var(--spacing-sm)',
+                        textAlign: 'left',
+                        fontSize: '0.875rem',
+                        fontWeight: '600',
+                        color: 'var(--text-secondary)'
+                      }}>Webhook</th>
+                      <th style={{ 
+                        padding: 'var(--spacing-sm)',
+                        textAlign: 'center',
+                        fontSize: '0.875rem',
+                        fontWeight: '600',
+                        color: 'var(--text-secondary)'
+                      }}>Chamadas</th>
+                      <th style={{ 
+                        padding: 'var(--spacing-sm)',
+                        textAlign: 'center',
+                        fontSize: '0.875rem',
+                        fontWeight: '600',
+                        color: 'var(--text-secondary)'
+                      }}>Sucessos</th>
+                      <th style={{ 
+                        padding: 'var(--spacing-sm)',
+                        textAlign: 'center',
+                        fontSize: '0.875rem',
+                        fontWeight: '600',
+                        color: 'var(--text-secondary)'
+                      }}>Erros</th>
+                      <th style={{ 
+                        padding: 'var(--spacing-sm)',
+                        textAlign: 'center',
+                        fontSize: '0.875rem',
+                        fontWeight: '600',
+                        color: 'var(--text-secondary)'
+                      }}>Tickets</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {webhooksData.topWebhooks.map((wh: any) => (
+                      <tr key={wh.id} style={{ borderBottom: '1px solid var(--border-primary)' }}>
+                        <td style={{ padding: 'var(--spacing-sm)' }}>
+                          {wh.name}
+                        </td>
+                        <td style={{ padding: 'var(--spacing-sm)', textAlign: 'center' }}>
+                          {wh.total_calls}
+                        </td>
+                        <td style={{ padding: 'var(--spacing-sm)', textAlign: 'center', color: 'var(--green)' }}>
+                          {wh.success_calls}
+                        </td>
+                        <td style={{ padding: 'var(--spacing-sm)', textAlign: 'center', color: 'var(--red)' }}>
+                          {wh.error_calls}
+                        </td>
+                        <td style={{ padding: 'var(--spacing-sm)', textAlign: 'center' }}>
+                          {wh.tickets_created || 0}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

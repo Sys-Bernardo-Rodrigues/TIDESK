@@ -14,7 +14,8 @@ export const RESOURCES = {
   APPROVE: 'approve',
   TRACK: 'track',
   CONFIG: 'config',
-  AGENDA: 'agenda'
+  AGENDA: 'agenda',
+  WEBHOOKS: 'webhooks'
 } as const;
 
 export const ACTIONS = {

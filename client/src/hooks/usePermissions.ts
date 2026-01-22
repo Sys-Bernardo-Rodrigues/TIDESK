@@ -13,7 +13,8 @@ export const RESOURCES = {
   APPROVE: 'approve',
   TRACK: 'track',
   CONFIG: 'config',
-  AGENDA: 'agenda'
+  AGENDA: 'agenda',
+  WEBHOOKS: 'webhooks'
 } as const;
 
 export const ACTIONS = {
@@ -48,7 +49,7 @@ export const usePermissions = () => {
       // Se admin, dar acesso a todas as páginas
       if (user?.role === 'admin') {
         const allPages = new Set<string>([
-          '/', '/tickets', '/create/forms', '/create/pages', '/config/perfil-de-acesso',
+          '/', '/tickets', '/create/forms', '/create/pages', '/create/webhooks', '/config/perfil-de-acesso',
           '/config/usuarios', '/config/backup', '/config/atualizar', '/config/grupos',
           '/acompanhar/aprovar', '/acompanhar/acompanhar-tratativa', '/historico',
           '/relatorios', '/agenda/calendario-de-servico', '/agenda/calendario-de-plantoes'
@@ -69,7 +70,7 @@ export const usePermissions = () => {
         });
         setPermissions(allPerms);
         const allPages = new Set<string>([
-          '/', '/tickets', '/create/forms', '/create/pages', '/config/perfil-de-acesso',
+          '/', '/tickets', '/create/forms', '/create/pages', '/create/webhooks', '/config/perfil-de-acesso',
           '/config/usuarios', '/config/backup', '/config/atualizar', '/config/grupos',
           '/acompanhar/aprovar', '/acompanhar/acompanhar-tratativa', '/historico',
           '/relatorios', '/agenda/calendario-de-servico', '/agenda/calendario-de-plantoes'

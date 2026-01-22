@@ -1,7 +1,7 @@
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { usePermissions } from '../hooks/usePermissions';
-import { LogOut, Ticket, Home, Plus, FileText, FileEdit, ChevronDown, ChevronRight, Settings, Shield, User, FileBarChart, Menu, X, LayoutDashboard, Calendar, CalendarDays, Database, RefreshCw, Eye, CheckCircle, Users, History } from 'lucide-react';
+import { LogOut, Ticket, Home, Plus, FileText, FileEdit, ChevronDown, ChevronRight, Settings, Shield, User, FileBarChart, Menu, X, LayoutDashboard, Calendar, CalendarDays, Database, RefreshCw, Eye, CheckCircle, Users, History, Webhook } from 'lucide-react';
 import { useState, useEffect } from 'react';
 
 export default function Layout() {
@@ -22,6 +22,7 @@ export default function Layout() {
   const isCreateActive = location.pathname.startsWith('/create');
   const isPagesActive = location.pathname === '/create/pages';
   const isFormsActive = location.pathname === '/create/forms';
+  const isWebhooksActive = location.pathname === '/create/webhooks';
   
   const [configMenuOpen, setConfigMenuOpen] = useState(
     location.pathname.startsWith('/config')
@@ -128,7 +129,7 @@ export default function Layout() {
                    letterSpacing: '0.05em',
                    textTransform: 'uppercase'
                  }}>
-                   System
+                   BETA
                  </div>
                </div>
              </div>
@@ -240,7 +241,7 @@ export default function Layout() {
           )}
 
           {/* Create Menu */}
-          {(hasPageAccess('/create/pages') || hasPageAccess('/create/forms')) && !sidebarCollapsed && (
+          {(hasPageAccess('/create/pages') || hasPageAccess('/create/forms') || hasPageAccess('/create/webhooks')) && !sidebarCollapsed && (
             <div style={{ marginTop: 'var(--spacing-xs)' }}>
               <button
                 onClick={() => setCreateMenuOpen(!createMenuOpen)}
@@ -361,13 +362,47 @@ export default function Layout() {
                       Formulários
                     </Link>
                   )}
+                  {hasPageAccess('/create/webhooks') && (
+                    <Link
+                      to="/create/webhooks"
+                      className={`nav-link ${isWebhooksActive ? 'active' : ''}`}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 'var(--spacing-sm)',
+                        padding: 'var(--spacing-sm) var(--spacing-md)',
+                        borderRadius: 'var(--radius-md)',
+                        textDecoration: 'none',
+                        color: isWebhooksActive ? 'var(--purple)' : 'var(--text-secondary)',
+                        backgroundColor: isWebhooksActive ? 'var(--purple-light)' : 'transparent',
+                        transition: 'all var(--transition-base)',
+                        fontWeight: isWebhooksActive ? '600' : '500',
+                        fontSize: '0.8125rem'
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!isWebhooksActive) {
+                          e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
+                          e.currentTarget.style.color = 'var(--text-primary)';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isWebhooksActive) {
+                          e.currentTarget.style.backgroundColor = 'transparent';
+                          e.currentTarget.style.color = 'var(--text-secondary)';
+                        }
+                      }}
+                    >
+                      <Webhook size={16} strokeWidth={isWebhooksActive ? 2.5 : 2} />
+                      Webhooks
+                    </Link>
+                  )}
                 </div>
               )}
             </div>
           )}
 
           {/* Create Menu - Colapsado (apenas ícones) */}
-          {(hasPageAccess('/create/pages') || hasPageAccess('/create/forms')) && sidebarCollapsed && (
+          {(hasPageAccess('/create/pages') || hasPageAccess('/create/forms') || hasPageAccess('/create/webhooks')) && sidebarCollapsed && (
             <div style={{ marginTop: 'var(--spacing-xs)', display: 'flex', flexDirection: 'column', gap: 'var(--spacing-xs)' }}>
               {hasPageAccess('/create/pages') && (
                 <Link
@@ -411,6 +446,28 @@ export default function Layout() {
                   data-tooltip="Formulários"
                 >
                   <FileEdit size={28} strokeWidth={isFormsActive ? 2.5 : 2} />
+                </Link>
+              )}
+              {hasPageAccess('/create/webhooks') && (
+                <Link
+                  to="/create/webhooks"
+                  className={`nav-link ${isWebhooksActive ? 'active' : ''} tooltip`}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: 'var(--spacing-sm)',
+                    borderRadius: 'var(--radius-md)',
+                    textDecoration: 'none',
+                    color: isWebhooksActive ? 'var(--purple)' : 'var(--text-secondary)',
+                    backgroundColor: isWebhooksActive ? 'var(--purple-light)' : 'transparent',
+                    transition: 'all var(--transition-base)',
+                    fontWeight: isWebhooksActive ? '600' : '500'
+                  }}
+                  title="Webhooks"
+                  data-tooltip="Webhooks"
+                >
+                  <Webhook size={28} strokeWidth={isWebhooksActive ? 2.5 : 2} />
                 </Link>
               )}
             </div>

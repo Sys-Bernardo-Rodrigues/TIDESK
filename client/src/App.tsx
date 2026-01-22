@@ -22,6 +22,7 @@ import PublicForm from './pages/PublicForm';
 import Historico from './pages/Historico';
 import PageBuilder from './pages/PageBuilder';
 import PublicPage from './pages/PublicPage';
+import Webhooks from './pages/Webhooks';
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
 import { RESOURCES, ACTIONS } from './hooks/usePermissions';
@@ -113,6 +114,14 @@ function App() {
               element={
                 <ProtectedRoute resource={RESOURCES.FORMS} action={ACTIONS.EDIT}>
                   <FormBuilder />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="create/webhooks" 
+              element={
+                <ProtectedRoute resource={RESOURCES.WEBHOOKS} action={ACTIONS.VIEW}>
+                  <Webhooks />
                 </ProtectedRoute>
               } 
             />

@@ -394,4 +394,109 @@ router.get('/by-category', async (req: AuthRequest, res) => {
   }
 });
 
+// Estatísticas de webhooks
+router.get('/webhooks', async (req: AuthRequest, res) => {
+  try {
+    const { period = 'month', start: customStart, end: customEnd } = req.query;
+    
+    let start: string, end: string;
+    if (period === 'custom' && customStart && customEnd) {
+      start = `${customStart} 00:00:00`;
+      end = `${customEnd} 23:59:59`;
+    } else {
+      const dateRange = getDateRange(period as string);
+      start = dateRange.start;
+      end = dateRange.end;
+    }
+
+    // Total de webhooks
+    const totalWebhooks = await dbGet('SELECT COUNT(*) as count FROM webhooks');
+    const activeWebhooks = await dbGet('SELECT COUNT(*) as count FROM webhooks WHERE active = 1');
+
+    // Chamadas de webhooks no período
+    const totalCalls = await dbGet(
+      'SELECT COUNT(*) as count FROM webhook_logs WHERE created_at >= ? AND created_at <= ?',
+      [start, end]
+    );
+
+    // Chamadas bem-sucedidas
+    const successCalls = await dbGet(
+      `SELECT COUNT(*) as count FROM webhook_logs 
+       WHERE status = 'success' AND created_at >= ? AND created_at <= ?`,
+      [start, end]
+    );
+
+    // Chamadas com erro
+    const errorCalls = await dbGet(
+      `SELECT COUNT(*) as count FROM webhook_logs 
+       WHERE status = 'error' AND created_at >= ? AND created_at <= ?`,
+      [start, end]
+    );
+
+    // Tickets criados por webhooks
+    const ticketsFromWebhooks = await dbGet(
+      `SELECT COUNT(DISTINCT wl.ticket_id) as count
+       FROM webhook_logs wl
+       WHERE wl.ticket_id IS NOT NULL 
+       AND wl.created_at >= ? AND wl.created_at <= ?`,
+      [start, end]
+    );
+
+    // Taxa de sucesso
+    const total = (totalCalls as any)?.count || 0;
+    const success = (successCalls as any)?.count || 0;
+    const successRate = total > 0 ? (success / total) * 100 : 0;
+
+    // Webhooks mais utilizados
+    const topWebhooks = await dbAll(`
+      SELECT 
+        w.id,
+        w.name,
+        COUNT(wl.id) as total_calls,
+        COUNT(CASE WHEN wl.status = 'success' THEN 1 END) as success_calls,
+        COUNT(CASE WHEN wl.status = 'error' THEN 1 END) as error_calls,
+        COUNT(DISTINCT wl.ticket_id) as tickets_created
+      FROM webhooks w
+      LEFT JOIN webhook_logs wl ON w.id = wl.webhook_id
+        AND wl.created_at >= ? AND wl.created_at <= ?
+      GROUP BY w.id, w.name
+      ORDER BY total_calls DESC
+      LIMIT 10
+    `, [start, end]);
+
+    // Evolução de chamadas ao longo do tempo
+    const dateFormat = DB_TYPE === 'sqlite'
+      ? "DATE(created_at)"
+      : "DATE(created_at)";
+    const callsTimeline = await dbAll(`
+      SELECT 
+        ${dateFormat} as date,
+        COUNT(*) as total,
+        COUNT(CASE WHEN status = 'success' THEN 1 END) as success,
+        COUNT(CASE WHEN status = 'error' THEN 1 END) as error
+      FROM webhook_logs
+      WHERE created_at >= ? AND created_at <= ?
+      GROUP BY ${dateFormat}
+      ORDER BY date ASC
+    `, [start, end]);
+
+    res.json({
+      period,
+      dateRange: { start, end },
+      totalWebhooks: (totalWebhooks as any)?.count || 0,
+      activeWebhooks: (activeWebhooks as any)?.count || 0,
+      totalCalls: total,
+      successCalls: success,
+      errorCalls: (errorCalls as any)?.count || 0,
+      ticketsCreated: (ticketsFromWebhooks as any)?.count || 0,
+      successRate: Math.round(successRate * 100) / 100,
+      topWebhooks: topWebhooks || [],
+      timeline: callsTimeline || []
+    });
+  } catch (error) {
+    console.error('Erro ao buscar estatísticas de webhooks:', error);
+    res.status(500).json({ error: 'Erro ao buscar estatísticas de webhooks' });
+  }
+});
+
 export default router;
