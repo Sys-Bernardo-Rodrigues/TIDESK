@@ -123,6 +123,15 @@ body {
   }
 }
 
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .loading::after {
   content: '...';
   animation: pulse 1.5s ease-in-out infinite;

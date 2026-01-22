@@ -17,6 +17,10 @@ build/
 *.sqlite
 *.sqlite3
 
+# Backups
+backups/
+*.pre-restore-*
+
 # IDE
 .vscode/
 .idea/

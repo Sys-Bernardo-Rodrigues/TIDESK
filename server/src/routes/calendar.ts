@@ -1,7 +1,8 @@
 import express, { Request, Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import { dbRun, dbGet, dbAll, getBrasiliaTimestamp } from '../database';
-import { authenticate, requireAgent } from '../middleware/auth';
+import { authenticate } from '../middleware/auth';
+import { requirePermission, RESOURCES, ACTIONS } from '../middleware/permissions';
 
 const DB_TYPE = process.env.DB_TYPE || 'sqlite';
 
@@ -13,7 +14,7 @@ interface AuthRequest extends Request {
 }
 
 // Listar eventos do calendário
-router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
+router.get('/', authenticate, requirePermission(RESOURCES.AGENDA, ACTIONS.VIEW), async (req: AuthRequest, res: Response) => {
   try {
     const { start, end } = req.query;
     
@@ -72,7 +73,7 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
 });
 
 // Listar tickets agendados
-router.get('/tickets', authenticate, async (req: AuthRequest, res: Response) => {
+router.get('/tickets', authenticate, requirePermission(RESOURCES.AGENDA, ACTIONS.VIEW), async (req: AuthRequest, res: Response) => {
   try {
     const { start, end } = req.query;
     
@@ -130,7 +131,7 @@ router.get('/tickets', authenticate, async (req: AuthRequest, res: Response) => 
 });
 
 // Criar evento
-router.post('/', requireAgent, [
+router.post('/', authenticate, requirePermission(RESOURCES.AGENDA, ACTIONS.CREATE), [
   body('title').notEmpty().withMessage('Título é obrigatório'),
   body('start_time').notEmpty().withMessage('Data/hora de início é obrigatória'),
   body('end_time').notEmpty().withMessage('Data/hora de término é obrigatória'),
@@ -208,7 +209,7 @@ router.post('/', requireAgent, [
 });
 
 // Atualizar evento
-router.put('/:id', requireAgent, [
+router.put('/:id', authenticate, requirePermission(RESOURCES.AGENDA, ACTIONS.EDIT), [
   body('title').optional().notEmpty().withMessage('Título não pode ser vazio'),
   body('start_time').optional().notEmpty().withMessage('Data/hora de início é obrigatória'),
   body('end_time').optional().notEmpty().withMessage('Data/hora de término é obrigatória'),
@@ -323,7 +324,7 @@ router.put('/:id', requireAgent, [
 });
 
 // Deletar evento
-router.delete('/:id', requireAgent, async (req: AuthRequest, res: Response) => {
+router.delete('/:id', authenticate, requirePermission(RESOURCES.AGENDA, ACTIONS.DELETE), async (req: AuthRequest, res: Response) => {
   try {
     const eventId = parseInt(req.params.id);
     

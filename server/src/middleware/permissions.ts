@@ -115,6 +115,8 @@ export const requirePermission = (resource: string, action: string) => {
       }
 
       if (!permissions.has(permissionKey)) {
+        console.log(`[Permissão negada] Usuário ${req.userId} (${user?.role}) não tem permissão ${permissionKey}`);
+        console.log(`[Permissões do usuário]`, Array.from(permissions));
         return res.status(403).json({ 
           error: 'Acesso negado. Você não tem permissão para realizar esta ação.',
           required: permissionKey

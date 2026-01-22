@@ -132,7 +132,89 @@ NODE_ENV=development
 ADMIN_EMAIL=admin@tidesk.com
 ADMIN_PASSWORD=admin123
 ADMIN_NAME=Administrador
+
+# Configuração de Email (SMTP) - Para envio de backups por email
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=seu-email@gmail.com
+SMTP_PASSWORD=sua-senha-app
+SMTP_FROM_EMAIL=seu-email@gmail.com
+SMTP_FROM_NAME=TIDESK Backup
 ```
+
+## 📧 Configuração de Email (SMTP)
+
+O sistema suporta envio de backups por email. Configure as variáveis SMTP para habilitar esta funcionalidade.
+
+### Configuração Básica:
+
+```env
+# Servidor SMTP
+SMTP_HOST=smtp.gmail.com          # Host do servidor SMTP
+SMTP_PORT=587                      # Porta SMTP (587 para TLS, 465 para SSL)
+SMTP_SECURE=false                  # true para SSL (porta 465), false para TLS (porta 587)
+
+# Credenciais
+SMTP_USER=seu-email@gmail.com     # Email de autenticação
+SMTP_PASSWORD=sua-senha-app       # Senha ou senha de aplicativo
+
+# Remetente
+SMTP_FROM_EMAIL=seu-email@gmail.com  # Email remetente (pode ser o mesmo que SMTP_USER)
+SMTP_FROM_NAME=TIDESK Backup        # Nome do remetente
+```
+
+### Exemplos por Provedor:
+
+#### Gmail:
+```env
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=seu-email@gmail.com
+SMTP_PASSWORD=sua-senha-de-app    # Use "Senha de App" do Google, não a senha normal
+SMTP_FROM_EMAIL=seu-email@gmail.com
+SMTP_FROM_NAME=TIDESK Backup
+```
+
+**Nota para Gmail**: Você precisa criar uma "Senha de App" no Google Account:
+1. Acesse https://myaccount.google.com/apppasswords
+2. Gere uma senha de app
+3. Use essa senha no `SMTP_PASSWORD`
+
+#### Outlook/Office 365:
+```env
+SMTP_HOST=smtp.office365.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=seu-email@outlook.com
+SMTP_PASSWORD=sua-senha
+SMTP_FROM_EMAIL=seu-email@outlook.com
+SMTP_FROM_NAME=TIDESK Backup
+```
+
+#### Servidor SMTP Personalizado:
+```env
+SMTP_HOST=mail.seudominio.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=backup@seudominio.com
+SMTP_PASSWORD=sua-senha
+SMTP_FROM_EMAIL=backup@seudominio.com
+SMTP_FROM_NAME=TIDESK Backup
+```
+
+### Como Usar:
+
+1. Configure as variáveis SMTP no arquivo `.env`
+2. Acesse `/config/backup` no sistema
+3. Ative "Enviar backups por email automaticamente"
+4. Adicione os emails de destino na lista
+5. Salve a configuração
+
+Os backups serão enviados automaticamente quando:
+- Um backup automático for criado (se o envio por email estiver ativado)
+- Você clicar no botão "Email" em um backup específico
 
 ## ⚠️ Notas Importantes
 

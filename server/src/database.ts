@@ -173,6 +173,23 @@ export interface EventUser {
   created_at: string;
 }
 
+export interface Shift {
+  id: number;
+  title: string | null;
+  start_time: string;
+  end_time: string;
+  created_by: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ShiftUser {
+  id: number;
+  shift_id: number;
+  user_id: number;
+  created_at: string;
+}
+
 // Função para obter timestamp atual em horário de Brasília (UTC-3)
 export function getBrasiliaTimestamp(): string {
   const now = new Date();
@@ -665,6 +682,33 @@ const initSQLite = async () => {
     )
   `);
 
+  // Tabela de plantões
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS shifts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT,
+      start_time DATETIME NOT NULL,
+      end_time DATETIME NOT NULL,
+      created_by INTEGER NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+
+  // Tabela de relacionamento entre plantões e usuários
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS shift_users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      shift_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (shift_id) REFERENCES shifts(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      UNIQUE(shift_id, user_id)
+    )
+  `);
+
   // Adicionar coluna scheduled_at na tabela tickets (SQLite)
   try {
     await dbRun(`ALTER TABLE tickets ADD COLUMN scheduled_at DATETIME`);
@@ -897,6 +941,33 @@ const initPostgreSQL = async () => {
     )
   `);
 
+  // Tabela de plantões
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS shifts (
+      id SERIAL PRIMARY KEY,
+      title VARCHAR(255),
+      start_time TIMESTAMP NOT NULL,
+      end_time TIMESTAMP NOT NULL,
+      created_by INTEGER NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+
+  // Tabela de relacionamento entre plantões e usuários
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS shift_users (
+      id SERIAL PRIMARY KEY,
+      shift_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (shift_id) REFERENCES shifts(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      UNIQUE(shift_id, user_id)
+    )
+  `);
+
   await seedDatabase();
 };
 
@@ -1012,7 +1083,12 @@ const seedDatabase = async () => {
         // Formulários (visualizar)
         { resource: 'forms', action: 'view' },
         // Páginas (visualizar)
-        { resource: 'pages', action: 'view' }
+        { resource: 'pages', action: 'view' },
+        // Agenda
+        { resource: 'agenda', action: 'view' },
+        { resource: 'agenda', action: 'create' },
+        { resource: 'agenda', action: 'edit' },
+        { resource: 'agenda', action: 'delete' }
       ];
 
       for (const perm of agentPermissions) {
@@ -1026,6 +1102,31 @@ const seedDatabase = async () => {
         }
       }
       console.log('✅ Permissões do Agente configuradas');
+    } else {
+      // Verificar e adicionar permissões de agenda se não existirem
+      const agendaPerms = [
+        { resource: 'agenda', action: 'view' },
+        { resource: 'agenda', action: 'create' },
+        { resource: 'agenda', action: 'edit' },
+        { resource: 'agenda', action: 'delete' }
+      ];
+      
+      for (const perm of agendaPerms) {
+        const exists = await dbGet(
+          'SELECT id FROM permissions WHERE access_profile_id = ? AND resource = ? AND action = ?',
+          [agentProfileId, perm.resource, perm.action]
+        );
+        if (!exists) {
+          try {
+            await dbRun(
+              'INSERT INTO permissions (access_profile_id, resource, action) VALUES (?, ?, ?)',
+              [agentProfileId, perm.resource, perm.action]
+            );
+          } catch (error: any) {
+            // Ignorar erros
+          }
+        }
+      }
     }
   }
 
@@ -1042,7 +1143,9 @@ const seedDatabase = async () => {
         // Formulários (apenas visualizar)
         { resource: 'forms', action: 'view' },
         // Páginas (apenas visualizar)
-        { resource: 'pages', action: 'view' }
+        { resource: 'pages', action: 'view' },
+        // Agenda (apenas visualizar)
+        { resource: 'agenda', action: 'view' }
       ];
 
       for (const perm of userPermissions) {
@@ -1056,6 +1159,22 @@ const seedDatabase = async () => {
         }
       }
       console.log('✅ Permissões do Usuário configuradas');
+    } else {
+      // Verificar e adicionar permissão de visualização de agenda se não existir
+      const exists = await dbGet(
+        'SELECT id FROM permissions WHERE access_profile_id = ? AND resource = ? AND action = ?',
+        [userProfileId, 'agenda', 'view']
+      );
+      if (!exists) {
+        try {
+          await dbRun(
+            'INSERT INTO permissions (access_profile_id, resource, action) VALUES (?, ?, ?)',
+            [userProfileId, 'agenda', 'view']
+          );
+        } catch (error: any) {
+          // Ignorar erros
+        }
+      }
     }
   }
 
@@ -1073,6 +1192,14 @@ const seedDatabase = async () => {
       await dbRun('INSERT INTO categories (name, description) VALUES (?, ?)', [name, description]);
     }
     console.log('✅ Categorias padrão criadas');
+  }
+
+  // Invalidar cache de permissões para garantir que novas permissões sejam carregadas
+  try {
+    const { invalidateAllPermissions } = await import('./middleware/permissions');
+    invalidateAllPermissions();
+  } catch (error) {
+    // Ignorar se não conseguir importar
   }
 
   console.log('✅ Banco de dados inicializado com sucesso');

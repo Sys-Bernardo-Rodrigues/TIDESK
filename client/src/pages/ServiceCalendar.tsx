@@ -13,6 +13,7 @@ import {
   X,
   Ticket
 } from 'lucide-react';
+import { usePermissions, RESOURCES, ACTIONS } from '../hooks/usePermissions';
 
 interface CalendarEvent {
   id: number;
@@ -35,6 +36,7 @@ type ViewMode = 'month' | 'week' | 'day';
 
 export default function ServiceCalendar() {
   const navigate = useNavigate();
+  const { hasPermission } = usePermissions();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [viewMode, setViewMode] = useState<ViewMode>('month');
   const [events, setEvents] = useState<CalendarEvent[]>([]);
@@ -44,6 +46,10 @@ export default function ServiceCalendar() {
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [allUsers, setAllUsers] = useState<any[]>([]);
+  
+  const canCreate = hasPermission(RESOURCES.AGENDA, ACTIONS.CREATE);
+  const canEdit = hasPermission(RESOURCES.AGENDA, ACTIONS.EDIT);
+  const canDelete = hasPermission(RESOURCES.AGENDA, ACTIONS.DELETE);
   
   // Formulário de evento
   const [eventTitle, setEventTitle] = useState('');
@@ -319,13 +325,13 @@ export default function ServiceCalendar() {
           return (
             <div
               key={index}
-              onClick={() => openCreateModal(day.date)}
+              onClick={() => canCreate && openCreateModal(day.date)}
               style={{
+                cursor: canCreate ? 'pointer' : 'default',
                 minHeight: '120px',
                 padding: 'var(--spacing-xs)',
                 backgroundColor: 'var(--bg-primary)',
                 border: isToday ? '2px solid var(--purple)' : 'none',
-                cursor: 'pointer',
                 position: 'relative',
                 opacity: day.isCurrentMonth ? 1 : 0.4
               }}
@@ -437,11 +443,11 @@ export default function ServiceCalendar() {
               }}
             >
               <div
-                onClick={() => openCreateModal(date)}
+                onClick={() => canCreate && openCreateModal(date)}
                 style={{
+                  cursor: canCreate ? 'pointer' : 'default',
                   padding: 'var(--spacing-xs)',
                   marginBottom: 'var(--spacing-sm)',
-                  cursor: 'pointer',
                   borderRadius: 'var(--radius-sm)',
                   backgroundColor: isToday ? 'var(--purple-light)' : 'transparent'
                 }}
@@ -505,7 +511,7 @@ export default function ServiceCalendar() {
                     )}
                   </div>
                 ))}
-                {dayEvents.length === 0 && (
+                {dayEvents.length === 0 && canCreate && (
                   <div
                     onClick={() => openCreateModal(date)}
                     style={{
@@ -576,13 +582,15 @@ export default function ServiceCalendar() {
             <p style={{ marginBottom: 'var(--spacing-md)' }}>
               Nenhum evento agendado para este dia
             </p>
-            <button
-              onClick={() => openCreateModal(currentDate)}
-              className="btn btn-primary"
-            >
-              <Plus size={18} />
-              Criar Evento
-            </button>
+            {canCreate && (
+              <button
+                onClick={() => openCreateModal(currentDate)}
+                className="btn btn-primary"
+              >
+                <Plus size={18} />
+                Criar Evento
+              </button>
+            )}
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
@@ -596,7 +604,7 @@ export default function ServiceCalendar() {
                   onClick={() => {
                     if (event.type === 'ticket') {
                       navigate(`/tickets/${event.ticket_number || event.id}`);
-                    } else {
+                    } else if (canEdit) {
                       openEditModal(event);
                     }
                   }}
@@ -680,26 +688,30 @@ export default function ServiceCalendar() {
                       </div>
                     </div>
                     
-                    {event.type !== 'ticket' && (
+                    {event.type !== 'ticket' && (canEdit || canDelete) && (
                       <div style={{ display: 'flex', gap: 'var(--spacing-xs)' }}>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openEditModal(event);
-                          }}
-                          className="btn btn-secondary btn-sm"
-                        >
-                          <Edit size={16} />
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            deleteEvent(event.id);
-                          }}
-                          className="btn btn-danger btn-sm"
-                        >
-                          <Trash2 size={16} />
-                        </button>
+                        {canEdit && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openEditModal(event);
+                            }}
+                            className="btn btn-secondary btn-sm"
+                          >
+                            <Edit size={16} />
+                          </button>
+                        )}
+                        {canDelete && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              deleteEvent(event.id);
+                            }}
+                            className="btn btn-danger btn-sm"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -779,14 +791,16 @@ export default function ServiceCalendar() {
           >
             Dia
           </button>
-          <button
-            onClick={() => openCreateModal()}
-            className="btn btn-primary"
-            style={{ padding: 'var(--spacing-xs) var(--spacing-md)' }}
-          >
-            <Plus size={18} />
-            Novo Evento
-          </button>
+          {canCreate && (
+            <button
+              onClick={() => openCreateModal()}
+              className="btn btn-primary"
+              style={{ padding: 'var(--spacing-xs) var(--spacing-md)' }}
+            >
+              <Plus size={18} />
+              Novo Evento
+            </button>
+          )}
         </div>
       </div>
 
@@ -1009,7 +1023,7 @@ export default function ServiceCalendar() {
                 >
                   Cancelar
                   </button>
-                {selectedEvent && (
+                {selectedEvent && canDelete && (
                   <button
                     onClick={() => deleteEvent(selectedEvent.id)}
                     className="btn btn-danger"

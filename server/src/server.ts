@@ -13,6 +13,10 @@ import groupRoutes from './routes/groups';
 import ticketMessageRoutes from './routes/ticket-messages';
 import reportRoutes from './routes/reports';
 import calendarRoutes from './routes/calendar';
+import shiftRoutes from './routes/shifts';
+import backupRoutes from './routes/backup';
+import updateRoutes from './routes/updates';
+import { startBackupScheduler } from './services/backup-scheduler';
 
 dotenv.config();
 
@@ -43,6 +47,9 @@ app.use('/api/groups', groupRoutes);
 app.use('/api/ticket-messages', ticketMessageRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/calendar', calendarRoutes);
+app.use('/api/shifts', shiftRoutes);
+app.use('/api/backup', backupRoutes);
+app.use('/api/updates', updateRoutes);
 
 // Rota de health check
 app.get('/api/health', (req, res) => {
@@ -81,6 +88,9 @@ initDatabase().then(async () => {
   
   // Iniciar job de atualização de tickets finalizados
   await startClosedTicketsUpdater();
+  
+  // Iniciar agendador de backup automático
+  startBackupScheduler();
 }).catch((error) => {
   console.error('Erro ao inicializar banco de dados:', error);
   process.exit(1);
