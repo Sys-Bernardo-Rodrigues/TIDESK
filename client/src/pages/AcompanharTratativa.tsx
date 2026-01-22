@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Eye, Search, Clock, User, Ticket, Filter, TrendingUp, X, FileText, MessageSquare, Download, Image as ImageIcon, CheckCircle } from 'lucide-react';
+import { Eye, Search, Clock, User, Ticket, TrendingUp, X, FileText, MessageSquare, Download, CheckCircle } from 'lucide-react';
 import { formatDateBR } from '../utils/dateUtils';
 
 interface TicketDetail {
@@ -28,22 +28,6 @@ interface FormAttachment {
   file_size: number;
   mime_type: string;
   field_label?: string;
-}
-
-// Função para gerar ID completo do ticket (sem barras) - usado em URLs
-function getTicketFullId(ticket: TicketDetail): string {
-  if (!ticket.ticket_number || !ticket.created_at) {
-    return ticket.id.toString();
-  }
-  
-  const date = new Date(ticket.created_at);
-  // Usar timezone de Brasília para extrair ano, mês e dia
-  const year = parseInt(date.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo', year: 'numeric' }));
-  const month = parseInt(date.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo', month: '2-digit' }));
-  const day = parseInt(date.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo', day: '2-digit' }));
-  const number = String(ticket.ticket_number).padStart(3, '0');
-  
-  return `${year}${String(month).padStart(2, '0')}${String(day).padStart(2, '0')}${number}`;
 }
 
 // Função para formatar ID do ticket para exibição (com barras)
@@ -231,39 +215,11 @@ export default function AcompanharTratativa() {
     return { formData, attachmentsList };
   };
 
-  // Verificar se um arquivo é uma imagem
-  const isImage = (mimeType: string): boolean => {
-    return mimeType?.startsWith('image/') || false;
-  };
-
   // Formatar tamanho do arquivo
   const formatFileSize = (bytes: number): string => {
     if (bytes < 1024) return bytes + ' B';
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
     return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
-  };
-
-  // Normalizar caminho do arquivo
-  const normalizeFilePath = (filePath: string): string => {
-    if (!filePath) return '';
-    
-    // Se já começa com /uploads/ ou é uma URL completa, retornar como está
-    if (filePath.startsWith('/uploads/') || filePath.startsWith('http://') || filePath.startsWith('https://')) {
-      return filePath;
-    }
-    
-    // Se começa com /, retornar como está (pode ser /uploads/messages/...)
-    if (filePath.startsWith('/')) {
-      return filePath;
-    }
-    
-    // Se começa com uploads/, adicionar /
-    if (filePath.startsWith('uploads/')) {
-      return `/${filePath}`;
-    }
-    
-    // Caso contrário, adicionar /uploads/
-    return `/uploads/${filePath}`;
   };
 
   // Download de arquivo
@@ -797,12 +753,12 @@ export default function AcompanharTratativa() {
                       return (
                         <>
                           {/* Mensagem de boas-vindas do formulário */}
-                          <div style={{
+                  <div style={{
                             display: 'flex',
                             justifyContent: 'flex-start',
                             marginBottom: 'var(--spacing-xs)'
-                          }}>
-                            <div style={{
+                  }}>
+                    <div style={{
                               maxWidth: '75%',
                               display: 'flex',
                               gap: 'var(--spacing-xs)',
@@ -813,20 +769,20 @@ export default function AcompanharTratativa() {
                                 height: '32px',
                                 borderRadius: '50%',
                                 backgroundColor: 'var(--purple)',
-                                display: 'flex',
-                                alignItems: 'center',
+                      display: 'flex',
+                      alignItems: 'center',
                                 justifyContent: 'center',
                                 flexShrink: 0,
                                 marginBottom: '2px'
                               }}>
                                 <FileText size={16} color="#FFFFFF" />
-                              </div>
+                    </div>
                               <div>
-                                <div style={{
+                    <div style={{
                                   backgroundColor: '#1E1E22',
                                   padding: '0.5rem 0.75rem',
                                   borderRadius: '0.5rem 0.5rem 0.5rem 0.125rem',
-                                  color: 'var(--text-primary)',
+                      color: 'var(--text-primary)',
                                   fontSize: '0.875rem',
                                   lineHeight: '1.4',
                                   boxShadow: '0 1px 2px rgba(0, 0, 0, 0.3)'
@@ -847,8 +803,8 @@ export default function AcompanharTratativa() {
                                   {formatDate(selectedTicket.created_at)}
                                 </div>
                               </div>
-                            </div>
-                          </div>
+                    </div>
+                  </div>
 
                           {/* Dados do formulário em mensagens separadas */}
                           {formData.map((item, index) => {
@@ -880,146 +836,63 @@ export default function AcompanharTratativa() {
                                     {attachment ? (
                                       <div style={{
                                         backgroundColor: '#1E1E22',
-                                        padding: attachment && isImage(attachment.mime_type) ? '0' : '0.5rem 0.75rem',
+                                        padding: '0.5rem 0.75rem',
                                         borderRadius: '0.5rem 0.5rem 0.5rem 0.125rem',
                                         color: 'var(--text-primary)',
                                         fontSize: '0.875rem',
                                         boxShadow: '0 1px 2px rgba(0, 0, 0, 0.3)',
                                         overflow: 'hidden'
                                       }}>
-                                        {isImage(attachment.mime_type) ? (
-                                          <div>
-                                            <img 
-                                              src={normalizeFilePath(attachment.file_path)}
-                                              alt={attachment.file_name}
-                                              style={{
-                                                width: '100%',
-                                                maxHeight: '300px',
-                                                objectFit: 'cover',
-                                                display: 'block',
-                                                cursor: 'pointer',
-                                                borderRadius: '0.375rem 0.375rem 0 0'
-                                              }}
-                                              onClick={() => window.open(normalizeFilePath(attachment.file_path), '_blank')}
-                                              onError={(e) => {
-                                                console.error('Erro ao carregar imagem:', attachment.file_path, 'Tentando:', normalizeFilePath(attachment.file_path));
-                                                const img = e.target as HTMLImageElement;
-                                                const normalizedPath = normalizeFilePath(attachment.file_path);
-                                                // Tentar caminho alternativo
-                                                if (img.src !== normalizedPath) {
-                                                  img.src = normalizedPath;
-                                                } else {
-                                                  // Se ainda falhar, tentar sem normalização
-                                                  const altPath = attachment.file_path.startsWith('/') 
-                                                    ? attachment.file_path 
-                                                    : `/${attachment.file_path}`;
-                                                  if (img.src !== altPath) {
-                                                    img.src = altPath;
-                                                  } else {
-                                                    img.style.display = 'none';
-                                                  }
-                                                }
-                                              }}
-                                            />
-                                            <div style={{
-                                              padding: '0.5rem 0.75rem',
-                                              backgroundColor: '#1E1E22'
-                                            }}>
+                                        <div style={{
+                                          fontSize: '0.8125rem',
+                                          fontWeight: '600',
+                                          marginBottom: '0.5rem',
+                                          color: 'var(--text-primary)'
+                                        }}>
+                                          {item.label}
+                                          <div style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '0.5rem',
+                                            padding: '0.5rem',
+                                            backgroundColor: 'var(--bg-tertiary)',
+                                            borderRadius: '0.375rem',
+                                            marginTop: '0.5rem'
+                                          }}>
+                                            <FileText size={18} color="var(--purple)" />
+                                            <div style={{ flex: 1 }}>
                                               <div style={{
                                                 fontSize: '0.8125rem',
-                                                fontWeight: '600',
-                                                marginBottom: '0.25rem',
+                                                fontWeight: '500',
                                                 color: 'var(--text-primary)'
                                               }}>
-                                                {item.label}
+                                                {attachment.file_name}
                                               </div>
                                               <div style={{
+                                                fontSize: '0.75rem',
+                                                color: 'var(--text-tertiary)'
+                                              }}>
+                                                {formatFileSize(attachment.file_size)}
+                                              </div>
+                                            </div>
+                                            <button
+                                              onClick={() => handleDownload(attachment)}
+                                              style={{
+                                                padding: '0.375rem',
+                                                backgroundColor: 'var(--purple)',
+                                                border: 'none',
+                                                borderRadius: '0.25rem',
+                                                color: '#FFFFFF',
+                                                cursor: 'pointer',
                                                 display: 'flex',
                                                 alignItems: 'center',
-                                                justifyContent: 'space-between',
-                                                gap: '0.5rem'
-                                              }}>
-                                                <span style={{
-                                                  fontSize: '0.75rem',
-                                                  color: 'var(--text-tertiary)',
-                                                  flex: 1
-                                                }}>
-                                                  {attachment.file_name} • {formatFileSize(attachment.file_size)}
-                                                </span>
-                                                <button
-                                                  onClick={() => handleDownload(attachment)}
-                                                  style={{
-                                                    padding: '0.25rem 0.5rem',
-                                                    backgroundColor: 'var(--purple)',
-                                                    border: 'none',
-                                                    borderRadius: '0.25rem',
-                                                    color: '#FFFFFF',
-                                                    cursor: 'pointer',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    gap: '0.25rem',
-                                                    fontSize: '0.75rem',
-                                                    transition: 'all 0.2s'
-                                                  }}
-                                                >
-                                                  <Download size={12} />
-                                                  Baixar
-                                                </button>
-                                              </div>
-                                            </div>
+                                                transition: 'all 0.2s'
+                                              }}
+                                            >
+                                              <Download size={14} />
+                                            </button>
                                           </div>
-                                        ) : (
-                                          <div style={{
-                                            fontSize: '0.8125rem',
-                                            fontWeight: '600',
-                                            marginBottom: '0.5rem',
-                                            color: 'var(--text-primary)'
-                                          }}>
-                                            {item.label}
-                                            <div style={{
-                                              display: 'flex',
-                                              alignItems: 'center',
-                                              gap: '0.5rem',
-                                              padding: '0.5rem',
-                                              backgroundColor: 'var(--bg-tertiary)',
-                                              borderRadius: '0.375rem',
-                                              marginTop: '0.5rem'
-                                            }}>
-                                              <FileText size={18} color="var(--purple)" />
-                                              <div style={{ flex: 1 }}>
-                                                <div style={{
-                                                  fontSize: '0.8125rem',
-                                                  fontWeight: '500',
-                                                  color: 'var(--text-primary)'
-                                                }}>
-                                                  {attachment.file_name}
-                                                </div>
-                                                <div style={{
-                                                  fontSize: '0.75rem',
-                                                  color: 'var(--text-tertiary)'
-                                                }}>
-                                                  {formatFileSize(attachment.file_size)}
-                                                </div>
-                                              </div>
-                                              <button
-                                                onClick={() => handleDownload(attachment)}
-                                                style={{
-                                                  padding: '0.375rem',
-                                                  backgroundColor: 'var(--purple)',
-                                                  border: 'none',
-                                                  borderRadius: '0.25rem',
-                                                  color: '#FFFFFF',
-                                                  cursor: 'pointer',
-                                                  display: 'flex',
-                                                  alignItems: 'center',
-                                                  transition: 'all 0.2s'
-                                                }}
-                                              >
-                                                <Download size={14} />
-                                              </button>
-                                            </div>
-                                          </div>
-                                        )}
+                                        </div>
                                       </div>
                                     ) : (
                                       <div style={{
@@ -1117,8 +990,8 @@ export default function AcompanharTratativa() {
                       <div key={message.id} style={{
                         display: 'flex',
                         justifyContent: 'flex-start',
-                        marginBottom: 'var(--spacing-xs)'
-                      }}>
+                              marginBottom: 'var(--spacing-xs)'
+                            }}>
                         <div style={{
                           maxWidth: '75%',
                           display: 'flex',
@@ -1144,7 +1017,7 @@ export default function AcompanharTratativa() {
                           <div style={{ flex: 1 }}>
                             <div style={{
                               backgroundColor: '#1E1E22',
-                              padding: message.attachments && message.attachments.length > 0 && message.attachments.some(a => isImage(a.mime_type)) ? '0' : '0.5rem 0.75rem',
+                              padding: '0.5rem 0.75rem',
                               borderRadius: '0.5rem 0.5rem 0.5rem 0.125rem',
                               color: 'var(--text-primary)',
                               fontSize: '0.875rem',
@@ -1165,128 +1038,50 @@ export default function AcompanharTratativa() {
                                 }}>
                                   {message.attachments.map((attachment) => (
                                     <div key={attachment.id}>
-                                      {isImage(attachment.mime_type) ? (
-                                        <div>
-                                          <img 
-                                            src={normalizeFilePath(attachment.file_path)}
-                                            alt={attachment.file_name}
-                                            style={{
-                                              width: '100%',
-                                              maxWidth: '300px',
-                                              maxHeight: '300px',
-                                              objectFit: 'cover',
-                                              display: 'block',
-                                              cursor: 'pointer',
-                                              borderRadius: '0.375rem 0.375rem 0 0'
-                                            }}
-                                            onClick={() => {
-                                              window.open(normalizeFilePath(attachment.file_path), '_blank');
-                                            }}
-                                            onError={(e) => {
-                                              console.error('Erro ao carregar imagem:', attachment.file_path, 'Tentando:', normalizeFilePath(attachment.file_path));
-                                              const img = e.target as HTMLImageElement;
-                                              const normalizedPath = normalizeFilePath(attachment.file_path);
-                                              // Tentar caminho alternativo
-                                              if (img.src !== normalizedPath) {
-                                                img.src = normalizedPath;
-                                              } else {
-                                                // Se ainda falhar, tentar sem normalização
-                                                const altPath = attachment.file_path.startsWith('/') 
-                                                  ? attachment.file_path 
-                                                  : `/${attachment.file_path}`;
-                                                if (img.src !== altPath) {
-                                                  img.src = altPath;
-                                                } else {
-                                                  img.style.display = 'none';
-                                                }
-                                              }
-                                            }}
-                                          />
+                                      <div style={{
+                                        padding: '0.5rem 0.75rem',
+                                        backgroundColor: '#1E1E22',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.5rem',
+                                        borderRadius: '0.375rem'
+                                      }}>
+                                        <FileText size={16} color="var(--purple)" />
+                                        <div style={{ flex: 1 }}>
                                           <div style={{
-                                            padding: '0.5rem 0.75rem',
-                                            backgroundColor: '#1E1E22',
+                                            fontSize: '0.8125rem',
+                                            fontWeight: '500',
+                                            color: 'var(--text-primary)',
+                                            marginBottom: '0.25rem'
+                                          }}>
+                                            {attachment.file_name}
+                                          </div>
+                                          <div style={{
+                                            fontSize: '0.75rem',
+                                            opacity: 0.8,
+                                            color: 'var(--text-tertiary)'
+                                          }}>
+                                            {formatFileSize(attachment.file_size)}
+                                          </div>
+                                        </div>
+                                        <button
+                                          onClick={() => handleDownloadMessageAttachment(attachment)}
+                                          style={{
+                                            padding: '0.375rem',
+                                            backgroundColor: 'rgba(255, 255, 255, 0.2)',
+                                            border: 'none',
+                                            borderRadius: '0.25rem',
+                                            color: '#FFFFFF',
+                                            cursor: 'pointer',
                                             display: 'flex',
                                             alignItems: 'center',
-                                            justifyContent: 'space-between',
-                                            gap: '0.5rem'
-                                          }}>
-                                            <span style={{
-                                              fontSize: '0.75rem',
-                                              opacity: 0.8,
-                                              flex: 1,
-                                              overflow: 'hidden',
-                                              textOverflow: 'ellipsis',
-                                              whiteSpace: 'nowrap'
-                                            }}>
-                                              {attachment.file_name}
-                                            </span>
-                                            <button
-                                              onClick={() => handleDownloadMessageAttachment(attachment)}
-                                              style={{
-                                                padding: '0.25rem 0.5rem',
-                                                backgroundColor: 'rgba(255, 255, 255, 0.2)',
-                                                border: 'none',
-                                                borderRadius: '0.25rem',
-                                                color: '#FFFFFF',
-                                                cursor: 'pointer',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '0.25rem',
-                                                fontSize: '0.75rem',
-                                                transition: 'all 0.2s',
-                                                flexShrink: 0
-                                              }}
-                                            >
-                                              <Download size={12} />
-                                            </button>
-                                          </div>
-                                        </div>
-                                      ) : (
-                                        <div style={{
-                                          padding: '0.5rem 0.75rem',
-                                          backgroundColor: '#1E1E22',
-                                          display: 'flex',
-                                          alignItems: 'center',
-                                          gap: '0.5rem',
-                                          borderRadius: '0.375rem'
-                                        }}>
-                                          <FileText size={16} color="var(--purple)" />
-                                          <div style={{ flex: 1 }}>
-                                            <div style={{
-                                              fontSize: '0.8125rem',
-                                              fontWeight: '500',
-                                              color: 'var(--text-primary)',
-                                              marginBottom: '0.25rem'
-                                            }}>
-                                              {attachment.file_name}
-                                            </div>
-                                            <div style={{
-                                              fontSize: '0.75rem',
-                                              opacity: 0.8,
-                                              color: 'var(--text-tertiary)'
-                                            }}>
-                                              {formatFileSize(attachment.file_size)}
-                                            </div>
-                                          </div>
-                                          <button
-                                            onClick={() => handleDownloadMessageAttachment(attachment)}
-                                            style={{
-                                              padding: '0.375rem',
-                                              backgroundColor: 'rgba(255, 255, 255, 0.2)',
-                                              border: 'none',
-                                              borderRadius: '0.25rem',
-                                              color: '#FFFFFF',
-                                              cursor: 'pointer',
-                                              display: 'flex',
-                                              alignItems: 'center',
-                                              transition: 'all 0.2s',
-                                              flexShrink: 0
-                                            }}
-                                          >
-                                            <Download size={14} />
-                                          </button>
-                                        </div>
-                                      )}
+                                            transition: 'all 0.2s',
+                                            flexShrink: 0
+                                          }}
+                                        >
+                                          <Download size={14} />
+                                        </button>
+                                      </div>
                                     </div>
                                   ))}
                                 </div>
@@ -1299,15 +1094,15 @@ export default function AcompanharTratativa() {
                                   paddingTop: message.attachments && message.attachments.length > 0 ? '0.5rem' : '0'
                                 }}>
                                   {message.message}
-                                  {message.updated_at !== message.created_at && (
+                              {message.updated_at !== message.created_at && (
                                     <span style={{
                                       fontSize: '0.6875rem',
                                       opacity: 0.7,
                                       marginLeft: '0.5rem',
                                       fontStyle: 'italic'
                                     }}>
-                                      (editado)
-                                    </span>
+                                  (editado)
+                                </span>
                                   )}
                                 </div>
                               )}
@@ -1322,8 +1117,8 @@ export default function AcompanharTratativa() {
                               <strong>{message.user_name}</strong> • {formatDate(message.created_at)}
                             </div>
                           </div>
-                        </div>
                       </div>
+                    </div>
                     );
                   })}
 

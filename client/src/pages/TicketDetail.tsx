@@ -14,7 +14,9 @@ import {
   Download,
   Image as ImageIcon,
   Paperclip,
-  X
+  X,
+  Calendar,
+  Clock
 } from 'lucide-react';
 
 interface Ticket {
@@ -30,6 +32,7 @@ interface Ticket {
   assigned_name: string | null;
   form_name: string | null;
   form_submission_id: number | null;
+  scheduled_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -114,6 +117,10 @@ export default function TicketDetail() {
   const [attachments, setAttachments] = useState<FormAttachment[]>([]);
   const [messageFiles, setMessageFiles] = useState<File[]>([]);
   const [messagePreviewUrls, setMessagePreviewUrls] = useState<string[]>([]);
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [scheduleDate, setScheduleDate] = useState('');
+  const [scheduleTime, setScheduleTime] = useState('');
+  const [scheduling, setScheduling] = useState(false);
 
   // Determinar para onde voltar baseado no status do ticket
   const getBackPath = (): string => {
@@ -363,6 +370,67 @@ export default function TicketDetail() {
       alert(err.response?.data?.error || 'Erro ao atualizar ticket');
     } finally {
       setUpdating(false);
+    }
+  };
+
+  const handleScheduleTicket = async () => {
+    if (!scheduleDate || !scheduleTime) {
+      alert('Por favor, preencha data e horário');
+      return;
+    }
+
+    setScheduling(true);
+    try {
+      // Combinar data e horário em formato ISO
+      const scheduledDateTime = `${scheduleDate}T${scheduleTime}:00`;
+      
+      const response = await axios.post(`/api/tickets/${id}/schedule`, {
+        scheduled_at: scheduledDateTime
+      });
+      
+      setTicket(response.data);
+      setShowScheduleModal(false);
+      setScheduleDate('');
+      setScheduleTime('');
+      
+      // Adicionar mensagem automática
+      const scheduleDateFormatted = new Date(scheduledDateTime).toLocaleString('pt-BR', {
+        dateStyle: 'short',
+        timeStyle: 'short'
+      });
+      
+      await axios.post(`/api/ticket-messages/ticket/${id}`, {
+        message: `Ticket agendado para: ${scheduleDateFormatted}`
+      });
+      await fetchMessages();
+    } catch (err: any) {
+      console.error('Erro ao agendar ticket:', err);
+      alert(err.response?.data?.error || 'Erro ao agendar ticket');
+    } finally {
+      setScheduling(false);
+    }
+  };
+
+  const handleUnscheduleTicket = async () => {
+    if (!confirm('Deseja realmente cancelar o agendamento deste ticket?')) {
+      return;
+    }
+
+    setScheduling(true);
+    try {
+      const response = await axios.post(`/api/tickets/${id}/unschedule`);
+      setTicket(response.data);
+      
+      // Adicionar mensagem automática
+      await axios.post(`/api/ticket-messages/ticket/${id}`, {
+        message: 'Agendamento cancelado'
+      });
+      await fetchMessages();
+    } catch (err: any) {
+      console.error('Erro ao cancelar agendamento:', err);
+      alert(err.response?.data?.error || 'Erro ao cancelar agendamento');
+    } finally {
+      setScheduling(false);
     }
   };
 
@@ -663,20 +731,70 @@ export default function TicketDetail() {
               }}>
                 Atribuir a
               </label>
-              <select
-                className="select"
-                value={agents.find(a => a.name === ticket.assigned_name)?.id || ''}
-                onChange={(e) => handleUpdateTicket('assigned_to', e.target.value ? parseInt(e.target.value) : null)}
-                disabled={updating}
-                style={{ width: '100%' }}
-              >
-                <option value="">Não atribuído</option>
-                {agents.map((agent) => (
-                  <option key={agent.id} value={agent.id}>
-                    {agent.name}
-                  </option>
-                ))}
-              </select>
+              <div style={{ display: 'flex', gap: 'var(--spacing-xs)' }}>
+                <select
+                  className="select"
+                  value={agents.find(a => a.name === ticket.assigned_name)?.id || ''}
+                  onChange={(e) => handleUpdateTicket('assigned_to', e.target.value ? parseInt(e.target.value) : null)}
+                  disabled={updating}
+                  style={{ flex: 1 }}
+                >
+                  <option value="">Não atribuído</option>
+                  {agents.map((agent) => (
+                    <option key={agent.id} value={agent.id}>
+                      {agent.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => setShowScheduleModal(true)}
+                  disabled={updating || scheduling}
+                  style={{
+                    padding: 'var(--spacing-xs) var(--spacing-sm)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 'var(--spacing-xs)',
+                    whiteSpace: 'nowrap'
+                  }}
+                  title={ticket.scheduled_at ? 'Editar agendamento' : 'Agendar ticket'}
+                >
+                  <Calendar size={16} />
+                  {ticket.scheduled_at ? 'Agendado' : 'Agendar'}
+                </button>
+              </div>
+              {ticket.scheduled_at && (
+                <div style={{
+                  marginTop: 'var(--spacing-xs)',
+                  fontSize: '0.75rem',
+                  color: 'var(--text-tertiary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--spacing-xs)'
+                }}>
+                  <Clock size={12} />
+                  Agendado para: {new Date(ticket.scheduled_at).toLocaleString('pt-BR', {
+                    dateStyle: 'short',
+                    timeStyle: 'short'
+                  })}
+                  <button
+                    onClick={handleUnscheduleTicket}
+                    disabled={scheduling}
+                    style={{
+                      marginLeft: 'auto',
+                      padding: '0.125rem 0.375rem',
+                      fontSize: '0.75rem',
+                      backgroundColor: 'transparent',
+                      border: '1px solid var(--border-primary)',
+                      borderRadius: 'var(--radius-sm)',
+                      color: 'var(--text-secondary)',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -1599,6 +1717,161 @@ export default function TicketDetail() {
           </button>
         </div>
       </div>
+
+      {/* Modal de Agendamento */}
+      {showScheduleModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.7)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 2000,
+          padding: 'var(--spacing-xl)'
+        }}
+        onClick={(e) => {
+          if (e.target === e.currentTarget) {
+            setShowScheduleModal(false);
+          }
+        }}
+        >
+          <div style={{
+            backgroundColor: 'var(--bg-secondary)',
+            borderRadius: 'var(--radius-lg)',
+            padding: 'var(--spacing-lg)',
+            width: '100%',
+            maxWidth: '500px',
+            boxShadow: 'var(--shadow-xl)',
+            border: '1px solid var(--border-primary)'
+          }}
+          onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: 'var(--spacing-lg)'
+            }}>
+              <h2 style={{
+                fontSize: '1.5rem',
+                fontWeight: '700',
+                color: 'var(--text-primary)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 'var(--spacing-sm)'
+              }}>
+                <Calendar size={24} />
+                Agendar Ticket
+              </h2>
+              <button
+                onClick={() => setShowScheduleModal(false)}
+                style={{
+                  backgroundColor: 'transparent',
+                  border: 'none',
+                  color: 'var(--text-secondary)',
+                  cursor: 'pointer',
+                  padding: 'var(--spacing-xs)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 'var(--spacing-md)'
+            }}>
+              <div>
+                <label style={{
+                  display: 'block',
+                  marginBottom: 'var(--spacing-xs)',
+                  fontSize: '0.875rem',
+                  fontWeight: '500',
+                  color: 'var(--text-secondary)'
+                }}>
+                  Data
+                </label>
+                <input
+                  type="date"
+                  className="input"
+                  value={scheduleDate}
+                  onChange={(e) => setScheduleDate(e.target.value)}
+                  min={new Date().toISOString().split('T')[0]}
+                  style={{ width: '100%' }}
+                />
+              </div>
+
+              <div>
+                <label style={{
+                  display: 'block',
+                  marginBottom: 'var(--spacing-xs)',
+                  fontSize: '0.875rem',
+                  fontWeight: '500',
+                  color: 'var(--text-secondary)'
+                }}>
+                  Horário
+                </label>
+                <input
+                  type="time"
+                  className="input"
+                  value={scheduleTime}
+                  onChange={(e) => setScheduleTime(e.target.value)}
+                  style={{ width: '100%' }}
+                />
+              </div>
+
+              {ticket?.scheduled_at && (
+                <div style={{
+                  padding: 'var(--spacing-sm)',
+                  backgroundColor: 'var(--bg-tertiary)',
+                  borderRadius: 'var(--radius-md)',
+                  fontSize: '0.875rem',
+                  color: 'var(--text-secondary)'
+                }}>
+                  <strong>Agendamento atual:</strong> {new Date(ticket.scheduled_at).toLocaleString('pt-BR', {
+                    dateStyle: 'short',
+                    timeStyle: 'short'
+                  })}
+                </div>
+              )}
+
+              <div style={{
+                display: 'flex',
+                gap: 'var(--spacing-sm)',
+                justifyContent: 'flex-end',
+                marginTop: 'var(--spacing-md)'
+              }}>
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => {
+                    setShowScheduleModal(false);
+                    setScheduleDate('');
+                    setScheduleTime('');
+                  }}
+                  disabled={scheduling}
+                >
+                  Cancelar
+                </button>
+                <button
+                  className="btn btn-primary"
+                  onClick={handleScheduleTicket}
+                  disabled={scheduling || !scheduleDate || !scheduleTime}
+                >
+                  {scheduling ? 'Agendando...' : 'Agendar'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* CSS Animation */}
       <style>{`

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
-import { History, Search, Filter, Calendar, User, CheckCircle, XCircle, Clock, FileText } from 'lucide-react';
+import { History, Search, Calendar, User, CheckCircle, Clock, ChevronLeft, ChevronRight } from 'lucide-react';
 import { formatDateBR } from '../utils/dateUtils';
 
 interface Ticket {
@@ -40,6 +40,10 @@ export default function Historico() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterPriority, setFilterPriority] = useState('all');
+  const [filterDateFrom, setFilterDateFrom] = useState('');
+  const [filterDateTo, setFilterDateTo] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const ticketsPerPage = 20;
 
   useEffect(() => {
     fetchHistory();
@@ -134,8 +138,38 @@ export default function Historico() {
     const matchesStatus = filterStatus === 'all' || ticket.status === filterStatus;
     const matchesPriority = filterPriority === 'all' || ticket.priority === filterPriority;
 
-    return matchesSearch && matchesStatus && matchesPriority;
+    // Filtro de data
+    let matchesDate = true;
+    if (filterDateFrom || filterDateTo) {
+      const ticketDate = new Date(ticket.updated_at);
+      ticketDate.setHours(0, 0, 0, 0);
+      
+      if (filterDateFrom) {
+        const fromDate = new Date(filterDateFrom);
+        fromDate.setHours(0, 0, 0, 0);
+        if (ticketDate < fromDate) matchesDate = false;
+      }
+      
+      if (filterDateTo) {
+        const toDate = new Date(filterDateTo);
+        toDate.setHours(23, 59, 59, 999);
+        if (ticketDate > toDate) matchesDate = false;
+      }
+    }
+
+    return matchesSearch && matchesStatus && matchesPriority && matchesDate;
   });
+
+  // Paginação
+  const totalPages = Math.ceil(filteredTickets.length / ticketsPerPage);
+  const startIndex = (currentPage - 1) * ticketsPerPage;
+  const endIndex = startIndex + ticketsPerPage;
+  const paginatedTickets = filteredTickets.slice(startIndex, endIndex);
+
+  // Resetar página quando filtros mudarem
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, filterStatus, filterPriority, filterDateFrom, filterDateTo]);
 
   if (loading) {
     return (
@@ -150,51 +184,33 @@ export default function Historico() {
   }
 
   return (
-    <div>
-      <div style={{ marginBottom: 'var(--spacing-2xl)' }}>
-        <h1 style={{ 
-          fontSize: '2.5rem', 
-          fontWeight: '800', 
-          marginBottom: 'var(--spacing-sm)',
-          background: 'linear-gradient(135deg, var(--text-primary) 0%, var(--text-secondary) 100%)',
-          WebkitBackgroundClip: 'text',
-          WebkitTextFillColor: 'transparent',
-          backgroundClip: 'text',
-          letterSpacing: '-0.03em',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 'var(--spacing-md)'
-        }}>
-          <History size={32} />
-          Histórico
-        </h1>
-        <p style={{
-          color: 'var(--text-secondary)',
-          fontSize: '1rem',
-          fontWeight: '400'
-        }}>
-          Visualize o histórico de tickets resolvidos e fechados
-        </p>
-      </div>
-
-      {/* Filtros e Busca */}
+    <div style={{ 
+      padding: 'var(--spacing-lg)',
+      maxWidth: '1920px',
+      margin: '0 auto'
+    }}>
+      {/* Filtros Fixos no Canto Superior Direito */}
       <div style={{ 
-        display: 'flex', 
-        gap: 'var(--spacing-md)',
-        marginBottom: 'var(--spacing-lg)',
-        flexWrap: 'wrap'
+        position: 'fixed',
+        top: 0,
+        right: 0,
+        display: 'flex',
+        alignItems: 'stretch',
+        gap: 'var(--spacing-xs)',
+        zIndex: 1000,
+        padding: 'var(--spacing-sm)',
+        backgroundColor: 'var(--bg-secondary)',
+        borderBottom: '1px solid var(--border-primary)',
+        borderLeft: '1px solid var(--border-primary)',
+        borderBottomLeftRadius: 'var(--radius-md)',
+        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)'
       }}>
-        <div style={{ 
-          position: 'relative',
-          flex: '1',
-          minWidth: '300px',
-          maxWidth: '500px'
-        }}>
+        <div style={{ position: 'relative', height: '32px' }}>
           <Search 
-            size={20} 
+            size={14}
             style={{ 
               position: 'absolute', 
-              left: 'var(--spacing-md)', 
+              left: '0.5rem', 
               top: '50%', 
               transform: 'translateY(-50%)',
               color: 'var(--text-tertiary)',
@@ -204,125 +220,120 @@ export default function Historico() {
           <input
             type="text"
             className="input"
-            placeholder="Buscar no histórico..."
+            placeholder="Buscar..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            style={{ paddingLeft: '2.75rem' }}
+            style={{ 
+              paddingLeft: '1.75rem', 
+              paddingRight: '0.75rem',
+              paddingTop: '0.375rem',
+              paddingBottom: '0.375rem',
+              fontSize: '0.8125rem',
+              height: '32px',
+              width: '180px',
+              boxSizing: 'border-box',
+              lineHeight: '1'
+            }}
           />
         </div>
-        <div style={{ display: 'flex', gap: 'var(--spacing-sm)' }}>
-          <select
-            className="select"
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            style={{ minWidth: '150px' }}
-          >
-            <option value="all">Todos os Status</option>
-            <option value="resolved">Resolvido</option>
-            <option value="closed">Fechado</option>
-          </select>
-          <select
-            className="select"
-            value={filterPriority}
-            onChange={(e) => setFilterPriority(e.target.value)}
-            style={{ minWidth: '150px' }}
-          >
-            <option value="all">Todas as Prioridades</option>
-            <option value="low">Baixa</option>
-            <option value="medium">Média</option>
-            <option value="high">Alta</option>
-            <option value="urgent">Urgente</option>
-          </select>
+        <select
+          className="input"
+          value={filterStatus}
+          onChange={(e) => setFilterStatus(e.target.value)}
+          style={{ 
+            minWidth: '100px',
+            padding: '0.375rem 0.75rem',
+            fontSize: '0.8125rem',
+            height: '32px',
+            cursor: 'pointer',
+            boxSizing: 'border-box',
+            lineHeight: '1'
+          }}
+        >
+          <option value="all">Status</option>
+          <option value="resolved">Resolvido</option>
+          <option value="closed">Fechado</option>
+        </select>
+        <select
+          className="input"
+          value={filterPriority}
+          onChange={(e) => setFilterPriority(e.target.value)}
+          style={{ 
+            minWidth: '100px',
+            padding: '0.375rem 0.75rem',
+            fontSize: '0.8125rem',
+            height: '32px',
+            cursor: 'pointer',
+            boxSizing: 'border-box',
+            lineHeight: '1'
+          }}
+        >
+          <option value="all">Prioridade</option>
+          <option value="urgent">Urgente</option>
+          <option value="high">Alta</option>
+          <option value="medium">Média</option>
+          <option value="low">Baixa</option>
+        </select>
+        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 'var(--spacing-xs)' }}>
+          <Calendar size={14} color="var(--text-tertiary)" />
+          <input
+            type="date"
+            className="input"
+            value={filterDateFrom}
+            onChange={(e) => setFilterDateFrom(e.target.value)}
+            style={{ 
+              minWidth: '130px',
+              padding: '0.375rem 0.75rem',
+              fontSize: '0.8125rem',
+              height: '32px',
+              boxSizing: 'border-box',
+              lineHeight: '1'
+            }}
+            placeholder="De"
+          />
+          <span style={{ color: 'var(--text-tertiary)', fontSize: '0.8125rem' }}>até</span>
+          <input
+            type="date"
+            className="input"
+            value={filterDateTo}
+            onChange={(e) => setFilterDateTo(e.target.value)}
+            style={{ 
+              minWidth: '130px',
+              padding: '0.375rem 0.75rem',
+              fontSize: '0.8125rem',
+              height: '32px',
+              boxSizing: 'border-box',
+              lineHeight: '1'
+            }}
+            placeholder="Até"
+          />
         </div>
       </div>
 
-      {/* Estatísticas */}
-      <div style={{ 
-        display: 'grid', 
-        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-        gap: 'var(--spacing-md)',
-        marginBottom: 'var(--spacing-lg)'
-      }}>
-        <div className="card" style={{ 
-          border: '1px solid var(--border-primary)',
-          padding: 'var(--spacing-md)'
-        }}>
-          <div style={{ 
-            fontSize: '0.875rem',
-            color: 'var(--text-secondary)',
-            marginBottom: 'var(--spacing-xs)'
-          }}>
-            Total
-          </div>
-          <div style={{ 
-            fontSize: '2rem',
-            fontWeight: '700',
-            color: 'var(--text-primary)'
-          }}>
-            {tickets.length}
-          </div>
-        </div>
-        <div className="card" style={{ 
-          border: '1px solid var(--border-primary)',
-          padding: 'var(--spacing-md)'
-        }}>
-          <div style={{ 
-            fontSize: '0.875rem',
-            color: 'var(--text-secondary)',
-            marginBottom: 'var(--spacing-xs)'
-          }}>
-            Resolvidos
-          </div>
-          <div style={{ 
-            fontSize: '2rem',
-            fontWeight: '700',
-            color: 'var(--green)'
-          }}>
-            {tickets.filter(t => t.status === 'resolved').length}
-          </div>
-        </div>
-        <div className="card" style={{ 
-          border: '1px solid var(--border-primary)',
-          padding: 'var(--spacing-md)'
-        }}>
-          <div style={{ 
-            fontSize: '0.875rem',
-            color: 'var(--text-secondary)',
-            marginBottom: 'var(--spacing-xs)'
-          }}>
-            Fechados
-          </div>
-          <div style={{ 
-            fontSize: '2rem',
-            fontWeight: '700',
-            color: 'var(--text-tertiary)'
-          }}>
-            {tickets.filter(t => t.status === 'closed').length}
-          </div>
-        </div>
-      </div>
+      {/* Espaço para os filtros fixos */}
+      <div style={{ height: '50px', marginBottom: 'var(--spacing-md)' }}></div>
 
       {/* Lista de Tickets */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-sm)' }}>
         {filteredTickets.length === 0 ? (
           <div className="card" style={{ 
             textAlign: 'center', 
             padding: 'var(--spacing-2xl)',
             border: '1px solid var(--border-primary)'
           }}>
-            <History size={48} color="var(--text-tertiary)" style={{ marginBottom: 'var(--spacing-md)' }} />
+            <History size={48} color="var(--text-tertiary)" style={{ marginBottom: 'var(--spacing-md)', opacity: 0.5 }} />
             <p style={{ 
               color: 'var(--text-secondary)',
-              fontSize: '1rem',
-              marginBottom: 'var(--spacing-sm)'
+              fontSize: '0.875rem'
             }}>
-              {searchTerm || filterStatus !== 'all' || filterPriority !== 'all' 
+              {searchTerm || filterStatus !== 'all' || filterPriority !== 'all' || filterDateFrom || filterDateTo
                 ? 'Nenhum ticket encontrado com os filtros aplicados' 
                 : 'Nenhum ticket no histórico ainda'}
             </p>
           </div>
         ) : (
-          filteredTickets.map((ticket) => (
+          <>
+            {paginatedTickets.map((ticket) => (
             <Link
               key={ticket.id}
               to={`/tickets/${getTicketFullId(ticket)}`}
@@ -330,163 +341,239 @@ export default function Historico() {
             >
               <div className="card" style={{ 
                 border: '1px solid var(--border-primary)',
-                padding: 'var(--spacing-lg)',
+                padding: 'var(--spacing-sm) var(--spacing-md)',
                 transition: 'all var(--transition-base)',
                 cursor: 'pointer'
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = 'var(--border-secondary)';
-                e.currentTarget.style.boxShadow = 'var(--shadow-md)';
-                e.currentTarget.style.transform = 'translateY(-2px)';
+                e.currentTarget.style.borderColor = 'var(--purple)';
+                e.currentTarget.style.boxShadow = '0 2px 8px rgba(145, 71, 255, 0.15)';
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.borderColor = 'var(--border-primary)';
-                e.currentTarget.style.boxShadow = 'var(--shadow)';
-                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = 'none';
               }}
               >
                 <div style={{ 
                   display: 'flex', 
                   justifyContent: 'space-between',
-                  alignItems: 'flex-start',
-                  marginBottom: 'var(--spacing-md)',
+                  alignItems: 'center',
                   gap: 'var(--spacing-md)'
                 }}>
-                  <div style={{ flex: 1 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ 
                       display: 'flex', 
                       alignItems: 'center', 
-                      gap: 'var(--spacing-md)',
-                      marginBottom: 'var(--spacing-sm)',
+                      gap: 'var(--spacing-sm)',
+                      marginBottom: 'var(--spacing-xs)',
                       flexWrap: 'wrap'
                     }}>
                       <h3 style={{ 
-                        fontSize: '1.125rem', 
+                        fontSize: '0.875rem', 
                         fontWeight: '600',
                         color: 'var(--text-primary)',
-                        margin: 0
+                        margin: 0,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        flex: 1,
+                        minWidth: 0
                       }}>
                         {ticket.title}
                       </h3>
                       <span style={{
-                        fontSize: '0.75rem',
-                        padding: '0.25rem 0.5rem',
-                        borderRadius: 'var(--radius-full)',
+                        fontSize: '0.625rem',
+                        padding: '0.125rem 0.375rem',
+                        borderRadius: 'var(--radius-sm)',
                         background: getStatusBg(ticket.status),
                         color: getStatusColor(ticket.status),
                         fontWeight: '600',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.25rem'
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.05em'
                       }}>
-                        {ticket.status === 'resolved' ? <CheckCircle size={12} /> : <XCircle size={12} />}
                         {getStatusLabel(ticket.status)}
                       </span>
                       <span style={{
-                        fontSize: '0.75rem',
-                        padding: '0.25rem 0.5rem',
-                        borderRadius: 'var(--radius-full)',
+                        fontSize: '0.625rem',
+                        padding: '0.125rem 0.375rem',
+                        borderRadius: 'var(--radius-sm)',
                         background: 'var(--bg-tertiary)',
                         color: getPriorityColor(ticket.priority),
-                        fontWeight: '600'
+                        fontWeight: '600',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.05em'
                       }}>
                         {getPriorityLabel(ticket.priority)}
                       </span>
-                      {ticket.form_name && (
-                        <span style={{
-                          fontSize: '0.75rem',
-                          padding: '0.25rem 0.5rem',
-                          borderRadius: 'var(--radius-full)',
-                          background: 'var(--blue-light)',
-                          color: 'var(--blue)',
-                          fontWeight: '600',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.25rem'
-                        }}>
-                          <FileText size={12} />
-                          {ticket.form_name}
-                        </span>
-                      )}
                     </div>
-                    <p style={{ 
-                      fontSize: '0.875rem',
-                      color: 'var(--text-secondary)',
-                      marginBottom: 'var(--spacing-md)',
-                      lineHeight: '1.5'
-                    }}>
-                      {ticket.description.length > 200 
-                        ? `${ticket.description.substring(0, 200)}...` 
-                        : ticket.description}
-                    </p>
                     <div style={{ 
                       display: 'flex', 
-                      gap: 'var(--spacing-lg)',
-                      fontSize: '0.875rem',
-                      color: 'var(--text-secondary)',
-                      flexWrap: 'wrap'
+                      gap: 'var(--spacing-md)',
+                      fontSize: '0.75rem',
+                      color: 'var(--text-tertiary)',
+                      flexWrap: 'wrap',
+                      alignItems: 'center'
                     }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-xs)' }}>
-                        <User size={14} />
-                        <span><strong>Criado por:</strong> {ticket.user_name}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                        <User size={12} />
+                        <span>{ticket.user_name}</span>
                       </div>
                       {ticket.assigned_name && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-xs)' }}>
-                          <User size={14} />
-                          <span><strong>Atribuído a:</strong> {ticket.assigned_name}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                          <CheckCircle size={12} />
+                          <span>{ticket.assigned_name}</span>
                         </div>
                       )}
-                      {ticket.category_name && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-xs)' }}>
-                          <FileText size={14} />
-                          <span><strong>Categoria:</strong> {ticket.category_name}</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  <div style={{ 
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'flex-end',
-                    gap: 'var(--spacing-xs)',
-                    minWidth: '150px'
-                  }}>
-                    <div style={{ 
-                      fontSize: '0.75rem',
-                      color: 'var(--text-tertiary)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 'var(--spacing-xs)'
-                    }}>
-                      <Calendar size={12} />
-                      <span>Criado: {formatDate(ticket.created_at)}</span>
-                    </div>
-                    <div style={{ 
-                      fontSize: '0.75rem',
-                      color: 'var(--text-tertiary)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 'var(--spacing-xs)'
-                    }}>
-                      <Clock size={12} />
-                      <span>Finalizado: {formatDate(ticket.updated_at)}</span>
-                    </div>
-                    <div style={{ 
-                      fontSize: '0.75rem',
-                      color: 'var(--text-secondary)',
-                      fontWeight: '600',
-                      marginTop: 'var(--spacing-xs)',
-                      padding: '0.25rem 0.5rem',
-                      background: 'var(--bg-tertiary)',
-                      borderRadius: 'var(--radius-md)'
-                    }}>
-                      Tempo: {calculateTimeToResolve(ticket.created_at, ticket.updated_at)}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                        <Clock size={12} />
+                        <span>{calculateTimeToResolve(ticket.created_at, ticket.updated_at)}</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                        <Calendar size={12} />
+                        <span>{formatDate(ticket.updated_at)}</span>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
             </Link>
-          ))
+            ))}
+            
+            {/* Paginação */}
+            {totalPages > 1 && (
+              <div style={{
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                gap: 'var(--spacing-sm)',
+                marginTop: 'var(--spacing-lg)',
+                padding: 'var(--spacing-md)'
+              }}>
+                <button
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                  style={{
+                    padding: 'var(--spacing-xs) var(--spacing-sm)',
+                    backgroundColor: currentPage === 1 ? 'var(--bg-tertiary)' : 'var(--bg-secondary)',
+                    border: '1px solid var(--border-primary)',
+                    borderRadius: 'var(--radius-sm)',
+                    color: currentPage === 1 ? 'var(--text-tertiary)' : 'var(--text-primary)',
+                    cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 'var(--spacing-xs)',
+                    fontSize: '0.875rem',
+                    transition: 'all var(--transition-base)'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (currentPage !== 1) {
+                      e.currentTarget.style.backgroundColor = 'var(--bg-tertiary)';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (currentPage !== 1) {
+                      e.currentTarget.style.backgroundColor = 'var(--bg-secondary)';
+                    }
+                  }}
+                >
+                  <ChevronLeft size={16} />
+                  Anterior
+                </button>
+                
+                <div style={{
+                  display: 'flex',
+                  gap: 'var(--spacing-xs)',
+                  alignItems: 'center'
+                }}>
+                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                    let pageNum;
+                    if (totalPages <= 5) {
+                      pageNum = i + 1;
+                    } else if (currentPage <= 3) {
+                      pageNum = i + 1;
+                    } else if (currentPage >= totalPages - 2) {
+                      pageNum = totalPages - 4 + i;
+                    } else {
+                      pageNum = currentPage - 2 + i;
+                    }
+                    
+                    return (
+                      <button
+                        key={pageNum}
+                        onClick={() => setCurrentPage(pageNum)}
+                        style={{
+                          padding: 'var(--spacing-xs) var(--spacing-sm)',
+                          backgroundColor: currentPage === pageNum ? 'var(--purple)' : 'var(--bg-secondary)',
+                          border: `1px solid ${currentPage === pageNum ? 'var(--purple)' : 'var(--border-primary)'}`,
+                          borderRadius: 'var(--radius-sm)',
+                          color: currentPage === pageNum ? '#FFFFFF' : 'var(--text-primary)',
+                          cursor: 'pointer',
+                          fontSize: '0.875rem',
+                          minWidth: '36px',
+                          transition: 'all var(--transition-base)'
+                        }}
+                        onMouseEnter={(e) => {
+                          if (currentPage !== pageNum) {
+                            e.currentTarget.style.backgroundColor = 'var(--bg-tertiary)';
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (currentPage !== pageNum) {
+                            e.currentTarget.style.backgroundColor = 'var(--bg-secondary)';
+                          }
+                        }}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  })}
+                </div>
+                
+                <button
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage === totalPages}
+                  style={{
+                    padding: 'var(--spacing-xs) var(--spacing-sm)',
+                    backgroundColor: currentPage === totalPages ? 'var(--bg-tertiary)' : 'var(--bg-secondary)',
+                    border: '1px solid var(--border-primary)',
+                    borderRadius: 'var(--radius-sm)',
+                    color: currentPage === totalPages ? 'var(--text-tertiary)' : 'var(--text-primary)',
+                    cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 'var(--spacing-xs)',
+                    fontSize: '0.875rem',
+                    transition: 'all var(--transition-base)'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (currentPage !== totalPages) {
+                      e.currentTarget.style.backgroundColor = 'var(--bg-tertiary)';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (currentPage !== totalPages) {
+                      e.currentTarget.style.backgroundColor = 'var(--bg-secondary)';
+                    }
+                  }}
+                >
+                  Próxima
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+            )}
+            
+            {/* Info de paginação */}
+            {filteredTickets.length > 0 && (
+              <div style={{
+                textAlign: 'center',
+                fontSize: '0.875rem',
+                color: 'var(--text-secondary)',
+                marginTop: 'var(--spacing-md)'
+              }}>
+                Mostrando {startIndex + 1} - {Math.min(endIndex, filteredTickets.length)} de {filteredTickets.length} tickets
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

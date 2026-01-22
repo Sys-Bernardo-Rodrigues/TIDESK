@@ -31,6 +31,7 @@ export interface Ticket {
   form_id: number | null;
   form_submission_id: number | null;
   needs_approval: number;
+  scheduled_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -150,6 +151,34 @@ export interface TicketMessage {
   message: string;
   created_at: string;
   updated_at: string;
+}
+
+// Função para obter timestamp atual em horário de Brasília (UTC-3)
+export function getBrasiliaTimestamp(): string {
+  const now = new Date();
+  
+  // Obter componentes da data/hora no timezone de Brasília
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  });
+  
+  const parts = formatter.formatToParts(now);
+  const year = parts.find(p => p.type === 'year')?.value || '';
+  const month = parts.find(p => p.type === 'month')?.value || '';
+  const day = parts.find(p => p.type === 'day')?.value || '';
+  const hour = parts.find(p => p.type === 'hour')?.value || '';
+  const minute = parts.find(p => p.type === 'minute')?.value || '';
+  const second = parts.find(p => p.type === 'second')?.value || '';
+  
+  // Formatar como YYYY-MM-DD HH:mm:ss
+  return `${year}-${month}-${day} ${hour}:${minute}:${second}`;
 }
 
 // Abstração do banco de dados
@@ -511,6 +540,15 @@ const initSQLite = async () => {
     // Coluna já existe, ignorar erro
   }
 
+  // Adicionar coluna scheduled_at na tabela tickets
+  try {
+    await dbRun(`
+      ALTER TABLE tickets ADD COLUMN scheduled_at DATETIME
+    `);
+  } catch (error) {
+    // Coluna já existe, ignorar erro
+  }
+
   // Tabela de grupos
   await dbRun(`
     CREATE TABLE IF NOT EXISTS groups (
@@ -632,6 +670,15 @@ const initPostgreSQL = async () => {
   try {
     await dbRun(`
       ALTER TABLE tickets ADD COLUMN IF NOT EXISTS ticket_number INTEGER
+    `);
+  } catch (error) {
+    // Coluna já existe, ignorar erro
+  }
+
+  // Adicionar coluna scheduled_at na tabela tickets (PostgreSQL)
+  try {
+    await dbRun(`
+      ALTER TABLE tickets ADD COLUMN IF NOT EXISTS scheduled_at TIMESTAMP
     `);
   } catch (error) {
     // Coluna já existe, ignorar erro

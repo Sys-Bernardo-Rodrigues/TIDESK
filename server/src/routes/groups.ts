@@ -1,7 +1,7 @@
 import express from 'express';
 import { body, validationResult } from 'express-validator';
 import { authenticate, AuthRequest, requireAdmin } from '../middleware/auth';
-import { dbGet, dbAll, dbRun } from '../database';
+import { dbGet, dbAll, dbRun, getBrasiliaTimestamp } from '../database';
 
 const router = express.Router();
 
@@ -138,9 +138,9 @@ router.put('/:id', [
     // Atualizar grupo
     await dbRun(`
       UPDATE groups
-      SET name = ?, description = ?, updated_at = CURRENT_TIMESTAMP
+      SET name = ?, description = ?, updated_at = ?
       WHERE id = ?
-    `, [name, description || null, req.params.id]);
+    `, [name, description || null, getBrasiliaTimestamp(), req.params.id]);
 
     // Buscar grupo atualizado
     const group = await dbGet('SELECT * FROM groups WHERE id = ?', [req.params.id]);

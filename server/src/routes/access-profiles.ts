@@ -1,7 +1,7 @@
 import express from 'express';
 import { body, validationResult } from 'express-validator';
 import { authenticate, AuthRequest, requireAdmin } from '../middleware/auth';
-import { dbGet, dbAll, dbRun } from '../database';
+import { dbGet, dbAll, dbRun, getBrasiliaTimestamp } from '../database';
 import { invalidateAllPermissions } from '../middleware/permissions';
 
 const router = express.Router();
@@ -188,9 +188,9 @@ router.put('/:id', [
     // Atualizar perfil
     await dbRun(`
       UPDATE access_profiles
-      SET name = ?, description = ?, updated_at = CURRENT_TIMESTAMP
+      SET name = ?, description = ?, updated_at = ?
       WHERE id = ?
-    `, [name, description || null, req.params.id]);
+    `, [name, description || null, getBrasiliaTimestamp(), req.params.id]);
 
     // Remover permissões antigas
     await dbRun('DELETE FROM permissions WHERE access_profile_id = ?', [req.params.id]);

@@ -2,11 +2,12 @@ import express from 'express';
 import { body, validationResult } from 'express-validator';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { requirePermission, RESOURCES, ACTIONS } from '../middleware/permissions';
-import { dbGet, dbAll, dbRun } from '../database';
+import { dbGet, dbAll, dbRun, getBrasiliaTimestamp } from '../database';
 import crypto from 'crypto';
 import { uploadMultiple } from '../middleware/upload';
 import path from 'path';
 import fs from 'fs';
+import bcrypt from 'bcryptjs';
 
 const router = express.Router();
 
@@ -256,9 +257,9 @@ router.put('/:id', [
     // Atualizar formulário
     await dbRun(`
       UPDATE forms
-      SET name = ?, description = ?, linked_user_id = ?, linked_group_id = ?, updated_at = CURRENT_TIMESTAMP
+      SET name = ?, description = ?, linked_user_id = ?, linked_group_id = ?, updated_at = ?
       WHERE id = ?
-    `, [name, description || null, linkedUserId || null, linkedGroupId || null, req.params.id]);
+    `, [name, description || null, linkedUserId || null, linkedGroupId || null, getBrasiliaTimestamp(), req.params.id]);
 
     // Remover campos antigos
     await dbRun('DELETE FROM form_fields WHERE form_id = ?', [req.params.id]);
@@ -424,10 +425,11 @@ router.post('/public/:url/submit', uploadMultiple, async (req, res) => {
     }
 
     // Criar submissão
+    const brasiliaTimestamp = getBrasiliaTimestamp();
     const submissionResult = await dbRun(`
-      INSERT INTO form_submissions (form_id, submission_data)
-      VALUES (?, ?)
-    `, [form.id, JSON.stringify(formData)]);
+      INSERT INTO form_submissions (form_id, submission_data, created_at)
+      VALUES (?, ?, ?)
+    `, [form.id, JSON.stringify(formData), brasiliaTimestamp]);
 
     const submissionId = (submissionResult as any).lastID || (submissionResult as any).id;
 
@@ -472,9 +474,22 @@ router.post('/public/:url/submit', uploadMultiple, async (req, res) => {
 
     // Preparar dados do ticket
     const formValues: Record<string, any> = {};
+    let userName: string | null = null;
+    
     fields.forEach((field: any) => {
       const fieldId = field.id.toString();
       const value = formData[fieldId];
+      
+      // Verificar se é campo "nome", "Nome:", "Nome completo:" ou "Nome completo" (case-insensitive)
+      if (field.label && value && typeof value === 'string' && value.trim()) {
+        const normalizedLabel = field.label.toLowerCase().trim();
+        // Remover dois pontos e espaços extras
+        const cleanLabel = normalizedLabel.replace(/[:：]/g, '').trim();
+        
+        if (cleanLabel === 'nome' || cleanLabel === 'nome completo') {
+          userName = value.trim();
+        }
+      }
       
       // Se for arquivo, mostrar nome do arquivo
       if (fileMap[fieldId]) {
@@ -506,6 +521,48 @@ router.post('/public/:url/submit', uploadMultiple, async (req, res) => {
     console.log(`  - linked_group_id: ${form.linked_group_id}`);
     console.log(`  - needsApproval: ${needsApproval}`);
     console.log(`  - ticketStatus: ${ticketStatus}`);
+    console.log(`  - userName encontrado: ${userName || 'não encontrado'}`);
+
+    // Buscar ou criar usuário com o nome fornecido
+    let userId = 1; // Padrão: usuário anônimo
+    
+    if (userName) {
+      try {
+        // Normalizar nome para busca (trim e lowercase)
+        const normalizedName = userName.trim().toLowerCase();
+        
+        // Buscar usuário existente pelo nome (case-insensitive)
+        // Usar LIKE para compatibilidade com ambos os bancos
+        const allUsers = await dbAll('SELECT id, name FROM users', []);
+        const existingUser = allUsers.find((u: any) => 
+          u.name && u.name.trim().toLowerCase() === normalizedName
+        );
+        
+        if (existingUser) {
+          userId = (existingUser as any).id;
+          console.log(`[Form Submit] Usuário encontrado: ${userName} (ID: ${userId})`);
+        } else {
+          // Criar novo usuário com o nome fornecido
+          // Usar email temporário baseado no nome e timestamp
+          const tempEmail = `form_${normalizedName.replace(/\s+/g, '_')}_${Date.now()}@tidesk.temp`;
+          // Gerar senha aleatória (usuário não poderá fazer login, mas precisa de senha)
+          const tempPassword = crypto.randomBytes(16).toString('hex');
+          const hashedPassword = await bcrypt.hash(tempPassword, 10);
+          
+          const userResult = await dbRun(
+            'INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)',
+            [userName.trim(), tempEmail, hashedPassword, 'user']
+          );
+          
+          userId = (userResult as any).lastID || (userResult as any).id;
+          console.log(`[Form Submit] Novo usuário criado: ${userName} (ID: ${userId})`);
+        }
+      } catch (error) {
+        console.error('[Form Submit] Erro ao buscar/criar usuário:', error);
+        // Em caso de erro, usar usuário anônimo (ID 1)
+        userId = 1;
+      }
+    }
 
     // Gerar número do ticket do dia
     const today = new Date();
@@ -524,10 +581,10 @@ router.post('/public/:url/submit', uploadMultiple, async (req, res) => {
     const count = (countResult as any)?.count || 0;
     const ticketNumber = count + 1;
 
-    // Criar ticket
+    // Criar ticket (usar o mesmo timestamp da submissão)
     const ticketResult = await dbRun(`
-      INSERT INTO tickets (title, description, status, priority, form_id, form_submission_id, user_id, needs_approval, ticket_number)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO tickets (title, description, status, priority, form_id, form_submission_id, user_id, needs_approval, ticket_number, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       ticketTitle,
       ticketDescription,
@@ -535,9 +592,11 @@ router.post('/public/:url/submit', uploadMultiple, async (req, res) => {
       'medium',
       form.id,
       submissionId,
-      1, // Usuário anônimo (pode ser ajustado)
+      userId, // Usar o user_id encontrado ou criado
       needsApproval ? 1 : 0,
-      ticketNumber
+      ticketNumber,
+      brasiliaTimestamp,
+      brasiliaTimestamp
     ]);
 
     const ticketId = (ticketResult as any).lastID || (ticketResult as any).id;

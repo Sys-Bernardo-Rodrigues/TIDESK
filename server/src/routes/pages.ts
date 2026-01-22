@@ -2,7 +2,7 @@ import express from 'express';
 import { body, validationResult } from 'express-validator';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { requirePermission, RESOURCES, ACTIONS } from '../middleware/permissions';
-import { dbGet, dbAll, dbRun } from '../database';
+import { dbGet, dbAll, dbRun, getBrasiliaTimestamp } from '../database';
 import crypto from 'crypto';
 
 const router = express.Router();
@@ -272,9 +272,9 @@ router.put('/:id', [
     // Atualizar página
     await dbRun(`
       UPDATE pages
-      SET title = ?, description = ?, slug = ?, content = ?, updated_at = CURRENT_TIMESTAMP
+      SET title = ?, description = ?, slug = ?, content = ?, updated_at = ?
       WHERE id = ?
-    `, [title, description || null, pageSlug, content || null, req.params.id]);
+    `, [title, description || null, pageSlug, content || null, getBrasiliaTimestamp(), req.params.id]);
 
     // Remover botões antigos
     await dbRun('DELETE FROM page_buttons WHERE page_id = ?', [req.params.id]);

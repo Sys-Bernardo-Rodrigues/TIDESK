@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { CheckCircle, XCircle, Search, Clock, User, FileText, Eye } from 'lucide-react';
+import { formatDateBR } from '../utils/dateUtils';
 
 // Função para gerar ID completo do ticket (sem barras) - usado em URLs
 function getTicketFullId(ticket: any): string {

@@ -2,6 +2,7 @@
 
 /**
  * Formata uma data para o formato brasileiro com timezone de Brasília
+ * O banco salva em horário local (Brasília) quando TZ está configurado
  */
 export function formatDateBR(dateString: string, options?: {
   includeTime?: boolean;
@@ -9,31 +10,61 @@ export function formatDateBR(dateString: string, options?: {
 }): string {
   if (!dateString) return '';
   
-  const date = new Date(dateString);
-  if (isNaN(date.getTime())) return '';
+  // Verificar se a string tem timezone explícito
+  const hasTimezone = dateString.includes('Z') || 
+                      dateString.includes('+') || 
+                      (dateString.includes('T') && dateString.match(/[+-]\d{2}:\d{2}$/));
   
-  // Criar um objeto de formatação que força o uso do timezone de Brasília
-  const formatOptions: Intl.DateTimeFormatOptions = {
-    timeZone: 'America/Sao_Paulo',
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  };
+  if (hasTimezone) {
+    // Tem timezone explícito - tratar como UTC e converter para Brasília
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return '';
+    
+    const formatOptions: Intl.DateTimeFormatOptions = {
+      timeZone: 'America/Sao_Paulo',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    };
 
-  if (options?.includeTime) {
-    formatOptions.hour = '2-digit';
-    formatOptions.minute = '2-digit';
-    formatOptions.hour12 = false; // Usar formato 24 horas
-    if (options?.includeSeconds) {
-      formatOptions.second = '2-digit';
+    if (options?.includeTime) {
+      formatOptions.hour = '2-digit';
+      formatOptions.minute = '2-digit';
+      formatOptions.hour12 = false;
+      if (options?.includeSeconds) {
+        formatOptions.second = '2-digit';
+      }
     }
-  }
 
-  // Usar toLocaleString com locale pt-BR e timezone de Brasília
-  // Isso garante que a data seja convertida corretamente para o timezone de Brasília
-  const formatted = date.toLocaleString('pt-BR', formatOptions);
-  
-  return formatted;
+    return date.toLocaleString('pt-BR', formatOptions);
+  } else {
+    // Formato SQLite sem timezone (YYYY-MM-DD HH:mm:ss)
+    // Como o servidor está com TZ='America/Sao_Paulo', 
+    // o banco salva em horário local (Brasília)
+    // Extrair componentes e formatar diretamente
+    const normalized = dateString.replace(' ', 'T');
+    const [datePart, timePart = ''] = normalized.split('T');
+    const [year, month, day] = datePart.split('-').map(Number);
+    const [hour = 0, minute = 0, second = 0] = timePart.split(':').map(Number);
+    
+    // Formatar diretamente sem conversão de timezone
+    const dayStr = String(day).padStart(2, '0');
+    const monthStr = String(month).padStart(2, '0');
+    let formatted = `${dayStr}/${monthStr}/${year}`;
+    
+    if (options?.includeTime) {
+      const hourStr = String(hour).padStart(2, '0');
+      const minuteStr = String(minute).padStart(2, '0');
+      formatted += `, ${hourStr}:${minuteStr}`;
+      
+      if (options?.includeSeconds) {
+        const secondStr = String(second).padStart(2, '0');
+        formatted += `:${secondStr}`;
+      }
+    }
+    
+    return formatted;
+  }
 }
 
 /**

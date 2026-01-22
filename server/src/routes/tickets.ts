@@ -2,7 +2,7 @@ import express from 'express';
 import { body, validationResult } from 'express-validator';
 import { authenticate, AuthRequest, requireAgent } from '../middleware/auth';
 import { requirePermission, RESOURCES, ACTIONS } from '../middleware/permissions';
-import { dbGet, dbAll, dbRun } from '../database';
+import { dbGet, dbAll, dbRun, getBrasiliaTimestamp } from '../database';
 
 const router = express.Router();
 
@@ -240,7 +240,8 @@ router.get('/', async (req: AuthRequest, res) => {
              c.name as category_name,
              f.name as form_name,
              f.public_url as form_url,
-             f.id as form_id
+             f.id as form_id,
+             t.scheduled_at
       FROM tickets t
       LEFT JOIN users u ON t.user_id = u.id
       LEFT JOIN users a ON t.assigned_to = a.id
@@ -352,9 +353,9 @@ router.post('/', [
     const ticketNumber = await generateTicketNumber();
 
     const result = await dbRun(
-      `INSERT INTO tickets (title, description, status, priority, category_id, user_id, ticket_number) 
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [title, description, 'open', priority, category_id || null, req.userId, ticketNumber]
+      `INSERT INTO tickets (title, description, status, priority, category_id, user_id, ticket_number, created_at, updated_at) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [title, description, 'open', priority, category_id || null, req.userId, ticketNumber, getBrasiliaTimestamp(), getBrasiliaTimestamp()]
     );
 
     const ticketId = (result as any).lastID;
@@ -396,8 +397,8 @@ router.post('/:id/approve', authenticate, requirePermission(RESOURCES.APPROVE, A
 
     // Atualizar status para 'open' (ticket aprovado)
     await dbRun(
-      'UPDATE tickets SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-      ['open', ticketId]
+      'UPDATE tickets SET status = ?, updated_at = ? WHERE id = ?',
+      ['open', getBrasiliaTimestamp(), ticketId]
     );
 
     const updatedTicket = await dbGet(`
@@ -439,8 +440,8 @@ router.post('/:id/reject', authenticate, requirePermission(RESOURCES.APPROVE, AC
 
     // Atualizar status para 'closed'
     await dbRun(
-      'UPDATE tickets SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-      ['closed', ticketId]
+      'UPDATE tickets SET status = ?, updated_at = ? WHERE id = ?',
+      ['closed', getBrasiliaTimestamp(), ticketId]
     );
 
     res.json({ message: 'Ticket rejeitado com sucesso' });
@@ -505,7 +506,8 @@ router.put('/:id', [
       values.push(req.body.assigned_to);
     }
 
-    updates.push('updated_at = CURRENT_TIMESTAMP');
+    updates.push('updated_at = ?');
+    values.push(getBrasiliaTimestamp());
     values.push(ticketId);
 
     await dbRun(
@@ -577,6 +579,96 @@ router.get('/:id/attachments', async (req: AuthRequest, res) => {
 });
 
 // Deletar ticket (apenas admin)
+// Agendar ticket
+router.post('/:id/schedule', requireAgent, [
+  body('scheduled_at').notEmpty().withMessage('Data e horário de agendamento são obrigatórios'),
+  body('scheduled_at').isISO8601().withMessage('Data e horário devem estar no formato ISO 8601')
+], async (req: AuthRequest, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const ticketId = await getTicketIdFromFullId(req.params.id);
+    if (!ticketId) {
+      return res.status(404).json({ error: 'Ticket não encontrado' });
+    }
+
+    const { scheduled_at } = req.body;
+
+    // Atualizar ticket com agendamento e mudar status para scheduled
+    await dbRun(
+      'UPDATE tickets SET scheduled_at = ?, status = ?, updated_at = ? WHERE id = ?',
+      [scheduled_at, 'scheduled', getBrasiliaTimestamp(), ticketId]
+    );
+
+    // Buscar ticket atualizado
+    const ticket = await dbGet(`
+      SELECT t.*, 
+             u.name as user_name, 
+             u.email as user_email,
+             a.name as assigned_name,
+             c.name as category_name,
+             f.name as form_name,
+             f.public_url as form_url,
+             f.linked_user_id,
+             f.linked_group_id
+      FROM tickets t
+      LEFT JOIN users u ON t.user_id = u.id
+      LEFT JOIN users a ON t.assigned_to = a.id
+      LEFT JOIN categories c ON t.category_id = c.id
+      LEFT JOIN forms f ON t.form_id = f.id
+      WHERE t.id = ?
+    `, [ticketId]);
+
+    res.json(ticket);
+  } catch (error) {
+    console.error('Erro ao agendar ticket:', error);
+    res.status(500).json({ error: 'Erro ao agendar ticket' });
+  }
+});
+
+// Cancelar agendamento de ticket
+router.post('/:id/unschedule', requireAgent, async (req: AuthRequest, res) => {
+  try {
+    const ticketId = await getTicketIdFromFullId(req.params.id);
+    if (!ticketId) {
+      return res.status(404).json({ error: 'Ticket não encontrado' });
+    }
+
+    // Remover agendamento e voltar status para open
+    await dbRun(
+      'UPDATE tickets SET scheduled_at = NULL, status = ?, updated_at = ? WHERE id = ?',
+      ['open', getBrasiliaTimestamp(), ticketId]
+    );
+
+    // Buscar ticket atualizado
+    const ticket = await dbGet(`
+      SELECT t.*, 
+             u.name as user_name, 
+             u.email as user_email,
+             a.name as assigned_name,
+             c.name as category_name,
+             f.name as form_name,
+             f.public_url as form_url,
+             f.linked_user_id,
+             f.linked_group_id
+      FROM tickets t
+      LEFT JOIN users u ON t.user_id = u.id
+      LEFT JOIN users a ON t.assigned_to = a.id
+      LEFT JOIN categories c ON t.category_id = c.id
+      LEFT JOIN forms f ON t.form_id = f.id
+      WHERE t.id = ?
+    `, [ticketId]);
+
+    res.json(ticket);
+  } catch (error) {
+    console.error('Erro ao cancelar agendamento:', error);
+    res.status(500).json({ error: 'Erro ao cancelar agendamento' });
+  }
+});
+
 router.delete('/:id', requireAgent, async (req: AuthRequest, res) => {
   try {
     const ticketId = await getTicketIdFromFullId(req.params.id);
@@ -597,13 +689,45 @@ router.delete('/:id', requireAgent, async (req: AuthRequest, res) => {
   }
 });
 
-// Função para obter Date no timezone de Brasília
-function getBrasiliaDateObject(): Date {
+// Função para calcular timestamp de 24 horas atrás em horário de Brasília
+function getBrasiliaTimestamp24HoursAgo(): string {
   const now = new Date();
-  // Converter para string de data/hora no timezone de Brasília
-  const brasiliaTimeString = now.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' });
-  // Criar um novo objeto Date a partir dessa string
-  return new Date(brasiliaTimeString);
+  
+  // Obter componentes da data/hora atual no timezone de Brasília
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  });
+  
+  const parts = formatter.formatToParts(now);
+  const year = parseInt(parts.find(p => p.type === 'year')?.value || '0');
+  const month = parseInt(parts.find(p => p.type === 'month')?.value || '0') - 1; // getMonth() retorna 0-11
+  const day = parseInt(parts.find(p => p.type === 'day')?.value || '0');
+  const hour = parseInt(parts.find(p => p.type === 'hour')?.value || '0');
+  const minute = parseInt(parts.find(p => p.type === 'minute')?.value || '0');
+  const second = parseInt(parts.find(p => p.type === 'second')?.value || '0');
+  
+  // Criar data em Brasília
+  const brasiliaNow = new Date(year, month, day, hour, minute, second);
+  
+  // Subtrair 24 horas
+  const twentyFourHoursAgo = new Date(brasiliaNow.getTime() - (24 * 60 * 60 * 1000));
+  
+  // Formatar como YYYY-MM-DD HH:mm:ss
+  const agoYear = twentyFourHoursAgo.getFullYear();
+  const agoMonth = String(twentyFourHoursAgo.getMonth() + 1).padStart(2, '0');
+  const agoDay = String(twentyFourHoursAgo.getDate()).padStart(2, '0');
+  const agoHour = String(twentyFourHoursAgo.getHours()).padStart(2, '0');
+  const agoMinute = String(twentyFourHoursAgo.getMinutes()).padStart(2, '0');
+  const agoSecond = String(twentyFourHoursAgo.getSeconds()).padStart(2, '0');
+  
+  return `${agoYear}-${agoMonth}-${agoDay} ${agoHour}:${agoMinute}:${agoSecond}`;
 }
 
 // Função para atualizar tickets finalizados há mais de 24 horas
@@ -611,11 +735,7 @@ export async function updateClosedTicketsToResolved() {
   try {
     // Buscar tickets com status 'closed' que foram atualizados há mais de 24 horas
     // Usar timezone de Brasília para calcular 24 horas
-    const now = getBrasiliaDateObject();
-    const twentyFourHoursAgo = new Date(now.getTime() - (24 * 60 * 60 * 1000));
-    
-    // Converter para string no formato do banco de dados (ISO format)
-    const dateStr = twentyFourHoursAgo.toISOString().replace('T', ' ').substring(0, 19);
+    const dateStr = getBrasiliaTimestamp24HoursAgo();
     
     console.log(`[updateClosedTicketsToResolved] Buscando tickets fechados antes de: ${dateStr}`);
     
@@ -634,8 +754,8 @@ export async function updateClosedTicketsToResolved() {
       // Atualizar cada ticket para 'resolved'
       for (const ticket of closedTickets as any[]) {
         await dbRun(
-          `UPDATE tickets SET status = 'resolved', updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-          [ticket.id]
+          `UPDATE tickets SET status = 'resolved', updated_at = ? WHERE id = ?`,
+          [getBrasiliaTimestamp(), ticket.id]
         );
         console.log(`[updateClosedTicketsToResolved] Ticket ${ticket.id} atualizado para 'resolved'`);
       }

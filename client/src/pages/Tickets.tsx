@@ -1,19 +1,15 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { useAuth } from '../contexts/AuthContext';
 import { formatDateList } from '../utils/dateUtils';
 import { 
   Search, 
-  Filter, 
   Clock, 
   User, 
   FileText, 
-  AlertCircle, 
-  CheckCircle, 
-  XCircle,
-  MoreVertical,
-  Eye,
-  Edit
+  CheckCircle,
+  RefreshCw
 } from 'lucide-react';
 
 interface Ticket {
@@ -30,6 +26,7 @@ interface Ticket {
   form_name: string | null;
   form_url: string | null;
   form_id: number | null;
+  scheduled_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -107,10 +104,13 @@ const columns: Column[] = [
 
 export default function Tickets() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
+  const [onlyMyTickets, setOnlyMyTickets] = useState(false);
+  const [autoRefresh, setAutoRefresh] = useState<string>('0'); // 0 = desabilitado
   const [draggedTicket, setDraggedTicket] = useState<Ticket | null>(null);
   const [draggedOverColumn, setDraggedOverColumn] = useState<string | null>(null);
   const [viewedTickets, setViewedTickets] = useState<Set<number>>(new Set());
@@ -127,6 +127,19 @@ export default function Tickets() {
       }
     }
   }, []);
+
+  // Auto-refresh quando autoRefresh estiver ativo
+  useEffect(() => {
+    if (autoRefresh === '0') return;
+
+    const intervalMs = parseInt(autoRefresh) * 1000;
+    const refreshInterval = setInterval(() => {
+      fetchTickets();
+    }, intervalMs);
+
+    return () => clearInterval(refreshInterval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoRefresh]);
 
   const fetchTickets = async () => {
     try {
@@ -243,8 +256,23 @@ export default function Tickets() {
     return diffHours;
   };
 
-  // Função para obter cor do card baseado no tempo aberto
+  // Função para verificar se ticket agendado está vencido
+  const isScheduledOverdue = (ticket: Ticket): boolean => {
+    if (!ticket.scheduled_at || ticket.status !== 'scheduled') {
+      return false;
+    }
+    const scheduledDate = new Date(ticket.scheduled_at);
+    const now = new Date();
+    return scheduledDate < now;
+  };
+
+  // Função para obter cor do card baseado no tempo aberto ou agendamento vencido
   const getCardColor = (ticket: Ticket, columnId: string): string => {
+    // Se for ticket agendado vencido, aplicar cor roxa
+    if (isScheduledOverdue(ticket)) {
+      return 'rgba(147, 51, 234, 0.2)'; // Roxo claro
+    }
+
     // Aplicar apenas nas colunas "Aberto" e "Em Progresso"
     if (columnId !== 'open' && columnId !== 'in_progress') {
       return 'var(--bg-primary)';
@@ -266,8 +294,13 @@ export default function Tickets() {
     return 'var(--bg-primary)';
   };
 
-  // Função para obter cor da borda baseado no tempo aberto
+  // Função para obter cor da borda baseado no tempo aberto ou agendamento vencido
   const getCardBorderColor = (ticket: Ticket, columnId: string): string => {
+    // Se for ticket agendado vencido, aplicar borda roxa
+    if (isScheduledOverdue(ticket)) {
+      return 'rgba(147, 51, 234, 0.6)'; // Roxo
+    }
+
     // Aplicar apenas nas colunas "Aberto" e "Em Progresso"
     if (columnId !== 'open' && columnId !== 'in_progress') {
       return 'var(--border-primary)';
@@ -296,6 +329,13 @@ export default function Tickets() {
       
       return true;
     });
+
+    // Aplicar filtro de "Apenas meus tickets"
+    if (onlyMyTickets && user) {
+      filtered = filtered.filter(ticket => 
+        ticket.assigned_name && ticket.assigned_name.toLowerCase() === user.name.toLowerCase()
+      );
+    }
 
     // Aplicar filtro de busca
     if (searchTerm) {
@@ -354,7 +394,7 @@ export default function Tickets() {
       <div style={{
         display: 'flex',
         justifyContent: 'center',
-        alignItems: 'center',
+        alignItems: 'stretch',
         minHeight: '60vh',
         color: 'var(--text-secondary)'
       }}>
@@ -375,27 +415,35 @@ export default function Tickets() {
   }
 
   return (
-    <div style={{ padding: 'var(--spacing-xl)' }}>
-
-      {/* Filtros */}
+    <div style={{ 
+      padding: 'var(--spacing-lg)',
+      maxWidth: '1920px',
+      margin: '0 auto',
+      position: 'relative'
+    }}>
+      {/* Filtros Minimalistas - Canto Superior Direito */}
       <div style={{
+        position: 'fixed',
+        top: 0,
+        right: 0,
         display: 'flex',
-        gap: 'var(--spacing-md)',
-        marginBottom: 'var(--spacing-xl)',
-        flexWrap: 'wrap',
-        alignItems: 'center'
+        alignItems: 'stretch',
+        gap: 'var(--spacing-xs)',
+        zIndex: 1000,
+        padding: 'var(--spacing-sm)',
+        backgroundColor: 'var(--bg-secondary)',
+        borderBottom: '1px solid var(--border-primary)',
+        borderLeft: '1px solid var(--border-primary)',
+        borderBottomLeftRadius: 'var(--radius-md)',
+        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)'
       }}>
-        <div style={{
-          position: 'relative',
-          flex: '1',
-          minWidth: '300px',
-          maxWidth: '500px'
-        }}>
+        {/* Busca Compacta */}
+        <div style={{ position: 'relative', height: '32px' }}>
           <Search
-            size={20}
+            size={14}
             style={{
               position: 'absolute',
-              left: 'var(--spacing-md)',
+              left: '0.5rem',
               top: '50%',
               transform: 'translateY(-50%)',
               color: 'var(--text-tertiary)',
@@ -405,39 +453,137 @@ export default function Tickets() {
           <input
             type="text"
             className="input"
-            placeholder="Buscar tickets..."
+            placeholder="Buscar..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            style={{ paddingLeft: '2.75rem' }}
+            style={{ 
+              paddingLeft: '1.75rem',
+              paddingRight: '0.75rem',
+              paddingTop: '0.375rem',
+              paddingBottom: '0.375rem',
+              width: '180px',
+              fontSize: '0.8125rem',
+              height: '32px',
+              boxSizing: 'border-box',
+              lineHeight: '1'
+            }}
           />
         </div>
-        <div style={{ display: 'flex', gap: 'var(--spacing-sm)', alignItems: 'center' }}>
-          <Filter size={18} color="var(--text-secondary)" />
+
+        {/* Prioridade Compacta */}
+        <select
+          className="input"
+          value={priorityFilter}
+          onChange={(e) => setPriorityFilter(e.target.value)}
+          style={{
+            padding: '0.375rem 0.75rem',
+            fontSize: '0.8125rem',
+            cursor: 'pointer',
+            height: '32px',
+            minWidth: '100px',
+            boxSizing: 'border-box',
+            lineHeight: '1'
+          }}
+        >
+          <option value="all">Todas</option>
+          <option value="urgent">Urgente</option>
+          <option value="high">Alta</option>
+          <option value="medium">Média</option>
+          <option value="low">Baixa</option>
+        </select>
+
+        {/* Atualização Compacta */}
+        <div style={{ position: 'relative', height: '32px' }}>
+          <RefreshCw 
+            size={14}
+            style={{
+              position: 'absolute',
+              left: '0.5rem',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              color: 'var(--text-tertiary)',
+              pointerEvents: 'none',
+              zIndex: 1
+            }}
+          />
           <select
             className="input"
-            value={priorityFilter}
-            onChange={(e) => setPriorityFilter(e.target.value)}
+            value={autoRefresh}
+            onChange={(e) => setAutoRefresh(e.target.value)}
             style={{
-              minWidth: '150px',
-              cursor: 'pointer'
+              paddingLeft: '1.75rem',
+              paddingRight: '0.75rem',
+              paddingTop: '0.375rem',
+              paddingBottom: '0.375rem',
+              fontSize: '0.8125rem',
+              cursor: 'pointer',
+              height: '32px',
+              minWidth: '90px',
+              boxSizing: 'border-box',
+              lineHeight: '1'
             }}
           >
-            <option value="all">Todas as prioridades</option>
-            <option value="urgent">Urgente</option>
-            <option value="high">Alta</option>
-            <option value="medium">Média</option>
-            <option value="low">Baixa</option>
+            <option value="0">Manual</option>
+            <option value="10">10s</option>
+            <option value="30">30s</option>
+            <option value="60">60s</option>
+            <option value="90">90s</option>
+            <option value="120">120s</option>
           </select>
         </div>
+
+        {/* Meus Tickets Compacto */}
+        {(user?.role === 'admin' || user?.role === 'agent') && (
+          <label style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '0.375rem',
+            cursor: 'pointer',
+            userSelect: 'none',
+            padding: '0 0.75rem',
+            backgroundColor: onlyMyTickets ? 'var(--purple-light)' : 'transparent',
+            border: `1px solid ${onlyMyTickets ? 'var(--purple)' : 'var(--border-primary)'}`,
+            borderRadius: 'var(--radius-sm)',
+            transition: 'all var(--transition-base)',
+            height: '32px',
+            fontSize: '0.8125rem',
+            whiteSpace: 'nowrap',
+            boxSizing: 'border-box'
+          }}>
+            <input
+              type="checkbox"
+              checked={onlyMyTickets}
+              onChange={(e) => setOnlyMyTickets(e.target.checked)}
+              style={{
+                cursor: 'pointer',
+                width: '14px',
+                height: '14px',
+                accentColor: 'var(--purple)',
+                margin: 0,
+                padding: 0,
+                flexShrink: 0
+              }}
+            />
+            <span style={{
+              color: 'var(--text-primary)',
+              fontWeight: '500',
+              lineHeight: '1',
+              display: 'inline-block',
+              verticalAlign: 'middle'
+            }}>
+              Meus
+            </span>
+          </label>
+        )}
       </div>
 
       {/* Kanban Board */}
       <div style={{
-        display: 'flex',
-        gap: '0.75rem',
-        overflowX: 'auto',
-        paddingBottom: 'var(--spacing-md)',
-        minHeight: 'calc(100vh - 300px)'
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+        gap: 'var(--spacing-lg)',
+        paddingBottom: 'var(--spacing-lg)'
       }}>
           {columns.map((column) => {
             const columnTickets = getTicketsForColumn(column);
@@ -447,57 +593,61 @@ export default function Tickets() {
             <div
               key={column.id}
               style={{
-                flex: '1',
-                minWidth: '240px',
-                maxWidth: '280px',
                 backgroundColor: 'var(--bg-secondary)',
-                borderRadius: 'var(--radius-md)',
+                borderRadius: 'var(--radius-lg)',
                 border: `2px solid ${isDraggedOver ? column.color : 'var(--border-primary)'}`,
-                padding: '0.75rem',
+                padding: 'var(--spacing-md)',
                 transition: 'all var(--transition-base)',
-                boxShadow: isDraggedOver ? `0 0 0 3px ${column.bgColor}` : 'var(--shadow)'
+                boxShadow: isDraggedOver 
+                  ? `0 4px 12px ${column.bgColor}, 0 0 0 2px ${column.color}` 
+                  : '0 2px 8px rgba(0, 0, 0, 0.08)',
+                display: 'flex',
+                flexDirection: 'column',
+                height: 'fit-content',
+                maxHeight: 'calc(100vh - 280px)'
               }}
               onDragOver={(e) => handleDragOver(e, column.id)}
               onDragLeave={handleDragLeave}
               onDrop={(e) => handleDrop(e, column)}
             >
-              {/* Column Header - Compacto */}
+              {/* Column Header - Redesign */}
               <div style={{
                 display: 'flex',
                 justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: '0.625rem',
-                paddingBottom: '0.5rem',
+                alignItems: 'stretch',
+                marginBottom: 'var(--spacing-md)',
+                paddingBottom: 'var(--spacing-sm)',
                 borderBottom: `2px solid ${column.color}`
               }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <div style={{ 
+                  display: 'flex', 
+                  alignItems: 'stretch', 
+                  gap: 'var(--spacing-sm)'
+                }}>
                   <div style={{
-                    width: '8px',
-                    height: '8px',
-                    borderRadius: '50%',
+                    width: '4px',
+                    height: '20px',
+                    borderRadius: 'var(--radius-full)',
                     backgroundColor: column.color
                   }} />
                   <h3 style={{
-                    fontSize: '0.8125rem',
+                    fontSize: '0.9375rem',
                     fontWeight: '700',
                     color: 'var(--text-primary)',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.05em',
-                    lineHeight: '1.2'
+                    letterSpacing: '0.02em'
                   }}>
                     {column.title}
                   </h3>
                 </div>
                 <span style={{
-                  fontSize: '0.75rem',
+                  fontSize: '0.8125rem',
                   fontWeight: '700',
-                  color: 'var(--text-secondary)',
+                  color: column.color,
                   backgroundColor: column.bgColor,
-                  padding: '0.125rem 0.5rem',
+                  padding: '0.25rem 0.625rem',
                   borderRadius: 'var(--radius-full)',
-                  minWidth: '24px',
-                  textAlign: 'center',
-                  lineHeight: '1.4'
+                  minWidth: '28px',
+                  textAlign: 'center'
                 }}>
                   {columnTickets.length}
                 </span>
@@ -507,17 +657,20 @@ export default function Tickets() {
               <div style={{
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '0.5rem',
-                minHeight: '150px'
+                gap: 'var(--spacing-sm)',
+                overflowY: 'auto',
+                flex: 1,
+                paddingRight: 'var(--spacing-xs)'
               }}>
                 {columnTickets.length === 0 ? (
                   <div style={{
                     textAlign: 'center',
-                    padding: 'var(--spacing-md)',
+                    padding: 'var(--spacing-xl)',
                     color: 'var(--text-tertiary)',
-                    fontSize: '0.75rem'
+                    fontSize: '0.875rem',
+                    fontStyle: 'italic'
                   }}>
-                    Nenhum ticket
+                    Nenhum ticket nesta coluna
                   </div>
                 ) : (
                   columnTickets.map((ticket) => {
@@ -534,12 +687,12 @@ export default function Tickets() {
                         backgroundColor: cardBgColor,
                         border: `1px solid ${cardBorderColor}`,
                         borderRadius: 'var(--radius-sm)',
-                        padding: '0.625rem',
+                        padding: 'var(--spacing-sm)',
                         cursor: 'pointer',
-                        transition: 'all var(--transition-base)',
+                        transition: 'all 0.2s ease',
                         position: 'relative',
-                        opacity: draggedTicket?.id === ticket.id ? 0.5 : 1,
-                        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
+                        opacity: draggedTicket?.id === ticket.id ? 0.4 : 1,
+                        boxShadow: '0 1px 2px rgba(0, 0, 0, 0.08)'
                       }}
                       onMouseEnter={(e) => {
                         e.currentTarget.style.borderColor = column.color;
@@ -548,7 +701,7 @@ export default function Tickets() {
                       }}
                       onMouseLeave={(e) => {
                         e.currentTarget.style.borderColor = cardBorderColor;
-                        e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)';
+                        e.currentTarget.style.boxShadow = '0 1px 2px rgba(0, 0, 0, 0.08)';
                         e.currentTarget.style.transform = 'translateY(0)';
                       }}
                     >
@@ -556,15 +709,15 @@ export default function Tickets() {
                       <div style={{
                         display: 'flex',
                         justifyContent: 'space-between',
-                        alignItems: 'center',
+                        alignItems: 'stretch',
                         marginBottom: '0.375rem',
-                        gap: '0.375rem'
+                        gap: '0.25rem'
                       }}>
                         <span style={{
                           fontSize: '0.625rem',
                           fontWeight: '700',
-                          color: getPriorityColor(ticket.priority),
-                          backgroundColor: `${getPriorityColor(ticket.priority)}15`,
+                          color: '#FFFFFF',
+                          backgroundColor: getPriorityColor(ticket.priority),
                           padding: '0.125rem 0.375rem',
                           borderRadius: 'var(--radius-sm)',
                           textTransform: 'uppercase',
@@ -581,8 +734,9 @@ export default function Tickets() {
                             padding: '0.125rem 0.375rem',
                             borderRadius: 'var(--radius-sm)',
                             display: 'flex',
-                            alignItems: 'center',
+                            alignItems: 'stretch',
                             gap: '0.125rem',
+                            fontWeight: '500',
                             lineHeight: '1.2'
                           }}>
                             <FileText size={8} />
@@ -591,7 +745,7 @@ export default function Tickets() {
                         )}
                       </div>
 
-                      {/* Ticket ID - Compacto */}
+                      {/* Ticket ID */}
                       {ticket.ticket_number && ticket.created_at && (
                         <div style={{
                           fontSize: '0.6875rem',
@@ -605,7 +759,7 @@ export default function Tickets() {
                         </div>
                       )}
                       
-                      {/* Title - Menor */}
+                      {/* Title */}
                       <h4 style={{
                         fontSize: '0.8125rem',
                         fontWeight: '600',
@@ -620,7 +774,7 @@ export default function Tickets() {
                         {ticket.title}
                       </h4>
 
-                      {/* Description - Mais compacta */}
+                      {/* Description */}
                       <p style={{
                         fontSize: '0.75rem',
                         color: 'var(--text-secondary)',
@@ -634,12 +788,12 @@ export default function Tickets() {
                         {ticket.description}
                       </p>
 
-                      {/* Meta Info - Compacto em linha única */}
+                      {/* Meta Info - Compacto */}
                       <div style={{
                         display: 'flex',
-                        alignItems: 'center',
+                        alignItems: 'stretch',
                         justifyContent: 'space-between',
-                        gap: '0.5rem',
+                        gap: '0.375rem',
                         marginTop: '0.375rem',
                         paddingTop: '0.375rem',
                         borderTop: '1px solid var(--border-primary)',
@@ -649,7 +803,7 @@ export default function Tickets() {
                       }}>
                         <div style={{ 
                           display: 'flex', 
-                          alignItems: 'center', 
+                          alignItems: 'stretch', 
                           gap: '0.25rem',
                           flex: '1',
                           minWidth: '0',
@@ -667,7 +821,7 @@ export default function Tickets() {
                         {ticket.assigned_name && (
                           <div style={{ 
                             display: 'flex', 
-                            alignItems: 'center', 
+                            alignItems: 'stretch', 
                             gap: '0.25rem',
                             flex: '1',
                             minWidth: '0',
@@ -685,7 +839,7 @@ export default function Tickets() {
                         )}
                         <div style={{ 
                           display: 'flex', 
-                          alignItems: 'center', 
+                          alignItems: 'stretch', 
                           gap: '0.25rem',
                           flexShrink: 0
                         }}>

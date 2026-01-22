@@ -1,7 +1,7 @@
 import express from 'express';
 import { body, validationResult } from 'express-validator';
 import { authenticate, AuthRequest } from '../middleware/auth';
-import { dbGet, dbAll, dbRun } from '../database';
+import { dbGet, dbAll, dbRun, getBrasiliaTimestamp } from '../database';
 import { uploadMessage } from '../middleware/upload';
 import path from 'path';
 import fs from 'fs';
@@ -149,10 +149,11 @@ router.post('/ticket/:ticketId', uploadMessage.array('attachments', 5), async (r
     }
 
     // Criar mensagem
+    const brasiliaTimestamp = getBrasiliaTimestamp();
     const result = await dbRun(`
-      INSERT INTO ticket_messages (ticket_id, user_id, message)
-      VALUES (?, ?, ?)
-    `, [ticketId, req.userId, req.body.message || '']);
+      INSERT INTO ticket_messages (ticket_id, user_id, message, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?)
+    `, [ticketId, req.userId, req.body.message || '', brasiliaTimestamp, brasiliaTimestamp]);
 
     const messageId = (result as any).lastID || (result as any).id;
 
@@ -209,9 +210,9 @@ router.post('/ticket/:ticketId', uploadMessage.array('attachments', 5), async (r
     // Atualizar timestamp do ticket
     await dbRun(`
       UPDATE tickets 
-      SET updated_at = CURRENT_TIMESTAMP 
+      SET updated_at = ? 
       WHERE id = ?
-    `, [ticketId]);
+    `, [getBrasiliaTimestamp(), ticketId]);
 
     res.status(201).json({
       ...message,
@@ -247,9 +248,9 @@ router.put('/:id', [
     // Atualizar mensagem
     await dbRun(`
       UPDATE ticket_messages
-      SET message = ?, updated_at = CURRENT_TIMESTAMP
+      SET message = ?, updated_at = ?
       WHERE id = ?
-    `, [req.body.message, req.params.id]);
+    `, [req.body.message, getBrasiliaTimestamp(), req.params.id]);
 
     // Buscar mensagem atualizada
     const updatedMessage = await dbGet(`
