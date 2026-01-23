@@ -23,13 +23,14 @@ router.get('/', authenticate, requirePermission(RESOURCES.FORMS, ACTIONS.VIEW), 
       SELECT f.*,
              u.name as created_by_name,
              lu.name as linked_user_name,
+             lg.name as linked_group_name,
              (SELECT COUNT(*) FROM form_submissions fs WHERE fs.form_id = f.id) as submissions_count
       FROM forms f
       LEFT JOIN users u ON f.created_by = u.id
       LEFT JOIN users lu ON f.linked_user_id = lu.id
-      WHERE f.created_by = ?
+      LEFT JOIN groups lg ON f.linked_group_id = lg.id
       ORDER BY f.created_at DESC
-    `, [req.userId]);
+    `);
 
     // Buscar campos de cada formulário
     const formsWithFields = await Promise.all(forms.map(async (form: any) => {
@@ -61,17 +62,19 @@ router.get('/', authenticate, requirePermission(RESOURCES.FORMS, ACTIONS.VIEW), 
 });
 
 // Obter formulário específico (requer autenticação)
-router.get('/:id', authenticate, async (req: AuthRequest, res) => {
+router.get('/:id', authenticate, requirePermission(RESOURCES.FORMS, ACTIONS.VIEW), async (req: AuthRequest, res) => {
   try {
     const form = await dbGet(`
       SELECT f.*,
              u.name as created_by_name,
-             lu.name as linked_user_name
+             lu.name as linked_user_name,
+             lg.name as linked_group_name
       FROM forms f
       LEFT JOIN users u ON f.created_by = u.id
       LEFT JOIN users lu ON f.linked_user_id = lu.id
-      WHERE f.id = ? AND f.created_by = ?
-    `, [req.params.id, req.userId]);
+      LEFT JOIN groups lg ON f.linked_group_id = lg.id
+      WHERE f.id = ?
+    `, [req.params.id]);
 
     if (!form) {
       return res.status(404).json({ error: 'Formulário não encontrado' });

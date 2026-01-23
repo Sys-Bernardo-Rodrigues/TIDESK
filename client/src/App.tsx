@@ -65,7 +65,14 @@ function App() {
               </ProtectedRoute>
             } />
             <Route path="tickets/:id" element={
-              <ProtectedRoute resource={RESOURCES.TICKETS} action={ACTIONS.VIEW}>
+              <ProtectedRoute 
+                resource={RESOURCES.TICKETS} 
+                action={ACTIONS.VIEW}
+                alternativePermissions={[
+                  { resource: RESOURCES.APPROVE, action: ACTIONS.VIEW },
+                  { resource: RESOURCES.TRACK, action: ACTIONS.VIEW }
+                ]}
+              >
                 <TicketDetail />
               </ProtectedRoute>
             } />

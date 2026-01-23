@@ -14,6 +14,7 @@ import {
   FileText
 } from 'lucide-react';
 import { usePermissions, RESOURCES, ACTIONS } from '../hooks/usePermissions';
+import { getHolidayName } from '../utils/brazilianHolidays';
 import jsPDF from 'jspdf';
 
 interface Shift {
@@ -75,6 +76,53 @@ export default function ShiftCalendar() {
   const [shiftEndDate, setShiftEndDate] = useState('');
   const [shiftEndTime, setShiftEndTime] = useState('');
   const [selectedUserIds, setSelectedUserIds] = useState<number[]>([]);
+
+  // Paleta de cores para usuários (cores vibrantes e distintas)
+  const userColors = [
+    '#f97316', // Laranja (cor padrão atual)
+    '#3b82f6', // Azul
+    '#10b981', // Verde
+    '#8b5cf6', // Roxo
+    '#ef4444', // Vermelho
+    '#f59e0b', // Amarelo/Âmbar
+    '#06b6d4', // Ciano
+    '#ec4899', // Rosa
+    '#14b8a6', // Turquesa
+    '#f43f5e', // Rosa escuro
+    '#6366f1', // Índigo
+    '#84cc16', // Verde lima
+    '#f97316', // Laranja (repetido para mais usuários)
+    '#06b6d4', // Ciano (repetido)
+    '#8b5cf6', // Roxo (repetido)
+  ];
+
+  // Função para obter cor do usuário baseado no ID
+  const getUserColor = (userId: number): string => {
+    return userColors[userId % userColors.length];
+  };
+
+  // Função para obter cor do plantão baseado nos usuários
+  const getShiftColor = (shift: Shift): string => {
+    if (shift.user_ids && shift.user_ids.length > 0) {
+      // Se houver múltiplos usuários, usa a cor do primeiro
+      // Mas podemos criar um gradiente se necessário
+      if (shift.user_ids.length === 1) {
+        return getUserColor(shift.user_ids[0]);
+      } else {
+        // Para múltiplos usuários, usa a cor do primeiro
+        // ou cria um gradiente (vamos usar a cor do primeiro por simplicidade)
+        return getUserColor(shift.user_ids[0]);
+      }
+    }
+    // Cor padrão se não houver usuários
+    return '#f97316';
+  };
+
+  // Função para obter ID do usuário pelo email (para relatórios)
+  const getUserIdByEmail = (email: string): number | null => {
+    const user = allUsers.find(u => u.email === email);
+    return user ? user.id : null;
+  };
 
   // Obter início e fim do período atual
   const getPeriodRange = () => {
@@ -158,6 +206,18 @@ export default function ShiftCalendar() {
     }
   };
 
+  // Função para converter hex para RGB
+  const hexToRgb = (hex: string): [number, number, number] => {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result
+      ? [
+          parseInt(result[1], 16),
+          parseInt(result[2], 16),
+          parseInt(result[3], 16)
+        ]
+      : [249, 115, 22]; // Fallback para laranja
+  };
+
   // Gerar PDF do relatório
   const generatePDF = () => {
     if (!reportData) return;
@@ -179,7 +239,6 @@ export default function ShiftCalendar() {
     const textSecondary = [100, 100, 100];
     const borderColor = [220, 220, 230];
     const bgLight = [250, 250, 255];
-    const shiftColor = [249, 115, 22]; // Laranja para plantões
 
     // Função para nova página
     const addPageIfNeeded = (space: number) => {
@@ -231,6 +290,46 @@ export default function ShiftCalendar() {
     doc.setTextColor(textSecondary[0], textSecondary[1], textSecondary[2]);
     doc.text(`Período: ${reportData.monthName}`, margin, yPos);
     yPos += 8;
+
+    // Legenda de cores (se houver usuários)
+    if (reportData.users.length > 0 && allUsers.length > 0) {
+      const legendUsers = reportData.users.slice(0, 8); // Limitar a 8 usuários na legenda
+      if (legendUsers.length > 0) {
+        doc.setFontSize(7);
+        doc.setTextColor(textSecondary[0], textSecondary[1], textSecondary[2]);
+        doc.text('Legenda de Cores:', margin, yPos);
+        yPos += 5;
+        
+        const legendItemWidth = contentWidth / Math.min(legendUsers.length, 4);
+        let legendX = margin;
+        let legendRow = 0;
+        
+        legendUsers.forEach((user, idx) => {
+          if (idx > 0 && idx % 4 === 0) {
+            legendRow++;
+            legendX = margin;
+            yPos += 5;
+          }
+          
+          const userId = getUserIdByEmail(user.email);
+          const userColor = userId !== null ? hexToRgb(getUserColor(userId)) : [249, 115, 22];
+          
+          // Círculo colorido
+          doc.setFillColor(userColor[0], userColor[1], userColor[2]);
+          doc.circle(legendX + 2, yPos + 1.5, 1.5, 'F');
+          
+          // Nome do usuário (truncado se muito longo)
+          doc.setFontSize(6);
+          doc.setTextColor(textColor[0], textColor[1], textColor[2]);
+          const userName = user.name.length > 15 ? user.name.substring(0, 12) + '...' : user.name;
+          doc.text(userName, legendX + 5, yPos + 2);
+          
+          legendX += legendItemWidth;
+        });
+        
+        yPos += 8;
+      }
+    }
 
     // Linha divisória
     doc.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
@@ -326,8 +425,10 @@ export default function ShiftCalendar() {
           doc.rect(margin, yPos - 1, contentWidth, 8, 'F');
         }
 
-        // Indicador colorido
-        doc.setFillColor(shiftColor[0], shiftColor[1], shiftColor[2]);
+        // Indicador colorido baseado no usuário
+        const userId = getUserIdByEmail(user.email);
+        const userColor = userId !== null ? hexToRgb(getUserColor(userId)) : [249, 115, 22];
+        doc.setFillColor(userColor[0], userColor[1], userColor[2]);
         doc.circle(margin + 4, yPos + 3, 2, 'F');
 
         doc.setTextColor(textColor[0], textColor[1], textColor[2]);
@@ -360,10 +461,14 @@ export default function ShiftCalendar() {
       reportData.users.forEach((user) => {
         addPageIfNeeded(50);
 
-        // Título da seção
+        // Obter cor do usuário
+        const userId = getUserIdByEmail(user.email);
+        const userColor = userId !== null ? hexToRgb(getUserColor(userId)) : [249, 115, 22];
+
+        // Título da seção com cor do usuário
         doc.setFontSize(12);
         doc.setFont('helvetica', 'bold');
-        doc.setTextColor(textColor[0], textColor[1], textColor[2]);
+        doc.setTextColor(userColor[0], userColor[1], userColor[2]);
         doc.text(user.name, margin, yPos);
 
         yPos += 7;
@@ -382,8 +487,9 @@ export default function ShiftCalendar() {
         );
 
         yPos += 8;
-        doc.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
-        doc.setLineWidth(0.3);
+        // Linha divisória com cor do usuário
+        doc.setDrawColor(userColor[0], userColor[1], userColor[2]);
+        doc.setLineWidth(0.5);
         doc.line(margin, yPos, pageWidth - margin, yPos);
         yPos += 6;
 
@@ -400,8 +506,8 @@ export default function ShiftCalendar() {
           doc.setLineWidth(0.3);
           doc.roundedRect(margin, yPos - 3, contentWidth, 20, 2, 2, 'FD');
 
-          // Barra lateral colorida
-          doc.setFillColor(shiftColor[0], shiftColor[1], shiftColor[2]);
+          // Barra lateral colorida com cor do usuário
+          doc.setFillColor(userColor[0], userColor[1], userColor[2]);
           doc.rect(margin, yPos - 3, 3, 20, 'F');
 
           // Título do plantão
@@ -426,9 +532,9 @@ export default function ShiftCalendar() {
             yPos + 12
           );
 
-          // Duração
+          // Duração com cor do usuário
           doc.setFont('helvetica', 'bold');
-          doc.setTextColor(shiftColor[0], shiftColor[1], shiftColor[2]);
+          doc.setTextColor(userColor[0], userColor[1], userColor[2]);
           doc.text(
             `Duração: ${shift.hours.toFixed(2)}h`,
             margin + contentWidth - 4,
@@ -549,10 +655,30 @@ export default function ShiftCalendar() {
     
     try {
       await axios.delete(`/api/shifts/${shiftId}`);
-      fetchData();
-    } catch (error) {
+      
+      // Fechar modal se estiver aberto
+      if (showShiftModal) {
+        setShowShiftModal(false);
+        setSelectedShift(null);
+      }
+      
+      // Atualizar dados do servidor baseado no modo atual
+      if (tabMode === 'calendar') {
+        // Recarregar dados do calendário
+        await fetchData();
+      } else {
+        // Se estiver no modo relatório, recarregar os dados do relatório
+        await fetchReportData();
+      }
+    } catch (error: any) {
       console.error('Erro ao deletar plantão:', error);
-      alert('Erro ao deletar plantão');
+      alert(error.response?.data?.error || 'Erro ao deletar plantão');
+      // Em caso de erro, recarregar os dados para garantir consistência
+      if (tabMode === 'calendar') {
+        await fetchData();
+      } else {
+        await fetchReportData();
+      }
     }
   };
 
@@ -595,10 +721,15 @@ export default function ShiftCalendar() {
     const weekDays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
     
     // Dias do mês anterior (para preencher primeira semana)
-    const prevMonth = new Date(year, month - 1, 0);
+    // Corrigido: calcular corretamente o último dia do mês anterior
+    const prevMonthLastDay = new Date(year, month, 0); // Último dia do mês anterior
+    const prevMonthDaysCount = prevMonthLastDay.getDate();
+    
+    // Preencher dias do mês anterior começando do último dia
     for (let i = startingDayOfWeek - 1; i >= 0; i--) {
+      const dayNumber = prevMonthDaysCount - i;
       days.push({
-        date: new Date(year, month - 1, prevMonth.getDate() - i),
+        date: new Date(year, month - 1, dayNumber),
         isCurrentMonth: false
       });
     }
@@ -621,15 +752,25 @@ export default function ShiftCalendar() {
     }
     
     return (
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '1px', backgroundColor: 'var(--border-primary)' }}>
+      <div style={{ 
+        display: 'grid', 
+        gridTemplateColumns: 'repeat(7, 1fr)', 
+        gap: '2px', 
+        backgroundColor: 'var(--border-primary)',
+        borderRadius: 'var(--radius-md)',
+        overflow: 'hidden',
+        border: '1px solid var(--border-primary)'
+      }}>
         {weekDays.map(day => (
           <div key={day} style={{
-            padding: 'var(--spacing-sm)',
+            padding: 'var(--spacing-md)',
             backgroundColor: 'var(--bg-secondary)',
             fontWeight: '600',
             fontSize: '0.875rem',
             textAlign: 'center',
-            color: 'var(--text-secondary)'
+            color: 'var(--text-secondary)',
+            textTransform: 'uppercase',
+            letterSpacing: '0.05em'
           }}>
             {day}
           </div>
@@ -637,6 +778,8 @@ export default function ShiftCalendar() {
         {days.map((day, index) => {
           const dayShifts = getShiftsForDay(day.date);
           const isToday = day.date.toDateString() === new Date().toDateString();
+          const holidayName = getHolidayName(day.date);
+          const isWeekend = day.date.getDay() === 0 || day.date.getDay() === 6;
           
           return (
             <div
@@ -644,53 +787,144 @@ export default function ShiftCalendar() {
               onClick={() => canCreate && openCreateModal(day.date)}
               style={{
                 cursor: canCreate ? 'pointer' : 'default',
-                minHeight: '120px',
-                padding: 'var(--spacing-xs)',
-                backgroundColor: 'var(--bg-primary)',
-                border: isToday ? '2px solid var(--purple)' : 'none',
+                minHeight: '140px',
+                padding: 'var(--spacing-sm)',
+                backgroundColor: day.isCurrentMonth ? 'var(--bg-primary)' : 'var(--bg-tertiary)',
+                border: isToday ? '2px solid var(--purple)' : '1px solid transparent',
+                borderRadius: isToday ? 'var(--radius-sm)' : '0',
                 position: 'relative',
-                opacity: day.isCurrentMonth ? 1 : 0.4
+                opacity: day.isCurrentMonth ? 1 : 0.35,
+                transition: 'all var(--transition-base)',
+                display: 'flex',
+                flexDirection: 'column'
+              }}
+              onMouseEnter={(e) => {
+                if (canCreate && day.isCurrentMonth) {
+                  e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
+                  e.currentTarget.style.transform = 'scale(1.02)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (day.isCurrentMonth) {
+                  e.currentTarget.style.backgroundColor = 'var(--bg-primary)';
+                  e.currentTarget.style.transform = 'scale(1)';
+                }
               }}
             >
               <div style={{
-                fontWeight: isToday ? '700' : '500',
-                fontSize: '0.875rem',
-                marginBottom: 'var(--spacing-xs)',
-                color: isToday ? 'var(--purple)' : 'var(--text-primary)'
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: 'var(--spacing-xs)'
               }}>
-                {day.date.getDate()}
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                {dayShifts.slice(0, 3).map(shift => (
-                  <div
-                    key={shift.id}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (canEdit) {
-                        openEditModal(shift);
-                      }
-                    }}
-                    style={{
-                      fontSize: '0.75rem',
-                      padding: '2px 4px',
-                      borderRadius: '2px',
-                      backgroundColor: '#f97316',
-                      color: 'white',
-                      cursor: 'pointer',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap'
-                    }}
-                    title={shift.title || `Plantão - ${shift.user_names.join(', ')}`}
-                  >
-                    {shift.title || `Plantão: ${shift.user_names.slice(0, 2).join(', ')}${shift.user_names.length > 2 ? '...' : ''}`}
+                <div style={{
+                  fontWeight: isToday ? '700' : '600',
+                  fontSize: isToday ? '1rem' : '0.875rem',
+                  color: isToday 
+                    ? 'var(--purple)' 
+                    : isWeekend && day.isCurrentMonth
+                    ? 'var(--text-secondary)'
+                    : 'var(--text-primary)',
+                  backgroundColor: isToday ? 'var(--purple-light)' : 'transparent',
+                  borderRadius: 'var(--radius-full)',
+                  width: isToday ? '28px' : '24px',
+                  height: isToday ? '28px' : '24px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>
+                  {day.date.getDate()}
+                </div>
+                {dayShifts.length > 0 && (
+                  <div style={{
+                    fontSize: '0.7rem',
+                    color: 'var(--text-tertiary)',
+                    backgroundColor: 'var(--bg-secondary)',
+                    borderRadius: 'var(--radius-full)',
+                    padding: '2px 6px',
+                    fontWeight: '600'
+                  }}>
+                    {dayShifts.length}
                   </div>
-                ))}
+                )}
+              </div>
+              {holidayName && day.isCurrentMonth && (
+                <div style={{
+                  fontSize: '0.65rem',
+                  color: 'var(--purple)',
+                  fontStyle: 'italic',
+                  marginBottom: '4px',
+                  lineHeight: '1.2',
+                  fontWeight: '500'
+                }}>
+                  {holidayName}
+                </div>
+              )}
+              <div style={{ 
+                display: 'flex', 
+                flexDirection: 'column', 
+                gap: '3px',
+                flex: 1,
+                overflow: 'hidden'
+              }}>
+                {dayShifts.slice(0, 3).map(shift => {
+                  const shiftColor = getShiftColor(shift);
+                  return (
+                    <div
+                      key={shift.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (canEdit) {
+                          openEditModal(shift);
+                        }
+                      }}
+                      style={{
+                        fontSize: '0.7rem',
+                        padding: '4px 6px',
+                        borderRadius: 'var(--radius-sm)',
+                        backgroundColor: shiftColor,
+                        color: 'white',
+                        cursor: 'pointer',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        fontWeight: '500',
+                        transition: 'all var(--transition-base)',
+                        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.3)',
+                        position: 'relative'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.transform = 'translateX(2px)';
+                        e.currentTarget.style.boxShadow = '0 2px 6px rgba(0, 0, 0, 0.4)';
+                        e.currentTarget.style.opacity = '0.9';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.transform = 'translateX(0)';
+                        e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.3)';
+                        e.currentTarget.style.opacity = '1';
+                      }}
+                      title={shift.title || `Plantão - ${shift.user_names.join(', ')}`}
+                    >
+                      {shift.user_ids && shift.user_ids.length > 1 && (
+                        <span style={{
+                          fontSize: '0.6rem',
+                          marginRight: '4px',
+                          opacity: 0.9
+                        }}>
+                          👥
+                        </span>
+                      )}
+                      {shift.title || `Plantão: ${shift.user_names.slice(0, 2).join(', ')}${shift.user_names.length > 2 ? '...' : ''}`}
+                    </div>
+                  );
+                })}
                 {dayShifts.length > 3 && (
                   <div style={{
-                    fontSize: '0.75rem',
+                    fontSize: '0.7rem',
                     color: 'var(--text-secondary)',
-                    padding: '2px 4px'
+                    padding: '4px 6px',
+                    fontStyle: 'italic',
+                    textAlign: 'center'
                   }}>
                     +{dayShifts.length - 3} mais
                   </div>
@@ -783,49 +1017,58 @@ export default function ShiftCalendar() {
               </div>
               
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                {dayShifts.map(shift => (
-                  <div
-                    key={shift.id}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (canEdit) {
-                        openEditModal(shift);
-                      }
-                    }}
-                    style={{
-                      fontSize: '0.75rem',
-                      padding: '6px 8px',
-                      borderRadius: 'var(--radius-sm)',
-                      backgroundColor: '#f97316',
-                      color: 'white',
-                      cursor: 'pointer',
-                      transition: 'all var(--transition-base)'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.opacity = '0.9';
-                      e.currentTarget.style.transform = 'scale(1.02)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.opacity = '1';
-                      e.currentTarget.style.transform = 'scale(1)';
-                    }}
-                    title={shift.title || `Plantão - ${shift.user_names.join(', ')}`}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px' }}>
-                      <span style={{ fontWeight: '600' }}>{shift.title || 'Plantão'}</span>
+                {dayShifts.map(shift => {
+                  const shiftColor = getShiftColor(shift);
+                  return (
+                    <div
+                      key={shift.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (canEdit) {
+                          openEditModal(shift);
+                        }
+                      }}
+                      style={{
+                        fontSize: '0.75rem',
+                        padding: '6px 8px',
+                        borderRadius: 'var(--radius-sm)',
+                        backgroundColor: shiftColor,
+                        color: 'white',
+                        cursor: 'pointer',
+                        transition: 'all var(--transition-base)',
+                        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.3)'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.opacity = '0.9';
+                        e.currentTarget.style.transform = 'scale(1.02)';
+                        e.currentTarget.style.boxShadow = '0 2px 6px rgba(0, 0, 0, 0.4)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.opacity = '1';
+                        e.currentTarget.style.transform = 'scale(1)';
+                        e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.3)';
+                      }}
+                      title={shift.title || `Plantão - ${shift.user_names.join(', ')}`}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px' }}>
+                        {shift.user_ids && shift.user_ids.length > 1 && (
+                          <span style={{ fontSize: '0.7rem', opacity: 0.9 }}>👥</span>
+                        )}
+                        <span style={{ fontWeight: '600' }}>{shift.title || 'Plantão'}</span>
+                      </div>
+                      {shift.start_time && (
+                        <div style={{ fontSize: '0.7rem', opacity: 0.9 }}>
+                          {new Date(shift.start_time).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} - {new Date(shift.end_time).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                      )}
+                      {shift.user_names && shift.user_names.length > 0 && (
+                        <div style={{ fontSize: '0.7rem', opacity: 0.9, marginTop: '2px' }}>
+                          {shift.user_names.slice(0, 2).join(', ')}{shift.user_names.length > 2 ? ` +${shift.user_names.length - 2}` : ''}
+                        </div>
+                      )}
                     </div>
-                    {shift.start_time && (
-                      <div style={{ fontSize: '0.7rem', opacity: 0.9 }}>
-                        {new Date(shift.start_time).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} - {new Date(shift.end_time).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                      </div>
-                    )}
-                    {shift.user_names && shift.user_names.length > 0 && (
-                      <div style={{ fontSize: '0.7rem', opacity: 0.9, marginTop: '2px' }}>
-                        {shift.user_names.slice(0, 2).join(', ')}{shift.user_names.length > 2 ? ` +${shift.user_names.length - 2}` : ''}
-                      </div>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
                 {dayShifts.length === 0 && canCreate && (
                   <div
                     onClick={() => openCreateModal(date)}
@@ -854,6 +1097,7 @@ export default function ShiftCalendar() {
   const renderDayView = () => {
     const dayShifts = getShiftsForDay(currentDate);
     const isToday = currentDate.toDateString() === new Date().toDateString();
+    const holidayName = getHolidayName(currentDate);
     
     // Ordenar plantões por hora
     const sortedShifts = [...dayShifts].sort((a, b) => {
@@ -885,6 +1129,17 @@ export default function ShiftCalendar() {
           }}>
             {sortedShifts.length} {sortedShifts.length === 1 ? 'plantão' : 'plantões'} agendado{sortedShifts.length !== 1 ? 's' : ''}
           </div>
+          {holidayName && (
+            <div style={{
+              fontSize: '0.75rem',
+              color: 'var(--text-tertiary)',
+              fontStyle: 'italic',
+              marginTop: 'var(--spacing-xs)',
+              opacity: 0.8
+            }}>
+              🎉 {holidayName}
+            </div>
+          )}
         </div>
         
         {sortedShifts.length === 0 ? (
@@ -912,6 +1167,7 @@ export default function ShiftCalendar() {
             {sortedShifts.map(shift => {
               const startTime = new Date(shift.start_time);
               const endTime = new Date(shift.end_time);
+              const shiftColor = getShiftColor(shift);
               
               return (
                 <div
@@ -921,7 +1177,7 @@ export default function ShiftCalendar() {
                   style={{
                     padding: 'var(--spacing-md)',
                     cursor: canEdit ? 'pointer' : 'default',
-                    borderLeft: '4px solid #f97316',
+                    borderLeft: `4px solid ${shiftColor}`,
                     transition: 'all var(--transition-base)'
                   }}
                   onMouseEnter={(e) => {
@@ -1232,6 +1488,8 @@ export default function ShiftCalendar() {
                   {user.shifts.map((shift, shiftIndex) => {
                     const startDate = new Date(shift.start_time);
                     const endDate = new Date(shift.end_time);
+                    const userId = getUserIdByEmail(user.email);
+                    const userColor = userId !== null ? getUserColor(userId) : '#f97316';
                     
                     return (
                       <div 
@@ -1240,7 +1498,7 @@ export default function ShiftCalendar() {
                           padding: 'var(--spacing-sm)',
                           backgroundColor: 'var(--bg-secondary)',
                           borderRadius: 'var(--radius-sm)',
-                          borderLeft: '4px solid #f97316'
+                          borderLeft: `4px solid ${userColor}`
                         }}
                       >
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--spacing-sm)' }}>
@@ -1262,7 +1520,7 @@ export default function ShiftCalendar() {
                           <div style={{ 
                             padding: '4px 12px',
                             borderRadius: 'var(--radius-sm)',
-                            backgroundColor: '#f97316',
+                            backgroundColor: userColor,
                             color: 'white',
                             fontWeight: '600',
                             fontSize: '0.875rem'
@@ -1588,7 +1846,11 @@ export default function ShiftCalendar() {
                 </button>
                 {selectedShift && canDelete && (
                   <button
-                    onClick={() => deleteShift(selectedShift.id)}
+                    onClick={async () => {
+                      if (confirm('Tem certeza que deseja excluir este plantão?')) {
+                        await deleteShift(selectedShift.id);
+                      }
+                    }}
                     className="btn btn-danger"
                   >
                     <Trash2 size={18} />

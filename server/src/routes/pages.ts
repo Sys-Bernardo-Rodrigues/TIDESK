@@ -31,9 +31,8 @@ router.get('/', authenticate, requirePermission(RESOURCES.PAGES, ACTIONS.VIEW), 
              (SELECT COUNT(*) FROM page_buttons pb WHERE pb.page_id = p.id) as buttons_count
       FROM pages p
       LEFT JOIN users u ON p.created_by = u.id
-      WHERE p.created_by = ?
       ORDER BY p.created_at DESC
-    `, [req.userId]);
+    `);
 
     // Buscar botões de cada página
     const pagesWithButtons = await Promise.all(pages.map(async (page: any) => {
@@ -68,14 +67,14 @@ router.get('/', authenticate, requirePermission(RESOURCES.PAGES, ACTIONS.VIEW), 
 });
 
 // Obter página específica (requer autenticação)
-router.get('/:id', authenticate, async (req: AuthRequest, res) => {
+router.get('/:id', authenticate, requirePermission(RESOURCES.PAGES, ACTIONS.VIEW), async (req: AuthRequest, res) => {
   try {
     const page = await dbGet(`
       SELECT p.*, u.name as created_by_name
       FROM pages p
       LEFT JOIN users u ON p.created_by = u.id
-      WHERE p.id = ? AND p.created_by = ?
-    `, [req.params.id, req.userId]);
+      WHERE p.id = ?
+    `, [req.params.id]);
 
     if (!page) {
       return res.status(404).json({ error: 'Página não encontrada' });

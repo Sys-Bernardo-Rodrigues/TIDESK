@@ -1,12 +1,13 @@
 import express from 'express';
 import { body, validationResult } from 'express-validator';
-import { authenticate, AuthRequest, requireAdmin } from '../middleware/auth';
+import { authenticate, AuthRequest } from '../middleware/auth';
+import { requirePermission, RESOURCES, ACTIONS } from '../middleware/permissions';
 import { dbGet, dbAll, dbRun, getBrasiliaTimestamp } from '../database';
 
 const router = express.Router();
 
 // Listar grupos
-router.get('/', authenticate, requireAdmin, async (req: AuthRequest, res) => {
+router.get('/', authenticate, requirePermission(RESOURCES.CONFIG, ACTIONS.VIEW), async (req: AuthRequest, res) => {
   try {
     const groups = await dbAll(`
       SELECT g.*,
@@ -41,7 +42,7 @@ router.get('/', authenticate, requireAdmin, async (req: AuthRequest, res) => {
 });
 
 // Obter grupo específico
-router.get('/:id', authenticate, requireAdmin, async (req: AuthRequest, res) => {
+router.get('/:id', authenticate, requirePermission(RESOURCES.CONFIG, ACTIONS.VIEW), async (req: AuthRequest, res) => {
   try {
     const group = await dbGet(`
       SELECT g.*, u.name as created_by_name
@@ -75,7 +76,7 @@ router.get('/:id', authenticate, requireAdmin, async (req: AuthRequest, res) => 
 // Criar grupo
 router.post('/', [
   authenticate,
-  requireAdmin,
+  requirePermission(RESOURCES.CONFIG, ACTIONS.CREATE),
   body('name').notEmpty().withMessage('Nome é obrigatório')
 ], async (req: AuthRequest, res) => {
   try {
@@ -112,7 +113,7 @@ router.post('/', [
 // Atualizar grupo
 router.put('/:id', [
   authenticate,
-  requireAdmin,
+  requirePermission(RESOURCES.CONFIG, ACTIONS.EDIT),
   body('name').notEmpty().withMessage('Nome é obrigatório')
 ], async (req: AuthRequest, res) => {
   try {
@@ -152,7 +153,7 @@ router.put('/:id', [
 });
 
 // Excluir grupo
-router.delete('/:id', authenticate, requireAdmin, async (req: AuthRequest, res) => {
+router.delete('/:id', authenticate, requirePermission(RESOURCES.CONFIG, ACTIONS.DELETE), async (req: AuthRequest, res) => {
   try {
     const group = await dbGet('SELECT id FROM groups WHERE id = ?', [req.params.id]);
     if (!group) {
@@ -172,7 +173,7 @@ router.delete('/:id', authenticate, requireAdmin, async (req: AuthRequest, res) 
 // Vincular usuário a grupo
 router.post('/:id/users', [
   authenticate,
-  requireAdmin,
+  requirePermission(RESOURCES.CONFIG, ACTIONS.EDIT),
   body('userId').isInt().withMessage('ID do usuário é obrigatório')
 ], async (req: AuthRequest, res) => {
   try {
@@ -216,7 +217,7 @@ router.post('/:id/users', [
 });
 
 // Desvincular usuário de grupo
-router.delete('/:id/users/:userId', authenticate, requireAdmin, async (req: AuthRequest, res) => {
+router.delete('/:id/users/:userId', authenticate, requirePermission(RESOURCES.CONFIG, ACTIONS.EDIT), async (req: AuthRequest, res) => {
   try {
     await dbRun(`
       DELETE FROM group_users

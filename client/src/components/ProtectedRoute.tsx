@@ -7,13 +7,15 @@ interface ProtectedRouteProps {
   resource: string;
   action: string;
   fallback?: React.ReactNode;
+  alternativePermissions?: Array<{ resource: string; action: string }>;
 }
 
 export default function ProtectedRoute({ 
   children, 
   resource, 
   action,
-  fallback 
+  fallback,
+  alternativePermissions = []
 }: ProtectedRouteProps) {
   const { user, loading: authLoading } = useAuth();
   const { hasPermission, hasPageAccess, getAllowedPages, loading: permLoading } = usePermissions();
@@ -85,7 +87,12 @@ export default function ProtectedRoute({
     );
   }
 
-  if (!hasPermission(resource, action)) {
+  // Verificar permissão principal ou permissões alternativas
+  const hasMainPermission = hasPermission(resource, action);
+  const hasAlternativePermission = alternativePermissions.length > 0 && 
+    alternativePermissions.some(alt => hasPermission(alt.resource, alt.action));
+  
+  if (!hasMainPermission && !hasAlternativePermission) {
     if (fallback) {
       return <>{fallback}</>;
     }
@@ -125,6 +132,17 @@ export default function ProtectedRoute({
             fontSize: '0.875rem'
           }}>
             Permissão necessária: <strong>{resource}:{action}</strong>
+            {alternativePermissions.length > 0 && (
+              <>
+                {' ou '}
+                {alternativePermissions.map((alt, idx) => (
+                  <span key={idx}>
+                    {idx > 0 && ' ou '}
+                    <strong>{alt.resource}:{alt.action}</strong>
+                  </span>
+                ))}
+              </>
+            )}
           </p>
         </div>
       </div>

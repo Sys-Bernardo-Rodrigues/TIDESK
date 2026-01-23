@@ -117,9 +117,18 @@ router.use(authenticate);
 // Listar tickets pendentes de aprovação (ANTES de /:id)
 router.get('/pending-approval', requirePermission(RESOURCES.APPROVE, ACTIONS.VIEW), async (req: AuthRequest, res) => {
   try {
+    // Buscar grupos do usuário atual
+    let userGroupIds: number[] = [];
+    const userGroups = await dbAll(`
+      SELECT group_id 
+      FROM group_users 
+      WHERE user_id = ?
+    `, [req.userId]);
+    userGroupIds = (userGroups as any[]).map(g => g.group_id);
+
     // Buscar apenas tickets com status pending_approval
-    // Tickets aprovados mudam para status 'open', então não devem aparecer aqui
-    const tickets = await dbAll(`
+    // Onde o formulário está vinculado ao usuário atual ou a um grupo do qual ele faz parte
+    let query = `
       SELECT t.*, 
              u.name as user_name, 
              u.email as user_email,
@@ -135,14 +144,26 @@ router.get('/pending-approval', requirePermission(RESOURCES.APPROVE, ACTIONS.VIE
       LEFT JOIN users lu ON f.linked_user_id = lu.id
       LEFT JOIN groups lg ON f.linked_group_id = lg.id
       WHERE t.status = 'pending_approval'
+        AND f.id IS NOT NULL
+        AND (
+          f.linked_user_id = ?
+          ${userGroupIds.length > 0 ? `OR f.linked_group_id IN (${userGroupIds.map(() => '?').join(',')})` : 'OR 1=0'}
+        )
       ORDER BY t.created_at DESC
-    `);
+    `;
 
-    console.log(`[Pending Approval] Encontrados ${tickets.length} tickets pendentes de aprovação`);
+    const params: any[] = [req.userId];
+    if (userGroupIds.length > 0) {
+      params.push(...userGroupIds);
+    }
+
+    const tickets = await dbAll(query, params);
+
+    console.log(`[Pending Approval] Usuário ${req.userId} - Encontrados ${tickets.length} tickets pendentes de aprovação vinculados ao usuário/grupo`);
     
     // Log detalhado para debug
     tickets.forEach((ticket: any) => {
-      console.log(`[Pending Approval] Ticket #${ticket.id}: status=${ticket.status}, needs_approval=${ticket.needs_approval}, form_id=${ticket.form_id}, linked_user_id=${ticket.linked_user_id}, linked_group_id=${ticket.linked_group_id}`);
+      console.log(`[Pending Approval] Ticket #${ticket.id}: status=${ticket.status}, form_id=${ticket.form_id}, linked_user_id=${ticket.linked_user_id}, linked_group_id=${ticket.linked_group_id}`);
     });
 
     res.json(tickets);
@@ -153,7 +174,7 @@ router.get('/pending-approval', requirePermission(RESOURCES.APPROVE, ACTIONS.VIE
 });
 
 // Listar tickets em tratamento (ANTES de /:id)
-router.get('/in-treatment', async (req: AuthRequest, res) => {
+router.get('/in-treatment', requirePermission(RESOURCES.TRACK, ACTIONS.VIEW), async (req: AuthRequest, res) => {
   try {
     // Buscar grupos do usuário atual
     let userGroupIds: number[] = [];
@@ -163,6 +184,12 @@ router.get('/in-treatment', async (req: AuthRequest, res) => {
       WHERE user_id = ?
     `, [req.userId]);
     userGroupIds = (userGroups as any[]).map(g => g.group_id);
+
+    // Construir condição de vinculação (usuário ou grupo)
+    const linkedCondition = `(
+      f.linked_user_id = ?
+      ${userGroupIds.length > 0 ? `OR f.linked_group_id IN (${userGroupIds.map(() => '?').join(',')})` : 'OR 1=0'}
+    )`;
 
     let query = `
       SELECT DISTINCT t.*, 
@@ -179,48 +206,22 @@ router.get('/in-treatment', async (req: AuthRequest, res) => {
       LEFT JOIN users a ON t.assigned_to = a.id
       LEFT JOIN categories c ON t.category_id = c.id
       LEFT JOIN forms f ON t.form_id = f.id
-      WHERE (
-        t.status IN ('open', 'in_progress')
-        OR (
-          t.status = 'closed'
-          AND f.id IS NOT NULL
-          AND (
-            f.linked_user_id = ?
-            ${userGroupIds.length > 0 ? `OR f.linked_group_id IN (${userGroupIds.map(() => '?').join(',')})` : 'OR 1=0'}
-          )
-        )
-      )
+      WHERE t.status IN ('open', 'in_progress', 'closed', 'rejected')
+        AND f.id IS NOT NULL
+        AND ${linkedCondition}
     `;
-    const params: any[] = [req.userId];
     
+    const params: any[] = [req.userId];
     if (userGroupIds.length > 0) {
       params.push(...userGroupIds);
-    }
-
-    // Filtros baseados no papel do usuário
-    if (req.userRole === 'user') {
-      // Para usuários, mostrar apenas seus próprios tickets abertos/em progresso
-      // OU tickets fechados que foram aprovados por eles (via formulário vinculado)
-      query += ` AND (
-        (t.status IN ('open', 'in_progress') AND t.user_id = ?)
-        OR (
-          t.status = 'closed'
-          AND f.id IS NOT NULL
-          AND (
-            f.linked_user_id = ?
-            ${userGroupIds.length > 0 ? `OR f.linked_group_id IN (${userGroupIds.map(() => '?').join(',')})` : 'OR 1=0'}
-          )
-        )
-      )`;
-      params.push(req.userId, req.userId);
-      if (userGroupIds.length > 0) {
-        params.push(...userGroupIds);
-      }
     }
 
     query += ' ORDER BY t.created_at DESC';
 
     const tickets = await dbAll(query, params);
+    
+    console.log(`[In Treatment] Usuário ${req.userId} - Grupos: [${userGroupIds.join(', ')}] - Encontrados ${tickets.length} tickets vinculados ao usuário/grupo`);
+    
     res.json(tickets);
   } catch (error) {
     console.error('Erro ao buscar tickets em tratamento:', error);
@@ -229,7 +230,7 @@ router.get('/in-treatment', async (req: AuthRequest, res) => {
 });
 
 // Listar tickets
-router.get('/', async (req: AuthRequest, res) => {
+router.get('/', requirePermission(RESOURCES.TICKETS, ACTIONS.VIEW), async (req: AuthRequest, res) => {
   try {
     let query = `
       SELECT t.*, 
@@ -275,7 +276,7 @@ router.get('/', async (req: AuthRequest, res) => {
 });
 
 // Obter ticket específico
-router.get('/:id', async (req: AuthRequest, res) => {
+router.get('/:id', requirePermission(RESOURCES.TICKETS, ACTIONS.VIEW), async (req: AuthRequest, res) => {
   try {
     console.log(`[GET /:id] Recebido ID: ${req.params.id}, length: ${req.params.id.length}, isNaN: ${isNaN(Number(req.params.id))}`);
     
@@ -301,6 +302,14 @@ router.get('/:id', async (req: AuthRequest, res) => {
       return res.status(404).json({ error: 'Ticket não encontrado' });
     }
     
+    // Verificar permissões do usuário
+    const { getUserPermissions } = await import('../middleware/permissions');
+    const userPermissions = await getUserPermissions(req.userId!);
+    
+    const hasTicketsView = userPermissions.has('tickets:view');
+    const hasApproveView = userPermissions.has('approve:view');
+    const hasTrackView = userPermissions.has('track:view');
+    
     let query = `
       SELECT t.*, 
              u.name as user_name, 
@@ -318,11 +327,15 @@ router.get('/:id', async (req: AuthRequest, res) => {
     `;
     const params: any[] = [ticketId];
 
-    // Verificar permissão
-    if (req.userRole === 'user') {
+    // Verificar permissão baseado no papel e permissões do usuário
+    // Se o usuário tem permissão de tickets:view, approve:view ou track:view, pode acessar
+    // Caso contrário, só pode ver seus próprios tickets
+    if (req.userRole === 'user' && !hasTicketsView && !hasApproveView && !hasTrackView) {
+      // Usuário sem permissões especiais só pode ver seus próprios tickets
       query += ' AND t.user_id = ?';
       params.push(req.userId);
     }
+    // Se tem approve:view ou track:view, pode acessar qualquer ticket (sem restrição adicional)
 
     const ticket = await dbGet(query, params);
     if (!ticket) {
@@ -337,6 +350,8 @@ router.get('/:id', async (req: AuthRequest, res) => {
 
 // Criar ticket
 router.post('/', [
+  authenticate,
+  requirePermission(RESOURCES.TICKETS, ACTIONS.CREATE),
   body('title').notEmpty().withMessage('Título é obrigatório'),
   body('description').notEmpty().withMessage('Descrição é obrigatória'),
   body('priority').isIn(['low', 'medium', 'high', 'urgent']).withMessage('Prioridade inválida')
@@ -438,10 +453,10 @@ router.post('/:id/reject', authenticate, requirePermission(RESOURCES.APPROVE, AC
       return res.status(400).json({ error: 'Ticket não está pendente de aprovação' });
     }
 
-    // Atualizar status para 'closed'
+    // Atualizar status para 'rejected'
     await dbRun(
       'UPDATE tickets SET status = ?, updated_at = ? WHERE id = ?',
-      ['closed', getBrasiliaTimestamp(), ticketId]
+      ['rejected', getBrasiliaTimestamp(), ticketId]
     );
 
     res.json({ message: 'Ticket rejeitado com sucesso' });
@@ -453,7 +468,9 @@ router.post('/:id/reject', authenticate, requirePermission(RESOURCES.APPROVE, AC
 
 // Atualizar ticket
 router.put('/:id', [
-  body('status').optional().isIn(['open', 'in_progress', 'resolved', 'closed', 'pending_approval', 'scheduled']),
+  authenticate,
+  requirePermission(RESOURCES.TICKETS, ACTIONS.EDIT),
+  body('status').optional().isIn(['open', 'in_progress', 'resolved', 'closed', 'pending_approval', 'scheduled', 'rejected']),
   body('priority').optional().isIn(['low', 'medium', 'high', 'urgent'])
 ], async (req: AuthRequest, res) => {
   try {
@@ -537,7 +554,7 @@ router.put('/:id', [
 });
 
 // Buscar anexos de um ticket
-router.get('/:id/attachments', async (req: AuthRequest, res) => {
+router.get('/:id/attachments', requirePermission(RESOURCES.TICKETS, ACTIONS.VIEW), async (req: AuthRequest, res) => {
   try {
     const ticketId = await getTicketIdFromFullId(req.params.id);
     if (!ticketId) {
@@ -580,7 +597,9 @@ router.get('/:id/attachments', async (req: AuthRequest, res) => {
 
 // Deletar ticket (apenas admin)
 // Agendar ticket
-router.post('/:id/schedule', requireAgent, [
+router.post('/:id/schedule', [
+  authenticate,
+  requirePermission(RESOURCES.TICKETS, ACTIONS.EDIT),
   body('scheduled_at').notEmpty().withMessage('Data e horário de agendamento são obrigatórios'),
   body('scheduled_at').isISO8601().withMessage('Data e horário devem estar no formato ISO 8601')
 ], async (req: AuthRequest, res) => {
@@ -630,7 +649,7 @@ router.post('/:id/schedule', requireAgent, [
 });
 
 // Cancelar agendamento de ticket
-router.post('/:id/unschedule', requireAgent, async (req: AuthRequest, res) => {
+router.post('/:id/unschedule', authenticate, requirePermission(RESOURCES.TICKETS, ACTIONS.EDIT), async (req: AuthRequest, res) => {
   try {
     const ticketId = await getTicketIdFromFullId(req.params.id);
     if (!ticketId) {
@@ -669,7 +688,7 @@ router.post('/:id/unschedule', requireAgent, async (req: AuthRequest, res) => {
   }
 });
 
-router.delete('/:id', requireAgent, async (req: AuthRequest, res) => {
+router.delete('/:id', authenticate, requirePermission(RESOURCES.TICKETS, ACTIONS.DELETE), async (req: AuthRequest, res) => {
   try {
     const ticketId = await getTicketIdFromFullId(req.params.id);
     if (!ticketId) {
@@ -771,7 +790,7 @@ export async function updateClosedTicketsToResolved() {
 }
 
 // Endpoint para atualizar tickets finalizados (pode ser chamado manualmente ou por cron)
-router.post('/update-closed-tickets', requireAgent, async (req: AuthRequest, res) => {
+router.post('/update-closed-tickets', authenticate, requirePermission(RESOURCES.TICKETS, ACTIONS.EDIT), async (req: AuthRequest, res) => {
   try {
     const result = await updateClosedTicketsToResolved();
     res.json({ 

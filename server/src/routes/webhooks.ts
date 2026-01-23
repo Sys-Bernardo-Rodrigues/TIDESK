@@ -72,7 +72,8 @@ router.get(
         ORDER BY w.created_at DESC
       `, [req.userId]);
 
-      res.json(webhooks);
+      console.log(`[Webhook List] Usuário ${req.userId} - Encontrados ${webhooks.length} webhooks`);
+      res.json(webhooks || []);
     } catch (error) {
       console.error('Erro ao listar webhooks:', error);
       res.status(500).json({ error: 'Erro ao buscar webhooks' });
@@ -129,13 +130,15 @@ router.post(
         return res.status(400).json({ errors: errors.array() });
       }
 
-      const { name, description, priority, category_id, assigned_to } = req.body;
+      const { name, description, priority, category_id, assigned_to, active } = req.body;
       const webhookUrl = generateWebhookUrl();
       const secretKey = crypto.randomBytes(32).toString('hex');
 
+      console.log(`[Webhook Create] Criando webhook: ${name}, usuário: ${req.userId}`);
+
       const result = await dbRun(`
-        INSERT INTO webhooks (name, description, webhook_url, secret_key, priority, category_id, assigned_to, created_by, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO webhooks (name, description, webhook_url, secret_key, priority, category_id, assigned_to, created_by, active, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
         name,
         description || null,
@@ -145,15 +148,42 @@ router.post(
         category_id || null,
         assigned_to || null,
         req.userId,
+        active !== undefined ? (active ? 1 : 0) : 1,
         getBrasiliaTimestamp(),
         getBrasiliaTimestamp()
       ]);
 
-      const webhook = await dbGet('SELECT * FROM webhooks WHERE id = ?', [result.lastID || result.insertId]);
+      const webhookId = (result as any).lastID || (result as any).insertId || (result as any).id;
+      console.log(`[Webhook Create] Webhook criado com ID: ${webhookId}`);
+      
+      // Buscar webhook com dados completos (incluindo joins)
+      const webhook = await dbGet(`
+        SELECT w.*,
+               u.name as created_by_name,
+               ua.name as assigned_to_name,
+               c.name as category_name,
+               (SELECT COUNT(*) FROM webhook_logs wl WHERE wl.webhook_id = w.id) as total_calls,
+               (SELECT COUNT(*) FROM webhook_logs wl WHERE wl.webhook_id = w.id AND wl.status = 'success') as success_calls,
+               (SELECT COUNT(*) FROM webhook_logs wl WHERE wl.webhook_id = w.id AND wl.status = 'error') as error_calls
+        FROM webhooks w
+        LEFT JOIN users u ON w.created_by = u.id
+        LEFT JOIN users ua ON w.assigned_to = ua.id
+        LEFT JOIN categories c ON w.category_id = c.id
+        WHERE w.id = ?
+      `, [webhookId]);
+      
+      if (!webhook) {
+        throw new Error('Webhook criado mas não foi possível recuperá-lo');
+      }
+      
       res.status(201).json(webhook);
     } catch (error: any) {
-      console.error('Erro ao criar webhook:', error);
-      res.status(500).json({ error: 'Erro ao criar webhook: ' + (error.message || 'Erro desconhecido') });
+      console.error('[Webhook Create] Erro ao criar webhook:', error);
+      console.error('[Webhook Create] Stack trace:', error.stack);
+      res.status(500).json({ 
+        error: 'Erro ao criar webhook: ' + (error.message || 'Erro desconhecido'),
+        details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      });
     }
   }
 );
@@ -166,7 +196,7 @@ router.put(
   [
     body('name').optional().notEmpty(),
     body('priority').optional().isIn(['low', 'medium', 'high', 'urgent']),
-    body('active').optional().isBoolean()
+    body('active').optional()
   ],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -182,28 +212,69 @@ router.put(
 
       const { name, description, priority, category_id, assigned_to, active } = req.body;
       
-      await dbRun(`
-        UPDATE webhooks
-        SET name = COALESCE(?, name),
-            description = COALESCE(?, description),
-            priority = COALESCE(?, priority),
-            category_id = ?,
-            assigned_to = ?,
-            active = COALESCE(?, active),
-            updated_at = ?
-        WHERE id = ?
-      `, [
-        name,
-        description,
-        priority,
-        category_id !== undefined ? category_id : null,
-        assigned_to !== undefined ? assigned_to : null,
-        active !== undefined ? (active ? 1 : 0) : null,
-        getBrasiliaTimestamp(),
-        req.params.id
-      ]);
+      // Construir query dinamicamente baseado nos campos fornecidos
+      const updates: string[] = [];
+      const values: any[] = [];
+      
+      if (name !== undefined) {
+        updates.push('name = ?');
+        values.push(name);
+      }
+      if (description !== undefined) {
+        updates.push('description = ?');
+        values.push(description || null);
+      }
+      if (priority !== undefined) {
+        updates.push('priority = ?');
+        values.push(priority);
+      }
+      if (category_id !== undefined) {
+        updates.push('category_id = ?');
+        values.push(category_id || null);
+      }
+      if (assigned_to !== undefined) {
+        updates.push('assigned_to = ?');
+        values.push(assigned_to || null);
+      }
+      if (active !== undefined) {
+        updates.push('active = ?');
+        // Aceitar tanto boolean quanto número (0/1)
+        const activeValue = typeof active === 'boolean' ? (active ? 1 : 0) : (active === 1 || active === '1' ? 1 : 0);
+        values.push(activeValue);
+      }
+      
+      updates.push('updated_at = ?');
+      values.push(getBrasiliaTimestamp());
+      values.push(req.params.id);
+      
+      if (updates.length > 1) { // Mais que apenas updated_at
+        await dbRun(`
+          UPDATE webhooks
+          SET ${updates.join(', ')}
+          WHERE id = ?
+        `, values);
+      }
 
-      const updated = await dbGet('SELECT * FROM webhooks WHERE id = ?', [req.params.id]);
+      // Buscar webhook atualizado com dados completos
+      const updated = await dbGet(`
+        SELECT w.*,
+               u.name as created_by_name,
+               ua.name as assigned_to_name,
+               c.name as category_name,
+               (SELECT COUNT(*) FROM webhook_logs wl WHERE wl.webhook_id = w.id) as total_calls,
+               (SELECT COUNT(*) FROM webhook_logs wl WHERE wl.webhook_id = w.id AND wl.status = 'success') as success_calls,
+               (SELECT COUNT(*) FROM webhook_logs wl WHERE wl.webhook_id = w.id AND wl.status = 'error') as error_calls
+        FROM webhooks w
+        LEFT JOIN users u ON w.created_by = u.id
+        LEFT JOIN users ua ON w.assigned_to = ua.id
+        LEFT JOIN categories c ON w.category_id = c.id
+        WHERE w.id = ?
+      `, [req.params.id]);
+      
+      if (!updated) {
+        return res.status(404).json({ error: 'Webhook não encontrado após atualização' });
+      }
+      
       res.json(updated);
     } catch (error: any) {
       console.error('Erro ao atualizar webhook:', error);
@@ -241,13 +312,18 @@ router.post(
       const { webhookUrl } = req.params;
       const payload = req.body;
 
+      console.log(`[Webhook Receive] Recebido webhook: ${webhookUrl}`);
+
       // Buscar webhook
       const webhook = await dbGet('SELECT * FROM webhooks WHERE webhook_url = ? AND active = 1', [webhookUrl]);
       if (!webhook) {
+        console.log(`[Webhook Receive] Webhook não encontrado ou inativo: ${webhookUrl}`);
         return res.status(404).json({ error: 'Webhook não encontrado ou inativo' });
       }
 
       const webhookData = webhook as any;
+      
+      console.log(`[Webhook Receive] Webhook encontrado: ${webhookData.name} (ID: ${webhookData.id})`);
 
       // Validar secret key se fornecido
       const providedSecret = req.headers['x-webhook-secret'] || req.headers['x-secret-key'];
@@ -310,7 +386,9 @@ router.post(
           getBrasiliaTimestamp()
         ]);
 
-        ticketId = (ticketResult as any).lastID;
+        ticketId = (ticketResult as any).lastID || (ticketResult as any).insertId || (ticketResult as any).id;
+
+        console.log(`[Webhook Receive] Ticket criado com sucesso: ID ${ticketId}, número ${ticketNumber}, ID completo ${ticketIdStr}`);
 
         // Registrar log de sucesso
         await dbRun(`
@@ -328,7 +406,8 @@ router.post(
         res.status(200).json({
           success: true,
           message: 'Webhook recebido e ticket criado com sucesso',
-          ticket_id: ticketIdStr
+          ticket_id: ticketIdStr,
+          ticket_number: ticketNumber
         });
       } catch (ticketError: any) {
         // Registrar log de erro
@@ -344,7 +423,8 @@ router.post(
           getBrasiliaTimestamp()
         ]);
 
-        console.error('Erro ao criar ticket do webhook:', ticketError);
+        console.error('[Webhook Receive] Erro ao criar ticket do webhook:', ticketError);
+        console.error('[Webhook Receive] Stack trace:', ticketError.stack);
         res.status(500).json({
           success: false,
           error: 'Erro ao criar ticket: ' + (ticketError.message || 'Erro desconhecido')

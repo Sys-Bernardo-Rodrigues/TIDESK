@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { Shield, Plus, Search, Edit, Trash2, Users, X, Save, CheckSquare, Square, Home, Ticket, FileEdit, FileText, User, Database, RefreshCw, CheckCircle, Eye, History, FileBarChart, Calendar, CalendarDays } from 'lucide-react';
+import { Shield, Plus, Search, Edit, Trash2, Users, X, Save, CheckSquare, Square, Home, Ticket, FileEdit, FileText, User, Database, RefreshCw, CheckCircle, Eye, History, FileBarChart, Calendar, CalendarDays, Webhook } from 'lucide-react';
 import { RESOURCES, ACTIONS } from '../hooks/usePermissions';
 import { formatDateBR } from '../utils/dateUtils';
 
@@ -31,7 +31,8 @@ const RESOURCE_LABELS: Record<string, string> = {
   approve: 'Aprovar',
   track: 'Acompanhar Tratativa',
   config: 'Configurações',
-  agenda: 'Agenda'
+  agenda: 'Agenda',
+  webhooks: 'Webhooks'
 };
 
 const ACTION_LABELS: Record<string, string> = {
@@ -49,6 +50,7 @@ const SYSTEM_PAGES = [
   { path: '/tickets', label: 'Tickets', Icon: Ticket },
   { path: '/create/forms', label: 'Formulários', Icon: FileEdit },
   { path: '/create/pages', label: 'Páginas', Icon: FileText },
+  { path: '/create/webhooks', label: 'Webhooks', Icon: Webhook },
   { path: '/config/perfil-de-acesso', label: 'Perfil de Acesso', Icon: Shield },
   { path: '/config/usuarios', label: 'Usuários', Icon: User },
   { path: '/config/backup', label: 'Backup', Icon: Database },

@@ -24,7 +24,7 @@ interface Ticket {
   ticket_number: number | null;
   title: string;
   description: string;
-  status: 'open' | 'in_progress' | 'resolved' | 'closed' | 'pending_approval' | 'scheduled';
+  status: 'open' | 'in_progress' | 'resolved' | 'closed' | 'pending_approval' | 'scheduled' | 'rejected';
   priority: string;
   category_name: string;
   user_name: string;

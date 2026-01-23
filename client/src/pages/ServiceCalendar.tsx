@@ -14,6 +14,7 @@ import {
   Ticket
 } from 'lucide-react';
 import { usePermissions, RESOURCES, ACTIONS } from '../hooks/usePermissions';
+import { getHolidayName } from '../utils/brazilianHolidays';
 
 interface CalendarEvent {
   id: number;
@@ -279,10 +280,15 @@ export default function ServiceCalendar() {
     const weekDays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
     
     // Dias do mês anterior (para preencher primeira semana)
-    const prevMonth = new Date(year, month - 1, 0);
+    // Corrigido: calcular corretamente o último dia do mês anterior
+    const prevMonthLastDay = new Date(year, month, 0); // Último dia do mês anterior
+    const prevMonthDaysCount = prevMonthLastDay.getDate();
+    
+    // Preencher dias do mês anterior começando do último dia
     for (let i = startingDayOfWeek - 1; i >= 0; i--) {
+      const dayNumber = prevMonthDaysCount - i;
       days.push({
-        date: new Date(year, month - 1, prevMonth.getDate() - i),
+        date: new Date(year, month - 1, dayNumber),
         isCurrentMonth: false
       });
     }
@@ -305,15 +311,25 @@ export default function ServiceCalendar() {
     }
     
     return (
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '1px', backgroundColor: 'var(--border-primary)' }}>
+      <div style={{ 
+        display: 'grid', 
+        gridTemplateColumns: 'repeat(7, 1fr)', 
+        gap: '2px', 
+        backgroundColor: 'var(--border-primary)',
+        borderRadius: 'var(--radius-md)',
+        overflow: 'hidden',
+        border: '1px solid var(--border-primary)'
+      }}>
         {weekDays.map(day => (
           <div key={day} style={{
-            padding: 'var(--spacing-sm)',
+            padding: 'var(--spacing-md)',
             backgroundColor: 'var(--bg-secondary)',
             fontWeight: '600',
             fontSize: '0.875rem',
             textAlign: 'center',
-            color: 'var(--text-secondary)'
+            color: 'var(--text-secondary)',
+            textTransform: 'uppercase',
+            letterSpacing: '0.05em'
           }}>
             {day}
           </div>
@@ -321,6 +337,8 @@ export default function ServiceCalendar() {
         {days.map((day, index) => {
           const dayEvents = getEventsForDay(day.date);
           const isToday = day.date.toDateString() === new Date().toDateString();
+          const holidayName = getHolidayName(day.date);
+          const isWeekend = day.date.getDay() === 0 || day.date.getDay() === 6;
           
           return (
             <div
@@ -328,23 +346,86 @@ export default function ServiceCalendar() {
               onClick={() => canCreate && openCreateModal(day.date)}
               style={{
                 cursor: canCreate ? 'pointer' : 'default',
-                minHeight: '120px',
-                padding: 'var(--spacing-xs)',
-                backgroundColor: 'var(--bg-primary)',
-                border: isToday ? '2px solid var(--purple)' : 'none',
+                minHeight: '140px',
+                padding: 'var(--spacing-sm)',
+                backgroundColor: day.isCurrentMonth ? 'var(--bg-primary)' : 'var(--bg-tertiary)',
+                border: isToday ? '2px solid var(--purple)' : '1px solid transparent',
+                borderRadius: isToday ? 'var(--radius-sm)' : '0',
                 position: 'relative',
-                opacity: day.isCurrentMonth ? 1 : 0.4
+                opacity: day.isCurrentMonth ? 1 : 0.35,
+                transition: 'all var(--transition-base)',
+                display: 'flex',
+                flexDirection: 'column'
+              }}
+              onMouseEnter={(e) => {
+                if (canCreate && day.isCurrentMonth) {
+                  e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
+                  e.currentTarget.style.transform = 'scale(1.02)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (day.isCurrentMonth) {
+                  e.currentTarget.style.backgroundColor = 'var(--bg-primary)';
+                  e.currentTarget.style.transform = 'scale(1)';
+                }
               }}
             >
               <div style={{
-                fontWeight: isToday ? '700' : '500',
-                fontSize: '0.875rem',
-                marginBottom: 'var(--spacing-xs)',
-                color: isToday ? 'var(--purple)' : 'var(--text-primary)'
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: 'var(--spacing-xs)'
               }}>
-                {day.date.getDate()}
+                <div style={{
+                  fontWeight: isToday ? '700' : '600',
+                  fontSize: isToday ? '1rem' : '0.875rem',
+                  color: isToday 
+                    ? 'var(--purple)' 
+                    : isWeekend && day.isCurrentMonth
+                    ? 'var(--text-secondary)'
+                    : 'var(--text-primary)',
+                  backgroundColor: isToday ? 'var(--purple-light)' : 'transparent',
+                  borderRadius: 'var(--radius-full)',
+                  width: isToday ? '28px' : '24px',
+                  height: isToday ? '28px' : '24px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>
+                  {day.date.getDate()}
+                </div>
+                {dayEvents.length > 0 && (
+                  <div style={{
+                    fontSize: '0.7rem',
+                    color: 'var(--text-tertiary)',
+                    backgroundColor: 'var(--bg-secondary)',
+                    borderRadius: 'var(--radius-full)',
+                    padding: '2px 6px',
+                    fontWeight: '600'
+                  }}>
+                    {dayEvents.length}
+                  </div>
+                )}
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+              {holidayName && day.isCurrentMonth && (
+                <div style={{
+                  fontSize: '0.65rem',
+                  color: 'var(--purple)',
+                  fontStyle: 'italic',
+                  marginBottom: '4px',
+                  lineHeight: '1.2',
+                  fontWeight: '500'
+                }}>
+                  {holidayName}
+                </div>
+              )}
+              <div style={{ 
+                display: 'flex', 
+                flexDirection: 'column', 
+                gap: '3px',
+                flex: 1,
+                overflow: 'hidden'
+              }}>
                 {dayEvents.slice(0, 3).map(event => (
                   <div
                     key={event.id}
@@ -357,27 +438,40 @@ export default function ServiceCalendar() {
                       }
                     }}
                     style={{
-                      fontSize: '0.75rem',
-                      padding: '2px 4px',
-                      borderRadius: '2px',
+                      fontSize: '0.7rem',
+                      padding: '4px 6px',
+                      borderRadius: 'var(--radius-sm)',
                       backgroundColor: event.color || '#8a2be2',
                       color: 'white',
                       cursor: 'pointer',
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap'
+                      whiteSpace: 'nowrap',
+                      fontWeight: '500',
+                      transition: 'all var(--transition-base)',
+                      boxShadow: '0 1px 3px rgba(0, 0, 0, 0.3)'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.transform = 'translateX(2px)';
+                      e.currentTarget.style.boxShadow = '0 2px 6px rgba(0, 0, 0, 0.4)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = 'translateX(0)';
+                      e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.3)';
                     }}
                     title={event.title}
                   >
-                    {event.type === 'ticket' && <Ticket size={10} style={{ display: 'inline', marginRight: '2px' }} />}
+                    {event.type === 'ticket' && <Ticket size={10} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />}
                     {event.title}
                   </div>
                 ))}
                 {dayEvents.length > 3 && (
                   <div style={{
-                    fontSize: '0.75rem',
+                    fontSize: '0.7rem',
                     color: 'var(--text-secondary)',
-                    padding: '2px 4px'
+                    padding: '4px 6px',
+                    fontStyle: 'italic',
+                    textAlign: 'center'
                   }}>
                     +{dayEvents.length - 3} mais
                   </div>
@@ -431,6 +525,7 @@ export default function ServiceCalendar() {
           const dayName = weekDays[index];
           const dayNumber = date.getDate();
           const isWeekend = index === 0 || index === 6;
+          const holidayName = getHolidayName(date);
           
           return (
             <div
@@ -467,6 +562,18 @@ export default function ServiceCalendar() {
                 }}>
                   {dayNumber}
                 </div>
+                {holidayName && (
+                  <div style={{
+                    fontSize: '0.65rem',
+                    color: 'var(--text-tertiary)',
+                    fontStyle: 'italic',
+                    marginTop: '2px',
+                    opacity: 0.7,
+                    lineHeight: '1.2'
+                  }}>
+                    {holidayName}
+                  </div>
+                )}
               </div>
               
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -539,6 +646,7 @@ export default function ServiceCalendar() {
   const renderDayView = () => {
     const dayEvents = getEventsForDay(currentDate);
     const isToday = currentDate.toDateString() === new Date().toDateString();
+    const holidayName = getHolidayName(currentDate);
     
     // Ordenar eventos por hora
     const sortedEvents = [...dayEvents].sort((a, b) => {
@@ -570,6 +678,17 @@ export default function ServiceCalendar() {
           }}>
             {sortedEvents.length} {sortedEvents.length === 1 ? 'evento' : 'eventos'} agendado{sortedEvents.length !== 1 ? 's' : ''}
           </div>
+          {holidayName && (
+            <div style={{
+              fontSize: '0.75rem',
+              color: 'var(--text-tertiary)',
+              fontStyle: 'italic',
+              marginTop: 'var(--spacing-xs)',
+              opacity: 0.8
+            }}>
+              🎉 {holidayName}
+            </div>
+          )}
         </div>
         
         {sortedEvents.length === 0 ? (

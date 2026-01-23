@@ -28,7 +28,10 @@ router.get('/', authenticate, requireAdmin, async (req: AuthRequest, res) => {
 
       return {
         ...profile,
-        permissions: permissions.map((p: any) => `${p.resource}:${p.action}`)
+        permissions: permissions.map((p: any) => ({
+          resource: p.resource,
+          action: p.action
+        }))
       };
     }));
 
@@ -234,24 +237,6 @@ router.put('/:id', [
       }
     }
 
-    // Criar novas páginas
-    if (pages && Array.isArray(pages)) {
-      for (const pagePath of pages) {
-        if (pagePath && typeof pagePath === 'string') {
-          try {
-            await dbRun(`
-              INSERT INTO access_profile_pages (access_profile_id, page_path)
-              VALUES (?, ?)
-            `, [req.params.id, pagePath]);
-          } catch (error: any) {
-            if (!error.message?.includes('UNIQUE')) {
-              throw error;
-            }
-          }
-        }
-      }
-    }
-
     invalidateAllPermissions();
 
     const profile = await dbGet('SELECT * FROM access_profiles WHERE id = ?', [req.params.id]);
@@ -326,6 +311,23 @@ router.post('/:id/users', [
         VALUES (?, ?)
       `, [userId, req.params.id]);
 
+      // Verificar se o perfil é de administrador e atualizar role
+      const profile = await dbGet('SELECT name FROM access_profiles WHERE id = ?', [req.params.id]) as any;
+      if (profile && profile.name === 'Administrador') {
+        await dbRun('UPDATE users SET role = ? WHERE id = ?', ['admin', userId]);
+      } else if (profile && profile.name === 'Agente') {
+        // Verificar se não tem perfil de admin antes de definir como agent
+        const adminProfile = await dbAll(`
+          SELECT ap.id
+          FROM user_access_profiles uap
+          JOIN access_profiles ap ON uap.access_profile_id = ap.id
+          WHERE uap.user_id = ? AND ap.name = 'Administrador'
+        `, [userId]);
+        if (adminProfile.length === 0) {
+          await dbRun('UPDATE users SET role = ? WHERE id = ?', ['agent', userId]);
+        }
+      }
+
       invalidateAllPermissions();
 
       res.status(201).json({ message: 'Usuário vinculado ao perfil com sucesso' });
@@ -348,6 +350,29 @@ router.delete('/:id/users/:userId', authenticate, requireAdmin, async (req: Auth
       DELETE FROM user_access_profiles
       WHERE access_profile_id = ? AND user_id = ?
     `, [req.params.id, req.params.userId]);
+
+    // Verificar perfis restantes e atualizar role
+    const adminProfile = await dbAll(`
+      SELECT ap.id
+      FROM user_access_profiles uap
+      JOIN access_profiles ap ON uap.access_profile_id = ap.id
+      WHERE uap.user_id = ? AND ap.name = 'Administrador'
+    `, [req.params.userId]);
+    
+    const agentProfile = await dbAll(`
+      SELECT ap.id
+      FROM user_access_profiles uap
+      JOIN access_profiles ap ON uap.access_profile_id = ap.id
+      WHERE uap.user_id = ? AND ap.name = 'Agente'
+    `, [req.params.userId]);
+
+    if (adminProfile.length > 0) {
+      await dbRun('UPDATE users SET role = ? WHERE id = ?', ['admin', req.params.userId]);
+    } else if (agentProfile.length > 0) {
+      await dbRun('UPDATE users SET role = ? WHERE id = ?', ['agent', req.params.userId]);
+    } else {
+      await dbRun('UPDATE users SET role = ? WHERE id = ?', ['user', req.params.userId]);
+    }
 
     invalidateAllPermissions();
 

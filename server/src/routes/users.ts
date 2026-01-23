@@ -1,7 +1,8 @@
 import express from 'express';
 import { body, validationResult } from 'express-validator';
 import bcrypt from 'bcryptjs';
-import { authenticate, AuthRequest, requireAdmin, requireAgent } from '../middleware/auth';
+import { authenticate, AuthRequest, requireAgent } from '../middleware/auth';
+import { requirePermission, RESOURCES, ACTIONS } from '../middleware/permissions';
 import { dbAll, dbGet, dbRun } from '../database';
 
 const router = express.Router();
@@ -9,8 +10,8 @@ const router = express.Router();
 // Todas as rotas requerem autenticação
 router.use(authenticate);
 
-// Listar usuários (apenas admin)
-router.get('/', requireAdmin, async (req: AuthRequest, res) => {
+// Listar usuários
+router.get('/', requirePermission(RESOURCES.USERS, ACTIONS.VIEW), async (req: AuthRequest, res) => {
   try {
     const users = await dbAll(
       'SELECT id, name, email, role, created_at FROM users ORDER BY created_at DESC'
@@ -81,7 +82,7 @@ router.get('/agents', requireAgent, async (req: AuthRequest, res) => {
 });
 
 // Obter usuário específico com perfis
-router.get('/:id', requireAdmin, async (req: AuthRequest, res) => {
+router.get('/:id', requirePermission(RESOURCES.USERS, ACTIONS.VIEW), async (req: AuthRequest, res) => {
   try {
     const user = await dbGet(
       'SELECT id, name, email, role, created_at FROM users WHERE id = ?',
@@ -110,7 +111,7 @@ router.get('/:id', requireAdmin, async (req: AuthRequest, res) => {
 });
 
 // Vincular usuário a perfil de acesso
-router.post('/:id/access-profiles', requireAdmin, async (req: AuthRequest, res) => {
+router.post('/:id/access-profiles', requirePermission(RESOURCES.USERS, ACTIONS.EDIT), async (req: AuthRequest, res) => {
   try {
     const { access_profile_id } = req.body;
 
@@ -155,7 +156,7 @@ router.post('/:id/access-profiles', requireAdmin, async (req: AuthRequest, res) 
 });
 
 // Desvincular usuário de perfil de acesso
-router.delete('/:id/access-profiles/:profileId', requireAdmin, async (req: AuthRequest, res) => {
+router.delete('/:id/access-profiles/:profileId', requirePermission(RESOURCES.USERS, ACTIONS.EDIT), async (req: AuthRequest, res) => {
   try {
     await dbRun(`
       DELETE FROM user_access_profiles
@@ -175,7 +176,7 @@ router.delete('/:id/access-profiles/:profileId', requireAdmin, async (req: AuthR
 
 // Criar usuário
 router.post('/', [
-  requireAdmin,
+  requirePermission(RESOURCES.USERS, ACTIONS.CREATE),
   body('name').notEmpty().withMessage('Nome é obrigatório'),
   body('email').isEmail().withMessage('Email inválido'),
   body('password').isLength({ min: 6 }).withMessage('Senha deve ter no mínimo 6 caracteres'),
@@ -221,11 +222,23 @@ router.post('/', [
     const userId = (result as any).lastID || (result as any).id;
 
     // Vincular perfis de acesso
+    let hasAdminProfile = false;
     for (const profileId of access_profile_ids) {
       await dbRun(
         'INSERT INTO user_access_profiles (user_id, access_profile_id) VALUES (?, ?)',
         [userId, profileId]
       );
+      
+      // Verificar se é perfil de administrador
+      const profile = await dbGet('SELECT name FROM access_profiles WHERE id = ?', [profileId]) as any;
+      if (profile && profile.name === 'Administrador') {
+        hasAdminProfile = true;
+      }
+    }
+
+    // Atualizar role se tiver perfil de administrador
+    if (hasAdminProfile) {
+      await dbRun('UPDATE users SET role = ? WHERE id = ?', ['admin', userId]);
     }
 
     // Invalidar cache de permissões
@@ -257,7 +270,7 @@ router.post('/', [
 
 // Atualizar usuário
 router.put('/:id', [
-  requireAdmin,
+  requirePermission(RESOURCES.USERS, ACTIONS.EDIT),
   body('name').notEmpty().withMessage('Nome é obrigatório'),
   body('email').isEmail().withMessage('Email inválido'),
   body('password').optional().isLength({ min: 6 }).withMessage('Senha deve ter no mínimo 6 caracteres'),
@@ -317,12 +330,38 @@ router.put('/:id', [
       // Remover todos os perfis atuais
       await dbRun('DELETE FROM user_access_profiles WHERE user_id = ?', [req.params.id]);
 
-      // Vincular novos perfis
+      // Vincular novos perfis e verificar se tem perfil de administrador
+      let hasAdminProfile = false;
       for (const profileId of access_profile_ids) {
         await dbRun(
           'INSERT INTO user_access_profiles (user_id, access_profile_id) VALUES (?, ?)',
           [req.params.id, profileId]
         );
+        
+        // Verificar se é perfil de administrador
+        const profile = await dbGet('SELECT name FROM access_profiles WHERE id = ?', [profileId]) as any;
+        if (profile && profile.name === 'Administrador') {
+          hasAdminProfile = true;
+        }
+      }
+
+      // Atualizar role baseado nos perfis
+      if (hasAdminProfile) {
+        await dbRun('UPDATE users SET role = ? WHERE id = ?', ['admin', req.params.id]);
+      } else {
+        // Se não tem perfil de admin, verificar se tem perfil de agente
+        const agentProfile = await dbAll(`
+          SELECT ap.id
+          FROM user_access_profiles uap
+          JOIN access_profiles ap ON uap.access_profile_id = ap.id
+          WHERE uap.user_id = ? AND ap.name = 'Agente'
+        `, [req.params.id]);
+        
+        if (agentProfile.length > 0) {
+          await dbRun('UPDATE users SET role = ? WHERE id = ?', ['agent', req.params.id]);
+        } else {
+          await dbRun('UPDATE users SET role = ? WHERE id = ?', ['user', req.params.id]);
+        }
       }
     }
 
@@ -354,7 +393,7 @@ router.put('/:id', [
 });
 
 // Excluir usuário
-router.delete('/:id', requireAdmin, async (req: AuthRequest, res) => {
+router.delete('/:id', requirePermission(RESOURCES.USERS, ACTIONS.DELETE), async (req: AuthRequest, res) => {
   try {
     // Verificar se usuário existe
     const user = await dbGet('SELECT id FROM users WHERE id = ?', [req.params.id]);

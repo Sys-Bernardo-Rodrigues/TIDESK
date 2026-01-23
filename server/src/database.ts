@@ -23,7 +23,7 @@ export interface Ticket {
   ticket_number: number | null;
   title: string;
   description: string;
-  status: 'open' | 'in_progress' | 'resolved' | 'closed' | 'pending_approval' | 'scheduled';
+  status: 'open' | 'in_progress' | 'resolved' | 'closed' | 'pending_approval' | 'scheduled' | 'rejected';
   priority: 'low' | 'medium' | 'high' | 'urgent';
   category_id: number;
   user_id: number;

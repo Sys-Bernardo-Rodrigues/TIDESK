@@ -51,6 +51,8 @@ export default function Webhooks() {
   const [users, setUsers] = useState<User[]>([]);
   const [filterActive, setFilterActive] = useState<string>('all'); // all, active, inactive
   const [filterPriority, setFilterPriority] = useState<string>('all'); // all, low, medium, high, urgent
+  const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
+  const [copiedSecret, setCopiedSecret] = useState<number | null>(null);
   
   // Form state
   const [formData, setFormData] = useState({
@@ -79,12 +81,17 @@ export default function Webhooks() {
   const fetchWebhooks = async () => {
     try {
       setLoading(true);
-      const response = await axios.get('/api/webhooks');
-      setWebhooks(response.data);
       setError(null);
+      const response = await axios.get('/api/webhooks');
+      setWebhooks(response.data || []);
     } catch (err: any) {
       console.error('Erro ao buscar webhooks:', err);
-      setError(err.response?.data?.error || 'Erro ao buscar webhooks');
+      const errorMessage = err.response?.data?.error || err.message || 'Erro ao buscar webhooks';
+      setError(errorMessage);
+      // Se for erro de permissão, não mostrar erro genérico
+      if (err.response?.status === 403) {
+        setError('Você não tem permissão para visualizar webhooks');
+      }
     } finally {
       setLoading(false);
     }
@@ -101,12 +108,18 @@ export default function Webhooks() {
 
   const fetchUsers = async () => {
     try {
-      const response = await axios.get('/api/users');
+      // Tentar buscar usuários (pode falhar se não tiver permissão)
+      const response = await axios.get('/api/users/agents');
       setUsers(response.data);
     } catch (err: any) {
-      // Se não tiver permissão (não é admin), apenas logar o erro
-      if (err.response?.status !== 403) {
-        console.error('Erro ao buscar usuários:', err);
+      // Se não tiver permissão, tentar buscar apenas o usuário atual
+      try {
+        const meResponse = await axios.get('/api/users/me');
+        if (meResponse.data) {
+          setUsers([meResponse.data]);
+        }
+      } catch (meErr: any) {
+        console.error('Erro ao buscar usuários:', meErr);
       }
     }
   };
@@ -147,15 +160,53 @@ export default function Webhooks() {
     }
   };
 
-  const copyWebhookUrl = (webhookUrl: string) => {
+  const copyWebhookUrl = async (webhookUrl: string) => {
     const fullUrl = `${window.location.origin}/api/webhooks/receive/${webhookUrl}`;
-    navigator.clipboard.writeText(fullUrl);
-    alert('URL do webhook copiada para a área de transferência!');
+    try {
+      await navigator.clipboard.writeText(fullUrl);
+      setCopiedUrl(webhookUrl);
+      setTimeout(() => setCopiedUrl(null), 2000);
+    } catch (err) {
+      // Fallback para navegadores mais antigos
+      const textArea = document.createElement('textarea');
+      textArea.value = fullUrl;
+      textArea.style.position = 'fixed';
+      textArea.style.opacity = '0';
+      document.body.appendChild(textArea);
+      textArea.select();
+      try {
+        document.execCommand('copy');
+        setCopiedUrl(webhookUrl);
+        setTimeout(() => setCopiedUrl(null), 2000);
+      } catch (err) {
+        alert('Erro ao copiar URL. Por favor, copie manualmente.');
+      }
+      document.body.removeChild(textArea);
+    }
   };
 
-  const copySecretKey = (secretKey: string) => {
-    navigator.clipboard.writeText(secretKey);
-    alert('Secret key copiada para a área de transferência!');
+  const copySecretKey = async (secretKey: string, webhookId: number) => {
+    try {
+      await navigator.clipboard.writeText(secretKey);
+      setCopiedSecret(webhookId);
+      setTimeout(() => setCopiedSecret(null), 2000);
+    } catch (err) {
+      // Fallback para navegadores mais antigos
+      const textArea = document.createElement('textarea');
+      textArea.value = secretKey;
+      textArea.style.position = 'fixed';
+      textArea.style.opacity = '0';
+      document.body.appendChild(textArea);
+      textArea.select();
+      try {
+        document.execCommand('copy');
+        setCopiedSecret(webhookId);
+        setTimeout(() => setCopiedSecret(null), 2000);
+      } catch (err) {
+        alert('Erro ao copiar secret key. Por favor, copie manualmente.');
+      }
+      document.body.removeChild(textArea);
+    }
   };
 
   const toggleActive = async (webhook: WebhookData) => {
@@ -215,7 +266,7 @@ export default function Webhooks() {
         name: formData.name,
         description: formData.description,
         priority: formData.priority,
-        active: formData.active ? 1 : 0
+        active: formData.active
       };
 
       if (formData.category_id) {
@@ -229,8 +280,12 @@ export default function Webhooks() {
         await axios.put(`/api/webhooks/${editingWebhook.id}`, payload);
         alert('Webhook atualizado com sucesso!');
       } else {
-        await axios.post('/api/webhooks', payload);
-        alert('Webhook criado com sucesso!');
+        const response = await axios.post('/api/webhooks', payload);
+        if (response.data) {
+          alert('Webhook criado com sucesso!');
+        } else {
+          alert('Webhook criado, mas resposta inesperada do servidor');
+        }
       }
 
       setShowForm(false);
@@ -238,7 +293,8 @@ export default function Webhooks() {
       await fetchWebhooks();
     } catch (err: any) {
       console.error('Erro ao salvar webhook:', err);
-      alert(err.response?.data?.error || 'Erro ao salvar webhook');
+      const errorMessage = err.response?.data?.error || err.response?.data?.errors?.[0]?.msg || err.message || 'Erro ao salvar webhook';
+      alert(errorMessage);
     }
   };
 
@@ -605,9 +661,18 @@ export default function Webhooks() {
                         <button
                           onClick={() => copyWebhookUrl(webhook.webhook_url)}
                           className="btn btn-secondary btn-sm"
-                          title="Copiar URL"
+                          title={copiedUrl === webhook.webhook_url ? "Copiado!" : "Copiar URL"}
+                          style={{
+                            backgroundColor: copiedUrl === webhook.webhook_url ? 'var(--green-light)' : undefined,
+                            color: copiedUrl === webhook.webhook_url ? 'var(--green)' : undefined,
+                            transition: 'all var(--transition-base)'
+                          }}
                         >
-                          <Copy size={14} />
+                          {copiedUrl === webhook.webhook_url ? (
+                            <CheckCircle size={14} />
+                          ) : (
+                            <Copy size={14} />
+                          )}
                         </button>
                       </div>
 
@@ -629,16 +694,26 @@ export default function Webhooks() {
                             fontSize: '0.8125rem',
                             color: 'var(--text-primary)',
                             flex: 1,
-                            wordBreak: 'break-all'
+                            wordBreak: 'break-all',
+                            fontFamily: 'monospace'
                           }}>
-                            {webhook.secret_key.substring(0, 20)}...
+                            {copiedSecret === webhook.id ? webhook.secret_key : `${webhook.secret_key.substring(0, 20)}...`}
                           </code>
                           <button
-                            onClick={() => copySecretKey(webhook.secret_key)}
+                            onClick={() => copySecretKey(webhook.secret_key, webhook.id)}
                             className="btn btn-secondary btn-sm"
-                            title="Copiar Secret Key"
+                            title={copiedSecret === webhook.id ? "Copiado!" : "Copiar Secret Key"}
+                            style={{
+                              backgroundColor: copiedSecret === webhook.id ? 'var(--green-light)' : undefined,
+                              color: copiedSecret === webhook.id ? 'var(--green)' : undefined,
+                              transition: 'all var(--transition-base)'
+                            }}
                           >
-                            <Copy size={14} />
+                            {copiedSecret === webhook.id ? (
+                              <CheckCircle size={14} />
+                            ) : (
+                              <Copy size={14} />
+                            )}
                           </button>
                         </div>
                       )}

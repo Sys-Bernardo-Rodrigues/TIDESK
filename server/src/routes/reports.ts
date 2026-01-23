@@ -1,14 +1,14 @@
 import express from 'express';
-import { authenticate, AuthRequest, requireAdmin } from '../middleware/auth';
+import { authenticate, AuthRequest } from '../middleware/auth';
+import { requirePermission, RESOURCES, ACTIONS } from '../middleware/permissions';
 import { dbGet, dbAll } from '../database';
 
 const DB_TYPE = process.env.DB_TYPE || 'sqlite';
 
 const router = express.Router();
 
-// Todas as rotas requerem autenticação e permissão de admin
+// Todas as rotas requerem autenticação
 router.use(authenticate);
-router.use(requireAdmin);
 
 // Função auxiliar para calcular período
 function getDateRange(period: string): { start: string; end: string } {
@@ -53,7 +53,7 @@ function getDateRange(period: string): { start: string; end: string } {
 }
 
 // Estatísticas gerais
-router.get('/overview', async (req: AuthRequest, res) => {
+router.get('/overview', requirePermission(RESOURCES.REPORTS, ACTIONS.VIEW), async (req: AuthRequest, res) => {
   try {
     const { period = 'month', start: customStart, end: customEnd } = req.query;
     
@@ -135,7 +135,7 @@ router.get('/overview', async (req: AuthRequest, res) => {
 });
 
 // Tickets por formulário
-router.get('/by-form', async (req: AuthRequest, res) => {
+router.get('/by-form', requirePermission(RESOURCES.REPORTS, ACTIONS.VIEW), async (req: AuthRequest, res) => {
   try {
     const { period = 'month', start: customStart, end: customEnd } = req.query;
     
@@ -184,7 +184,7 @@ router.get('/by-form', async (req: AuthRequest, res) => {
 });
 
 // Performance de agentes
-router.get('/agents-performance', async (req: AuthRequest, res) => {
+router.get('/agents-performance', requirePermission(RESOURCES.REPORTS, ACTIONS.VIEW), async (req: AuthRequest, res) => {
   try {
     const { period = 'month', start: customStart, end: customEnd } = req.query;
     
@@ -248,7 +248,7 @@ router.get('/agents-performance', async (req: AuthRequest, res) => {
 });
 
 // Evolução de tickets ao longo do tempo
-router.get('/timeline', async (req: AuthRequest, res) => {
+router.get('/timeline', requirePermission(RESOURCES.REPORTS, ACTIONS.VIEW), async (req: AuthRequest, res) => {
   try {
     const { period = 'month', groupBy = 'day', start: customStart, end: customEnd } = req.query;
     
@@ -302,7 +302,7 @@ router.get('/timeline', async (req: AuthRequest, res) => {
 });
 
 // Tempo médio de resposta por prioridade
-router.get('/response-time-by-priority', async (req: AuthRequest, res) => {
+router.get('/response-time-by-priority', requirePermission(RESOURCES.REPORTS, ACTIONS.VIEW), async (req: AuthRequest, res) => {
   try {
     const { period = 'month', start: customStart, end: customEnd } = req.query;
     
@@ -368,7 +368,7 @@ router.get('/response-time-by-priority', async (req: AuthRequest, res) => {
 });
 
 // Categorias mais utilizadas
-router.get('/by-category', async (req: AuthRequest, res) => {
+router.get('/by-category', requirePermission(RESOURCES.REPORTS, ACTIONS.VIEW), async (req: AuthRequest, res) => {
   try {
     const { period = 'month' } = req.query;
     const { start, end } = getDateRange(period as string);
@@ -395,7 +395,7 @@ router.get('/by-category', async (req: AuthRequest, res) => {
 });
 
 // Estatísticas de webhooks
-router.get('/webhooks', async (req: AuthRequest, res) => {
+router.get('/webhooks', requirePermission(RESOURCES.REPORTS, ACTIONS.VIEW), async (req: AuthRequest, res) => {
   try {
     const { period = 'month', start: customStart, end: customEnd } = req.query;
     

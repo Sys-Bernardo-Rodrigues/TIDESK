@@ -52,9 +52,9 @@ export default function Historico() {
   const fetchHistory = async () => {
     try {
       const response = await axios.get('/api/tickets');
-      // Filtrar apenas tickets resolvidos ou fechados
+      // Filtrar apenas tickets resolvidos, fechados ou rejeitados
       const historyTickets = response.data.filter((ticket: Ticket) => 
-        ticket.status === 'resolved' || ticket.status === 'closed'
+        ticket.status === 'resolved' || ticket.status === 'closed' || ticket.status === 'rejected'
       );
       setTickets(historyTickets);
     } catch (error) {
@@ -67,7 +67,8 @@ export default function Historico() {
   const getStatusLabel = (status: string) => {
     const labels: Record<string, string> = {
       resolved: 'Resolvido',
-      closed: 'Fechado'
+      closed: 'Fechado',
+      rejected: 'Rejeitado'
     };
     return labels[status] || status;
   };
@@ -75,7 +76,8 @@ export default function Historico() {
   const getStatusColor = (status: string) => {
     const colors: Record<string, string> = {
       resolved: 'var(--green)',
-      closed: 'var(--text-tertiary)'
+      closed: 'var(--text-tertiary)',
+      rejected: 'var(--red)'
     };
     return colors[status] || 'var(--text-secondary)';
   };
@@ -83,7 +85,8 @@ export default function Historico() {
   const getStatusBg = (status: string) => {
     const bg: Record<string, string> = {
       resolved: 'var(--green-light)',
-      closed: 'var(--bg-tertiary)'
+      closed: 'var(--bg-tertiary)',
+      rejected: 'var(--red-light)'
     };
     return bg[status] || 'var(--bg-tertiary)';
   };
@@ -253,6 +256,7 @@ export default function Historico() {
           <option value="all">Status</option>
             <option value="resolved">Resolvido</option>
             <option value="closed">Fechado</option>
+            <option value="rejected">Rejeitado</option>
           </select>
           <select
           className="input"

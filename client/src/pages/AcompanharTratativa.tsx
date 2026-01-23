@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Eye, Search, Clock, User, Ticket, TrendingUp, X, FileText, MessageSquare, Download, CheckCircle } from 'lucide-react';
+import { Eye, Search, Clock, User, Ticket, TrendingUp, X, FileText, MessageSquare, Download, CheckCircle, XCircle } from 'lucide-react';
 import { formatDateBR } from '../utils/dateUtils';
 
 interface TicketDetail {
@@ -8,7 +8,7 @@ interface TicketDetail {
   ticket_number: number | null;
   title: string;
   description: string;
-  status: 'open' | 'in_progress' | 'resolved' | 'closed' | 'pending_approval' | 'scheduled';
+  status: 'open' | 'in_progress' | 'resolved' | 'closed' | 'pending_approval' | 'scheduled' | 'rejected';
   priority: string;
   user_name: string;
   user_email: string;
@@ -104,6 +104,7 @@ export default function AcompanharTratativa() {
           status: ticket.status === 'in_progress' ? 'Em Tratamento' : 
                   ticket.status === 'open' ? 'Aberto' : 
                   ticket.status === 'closed' ? 'Finalizado' : 
+                  ticket.status === 'rejected' ? 'Rejeitado' :
                   ticket.status,
           priority: ticket.priority === 'high' || ticket.priority === 'urgent' ? 'Alta' : ticket.priority === 'medium' ? 'Média' : 'Baixa',
           createdAt: ticket.created_at,
@@ -112,7 +113,7 @@ export default function AcompanharTratativa() {
           source: ticket.form_id ? 'formulário' : undefined,
           formName: ticket.form_name,
           wasApproved: ticket.needs_approval === 1 && ticket.status === 'open',
-          isClosed: ticket.status === 'closed'
+          isClosed: ticket.status === 'closed' || ticket.status === 'rejected'
         };
       });
       setTreatments(tickets);
@@ -345,6 +346,7 @@ export default function AcompanharTratativa() {
               <option value="Em Tratamento">Em Tratamento</option>
               <option value="Aberto">Aberto</option>
               <option value="Finalizado">Finalizado</option>
+              <option value="Rejeitado">Rejeitado</option>
             </select>
           </div>
         </div>
@@ -473,6 +475,45 @@ export default function AcompanharTratativa() {
             {treatments.filter(t => t.status === 'Finalizado').length}
           </div>
         </div>
+
+        <div className="card slide-in" style={{ 
+          border: '1px solid var(--border-primary)',
+          animationDelay: '300ms'
+        }}>
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'space-between',
+            marginBottom: 'var(--spacing-md)' 
+          }}>
+            <div style={{
+              padding: 'var(--spacing-md)',
+              background: 'var(--red-light)',
+              borderRadius: 'var(--radius-md)',
+              border: '1px solid rgba(239, 68, 68, 0.2)'
+            }}>
+              <XCircle size={24} color="var(--red)" strokeWidth={2} />
+            </div>
+          </div>
+          <h3 style={{ 
+            fontSize: '0.8125rem', 
+            color: 'var(--text-secondary)',
+            fontWeight: '500',
+            marginBottom: 'var(--spacing-sm)',
+            textTransform: 'uppercase',
+            letterSpacing: '0.05em'
+          }}>
+            Rejeitados
+          </h3>
+          <div style={{ 
+            fontSize: '2.5rem', 
+            fontWeight: '800',
+            color: 'var(--red)',
+            lineHeight: '1'
+          }}>
+            {treatments.filter(t => t.status === 'Rejeitado').length}
+          </div>
+        </div>
       </div>
 
       {/* Lista de Tratativas */}
@@ -583,6 +624,8 @@ export default function AcompanharTratativa() {
                       ? 'var(--red-light)'
                       : treatment.status === 'Finalizado'
                       ? 'rgba(34, 197, 94, 0.15)'
+                      : treatment.status === 'Rejeitado'
+                      ? 'var(--red-light)'
                       : 'var(--purple-light)',
                     color: treatment.status === 'Em Tratamento' 
                       ? 'var(--orange)' 
@@ -590,6 +633,8 @@ export default function AcompanharTratativa() {
                       ? 'var(--red)'
                       : treatment.status === 'Finalizado'
                       ? 'var(--green)'
+                      : treatment.status === 'Rejeitado'
+                      ? 'var(--red)'
                       : 'var(--purple)',
                     fontWeight: '600'
                   }}>

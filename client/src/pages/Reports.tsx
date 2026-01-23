@@ -788,7 +788,8 @@ export default function Reports() {
       resolved: 'Resolvido',
       closed: 'Fechado',
       scheduled: 'Agendado',
-      pending_approval: 'Pendente Aprovação'
+      pending_approval: 'Pendente Aprovação',
+      rejected: 'Rejeitado'
     };
     return labels[status] || status;
   };
@@ -1235,6 +1236,8 @@ export default function Reports() {
                       borderRadius: '50%',
                       backgroundColor: item.status === 'resolved' || item.status === 'closed' 
                         ? 'var(--green)' 
+                        : item.status === 'rejected'
+                        ? 'var(--red)'
                         : item.status === 'in_progress' 
                         ? 'var(--blue)' 
                         : 'var(--orange)'

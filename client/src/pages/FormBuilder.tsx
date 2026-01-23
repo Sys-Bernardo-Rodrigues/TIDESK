@@ -44,6 +44,7 @@ export default function FormBuilder() {
     linkedGroupId: undefined
   });
   const [selectedField, setSelectedField] = useState<FormField | null>(null);
+  const [optionsText, setOptionsText] = useState<string>(''); // Estado separado para o texto das opções
   const [availableUsers, setAvailableUsers] = useState<Array<{ id: number; name: string; email: string }>>([]);
   const [availableGroups, setAvailableGroups] = useState<Array<{ id: number; name: string }>>([]);
 
@@ -76,6 +77,7 @@ export default function FormBuilder() {
       fields: [...(currentForm.fields || []), newField]
     });
     setSelectedField(newField);
+    setOptionsText(''); // Limpar texto das opções
   };
 
   const updateField = (fieldId: string, updates: Partial<FormField>) => {
@@ -86,7 +88,18 @@ export default function FormBuilder() {
       )
     });
     if (selectedField?.id === fieldId) {
-      setSelectedField({ ...selectedField, ...updates });
+      const updatedField = { ...selectedField, ...updates };
+      setSelectedField(updatedField);
+      // Sincronizar o texto das opções apenas quando não está sendo editado diretamente
+      // (evitar sobrescrever enquanto o usuário digita)
+      if (updates.options !== undefined) {
+        // Só atualizar se o texto atual não corresponde ao que está sendo atualizado
+        const currentText = optionsText;
+        const newText = updates.options.join('\n');
+        if (currentText !== newText) {
+          setOptionsText(newText);
+        }
+      }
     }
   };
 
@@ -416,10 +429,10 @@ export default function FormBuilder() {
               border: '1px solid var(--border-primary)',
               padding: 'var(--spacing-md)',
               flex: 1,
-              minHeight: 0,
+              minHeight: '200px',
               display: 'flex',
               flexDirection: 'column',
-              overflow: 'hidden'
+              overflow: 'auto'
             }}>
               <div style={{
                 display: 'flex',
@@ -462,7 +475,10 @@ export default function FormBuilder() {
                       alignItems: 'center',
                       gap: 'var(--spacing-sm)'
                     }}
-                    onClick={() => setSelectedField(field)}
+                    onClick={() => {
+                      setSelectedField(field);
+                      setOptionsText(field.options?.join('\n') || '');
+                    }}
                   >
                     <GripVertical size={16} color="var(--text-tertiary)" />
                     <div style={{ flex: 1 }}>
@@ -562,10 +578,13 @@ export default function FormBuilder() {
                     value={selectedField.type}
                     onChange={(e) => {
                       const newType = e.target.value as FormField['type'];
+                      const newOptions = (newType === 'select' || newType === 'radio') ? ['Opção 1', 'Opção 2'] : undefined;
                       updateField(selectedField.id, { 
                         type: newType,
-                        options: (newType === 'select' || newType === 'radio') ? ['Opção 1', 'Opção 2'] : undefined
+                        options: newOptions
                       });
+                      // Atualizar o texto das opções
+                      setOptionsText(newOptions?.join('\n') || '');
                     }}
                     style={{ width: '100%' }}
                   >
@@ -631,15 +650,28 @@ export default function FormBuilder() {
                     <textarea
                       className="input"
                       placeholder="Opção 1&#10;Opção 2&#10;Opção 3"
-                      value={selectedField.options?.join('\n') || ''}
+                      value={optionsText}
                       onChange={(e) => {
-                        const options = e.target.value.split('\n').filter(o => o.trim());
-                        updateField(selectedField.id, { options: options.length > 0 ? options : undefined });
+                        const value = e.target.value;
+                        // Atualizar o texto diretamente (permitir digitação livre)
+                        setOptionsText(value);
+                        
+                        // Processar opções: dividir por linhas e filtrar linhas vazias
+                        const lines = value.split('\n');
+                        const validOptions = lines.filter(l => l.trim() !== '');
+                        
+                        // Atualizar o campo apenas com opções válidas
+                        updateField(selectedField.id, { 
+                          options: validOptions.length > 0 ? validOptions : undefined
+                        });
                       }}
                       style={{ 
                         width: '100%',
                         minHeight: '100px',
-                        resize: 'vertical'
+                        resize: 'vertical',
+                        fontFamily: 'monospace',
+                        fontSize: '0.875rem',
+                        lineHeight: '1.5'
                       }}
                     />
                   </div>
@@ -698,18 +730,25 @@ export default function FormBuilder() {
             display: 'flex',
             flexDirection: 'column',
             gap: 'var(--spacing-md)',
-            overflow: 'auto'
+            overflow: 'hidden',
+            minHeight: 0
           }}>
             <div className="card" style={{ 
               border: '1px solid var(--border-primary)',
               padding: 'var(--spacing-lg)',
-              backgroundColor: 'var(--bg-primary)'
+              backgroundColor: 'var(--bg-primary)',
+              display: 'flex',
+              flexDirection: 'column',
+              flex: 1,
+              minHeight: 0,
+              overflow: 'hidden'
             }}>
               <h3 style={{
                 fontSize: '1rem',
                 fontWeight: '600',
                 color: 'var(--text-primary)',
-                marginBottom: 'var(--spacing-md)'
+                marginBottom: 'var(--spacing-md)',
+                flexShrink: 0
               }}>
                 Preview
               </h3>
@@ -717,7 +756,10 @@ export default function FormBuilder() {
                 padding: 'var(--spacing-lg)',
                 background: 'var(--bg-secondary)',
                 borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--border-primary)'
+                border: '1px solid var(--border-primary)',
+                overflow: 'auto',
+                flex: 1,
+                minHeight: 0
               }}>
                 <h4 style={{
                   fontSize: '1.125rem',

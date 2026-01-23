@@ -1,6 +1,7 @@
 import express from 'express';
 import { body, validationResult } from 'express-validator';
 import { authenticate, AuthRequest } from '../middleware/auth';
+import { requirePermission, RESOURCES, ACTIONS } from '../middleware/permissions';
 import { dbGet, dbAll, dbRun, getBrasiliaTimestamp } from '../database';
 import { uploadMessage } from '../middleware/upload';
 import path from 'path';
@@ -58,7 +59,7 @@ async function getTicketIdFromFullId(fullId: string): Promise<number | null> {
 router.use(authenticate);
 
 // Listar mensagens de um ticket
-router.get('/ticket/:ticketId', async (req: AuthRequest, res) => {
+router.get('/ticket/:ticketId', requirePermission(RESOURCES.TICKETS, ACTIONS.VIEW), async (req: AuthRequest, res) => {
   try {
     // Converter ID completo para ID numérico se necessário
     let ticketId: number | null = null;
@@ -114,7 +115,7 @@ router.get('/ticket/:ticketId', async (req: AuthRequest, res) => {
 });
 
 // Criar mensagem em um ticket (com suporte a anexos)
-router.post('/ticket/:ticketId', uploadMessage.array('attachments', 5), async (req: AuthRequest, res) => {
+router.post('/ticket/:ticketId', requirePermission(RESOURCES.TICKETS, ACTIONS.EDIT), uploadMessage.array('attachments', 5), async (req: AuthRequest, res) => {
   try {
     // Verificar se há mensagem ou arquivos
     const files = req.files as Express.Multer.File[] | undefined;
@@ -226,6 +227,7 @@ router.post('/ticket/:ticketId', uploadMessage.array('attachments', 5), async (r
 
 // Atualizar mensagem
 router.put('/:id', [
+  requirePermission(RESOURCES.TICKETS, ACTIONS.EDIT),
   body('message').notEmpty().withMessage('Mensagem é obrigatória')
 ], async (req: AuthRequest, res) => {
   try {
@@ -268,7 +270,7 @@ router.put('/:id', [
 });
 
 // Buscar anexos de uma mensagem
-router.get('/:id/attachments', async (req: AuthRequest, res) => {
+router.get('/:id/attachments', requirePermission(RESOURCES.TICKETS, ACTIONS.VIEW), async (req: AuthRequest, res) => {
   try {
     const messageId = req.params.id;
     
@@ -299,7 +301,7 @@ router.get('/:id/attachments', async (req: AuthRequest, res) => {
 });
 
 // Download de anexo de mensagem
-router.get('/attachments/:id', async (req: AuthRequest, res) => {
+router.get('/attachments/:id', requirePermission(RESOURCES.TICKETS, ACTIONS.VIEW), async (req: AuthRequest, res) => {
   try {
     const attachment = await dbGet('SELECT * FROM message_attachments WHERE id = ?', [req.params.id]);
     
@@ -341,7 +343,7 @@ router.get('/attachments/:id', async (req: AuthRequest, res) => {
 });
 
 // Deletar mensagem
-router.delete('/:id', async (req: AuthRequest, res) => {
+router.delete('/:id', requirePermission(RESOURCES.TICKETS, ACTIONS.DELETE), async (req: AuthRequest, res) => {
   try {
     // Verificar se a mensagem existe e se pertence ao usuário
     const message = await dbGet('SELECT * FROM ticket_messages WHERE id = ?', [req.params.id]);

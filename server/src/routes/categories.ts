@@ -1,6 +1,7 @@
 import express from 'express';
 import { body, validationResult } from 'express-validator';
-import { authenticate, AuthRequest, requireAdmin } from '../middleware/auth';
+import { authenticate, AuthRequest } from '../middleware/auth';
+import { requirePermission, RESOURCES, ACTIONS } from '../middleware/permissions';
 import { dbAll, dbGet, dbRun } from '../database';
 
 const router = express.Router();
@@ -9,7 +10,7 @@ const router = express.Router();
 router.use(authenticate);
 
 // Listar categorias
-router.get('/', async (req: AuthRequest, res) => {
+router.get('/', requirePermission(RESOURCES.CATEGORIES, ACTIONS.VIEW), async (req: AuthRequest, res) => {
   try {
     const categories = await dbAll('SELECT * FROM categories ORDER BY name');
     res.json(categories);
@@ -19,8 +20,8 @@ router.get('/', async (req: AuthRequest, res) => {
   }
 });
 
-// Criar categoria (apenas admin)
-router.post('/', requireAdmin, [
+// Criar categoria
+router.post('/', requirePermission(RESOURCES.CATEGORIES, ACTIONS.CREATE), [
   body('name').notEmpty().withMessage('Nome é obrigatório')
 ], async (req: AuthRequest, res) => {
   try {
@@ -45,8 +46,8 @@ router.post('/', requireAdmin, [
   }
 });
 
-// Atualizar categoria (apenas admin)
-router.put('/:id', requireAdmin, [
+// Atualizar categoria
+router.put('/:id', requirePermission(RESOURCES.CATEGORIES, ACTIONS.EDIT), [
   body('name').notEmpty().withMessage('Nome é obrigatório')
 ], async (req: AuthRequest, res) => {
   try {
@@ -75,8 +76,8 @@ router.put('/:id', requireAdmin, [
   }
 });
 
-// Deletar categoria (apenas admin)
-router.delete('/:id', requireAdmin, async (req: AuthRequest, res) => {
+// Deletar categoria
+router.delete('/:id', requirePermission(RESOURCES.CATEGORIES, ACTIONS.DELETE), async (req: AuthRequest, res) => {
   try {
     const categoryId = req.params.id;
     

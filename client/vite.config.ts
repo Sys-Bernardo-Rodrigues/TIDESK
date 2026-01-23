@@ -4,7 +4,15 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   server: {
+    host: '0.0.0.0', // Permitir acesso de outras máquinas na rede
     port: 3333,
+    allowedHosts: [
+      'tidesk.invicco.com.br',
+      '187.45.113.150',
+      '192.168.60.104',
+      'localhost',
+      '.invicco.com.br' // Permite qualquer subdomínio
+    ],
     proxy: {
       '/api': {
         target: 'http://localhost:5000',
