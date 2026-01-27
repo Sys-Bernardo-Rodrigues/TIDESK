@@ -314,9 +314,7 @@ export default function Webhooks() {
         'Content-Type': 'application/json'
       };
 
-      if (webhook.secret_key) {
-        headers['x-webhook-secret'] = webhook.secret_key;
-      }
+      // Secret key removido - não é mais necessário
 
       const response = await axios.post(
         `/api/webhooks/receive/${webhook.webhook_url}`,
@@ -633,7 +631,7 @@ export default function Webhooks() {
                       </p>
                     )}
                     
-                    {/* URL e Secret Key */}
+                    {/* URL do Webhook */}
                     <div style={{ 
                       display: 'flex', 
                       flexDirection: 'column',
@@ -676,47 +674,6 @@ export default function Webhooks() {
                         </button>
                       </div>
 
-                      {webhook.secret_key && (
-                        <div style={{ 
-                          display: 'flex', 
-                          alignItems: 'center', 
-                          gap: 'var(--spacing-sm)',
-                          padding: 'var(--spacing-sm)',
-                          background: 'var(--bg-secondary)',
-                          borderRadius: 'var(--radius-sm)',
-                          border: '1px solid var(--border-primary)'
-                        }}>
-                          <Settings size={16} color="var(--text-secondary)" />
-                          <span style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
-                            Secret Key:
-                          </span>
-                          <code style={{ 
-                            fontSize: '0.8125rem',
-                            color: 'var(--text-primary)',
-                            flex: 1,
-                            wordBreak: 'break-all',
-                            fontFamily: 'monospace'
-                          }}>
-                            {copiedSecret === webhook.id ? webhook.secret_key : `${webhook.secret_key.substring(0, 20)}...`}
-                          </code>
-                          <button
-                            onClick={() => copySecretKey(webhook.secret_key, webhook.id)}
-                            className="btn btn-secondary btn-sm"
-                            title={copiedSecret === webhook.id ? "Copiado!" : "Copiar Secret Key"}
-                            style={{
-                              backgroundColor: copiedSecret === webhook.id ? 'var(--green-light)' : undefined,
-                              color: copiedSecret === webhook.id ? 'var(--green)' : undefined,
-                              transition: 'all var(--transition-base)'
-                            }}
-                          >
-                            {copiedSecret === webhook.id ? (
-                              <CheckCircle size={14} />
-                            ) : (
-                              <Copy size={14} />
-                            )}
-                          </button>
-                        </div>
-                      )}
                     </div>
 
                     {/* Estatísticas */}

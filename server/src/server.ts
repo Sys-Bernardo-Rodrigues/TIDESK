@@ -40,6 +40,18 @@ app.use(cors({
   credentials: false
 }));
 
+// Middleware condicional: aplicar raw body parsing apenas para rotas de recebimento de webhook
+// Isso deve vir ANTES dos middlewares de parsing globais
+const rawBodyMiddleware = express.raw({ type: '*/*', limit: '50mb' });
+app.use((req, res, next) => {
+  // Se for uma rota de recebimento ou teste de webhook, usar raw body parsing
+  if (req.path.startsWith('/api/webhooks/receive/') || req.path.startsWith('/api/webhooks/test/')) {
+    return rawBodyMiddleware(req, res, next);
+  }
+  // Caso contrário, passar para os middlewares normais
+  next();
+});
+
 // Middleware para aceitar requisições de qualquer IP
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
@@ -64,6 +76,8 @@ app.use('/api/shifts', shiftRoutes);
 app.use('/api/backup', backupRoutes);
 app.use('/api/updates', updateRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+
+// Registrar rotas de webhook (incluindo recebimento que já tem raw body parsing)
 app.use('/api/webhooks', webhookRoutes);
 
 // Rota de health check

@@ -305,64 +305,158 @@ router.delete(
 );
 
 // Rota pública para receber webhooks
+// NOTA: O middleware express.raw() já foi aplicado no server.ts antes dos middlewares globais
 router.post(
   '/receive/:webhookUrl',
   async (req: express.Request, res: Response) => {
     try {
       const { webhookUrl } = req.params;
-      const payload = req.body;
-
-      console.log(`[Webhook Receive] Recebido webhook: ${webhookUrl}`);
+      
+      // Log detalhado da requisição recebida
+      console.log(`[Webhook Receive] ========================================`);
+      console.log(`[Webhook Receive] URL recebida: ${webhookUrl}`);
+      console.log(`[Webhook Receive] Método: ${req.method}`);
+      console.log(`[Webhook Receive] Content-Type: ${req.headers['content-type'] || 'não especificado'}`);
+      console.log(`[Webhook Receive] Headers:`, JSON.stringify(req.headers, null, 2));
+      console.log(`[Webhook Receive] IP origem: ${req.ip || req.socket.remoteAddress}`);
+      
+      // Parse do payload baseado no Content-Type
+      let payload: any = {};
+      const contentType = req.headers['content-type'] || '';
+      const rawBodyBuffer = req.body as Buffer;
+      
+      try {
+        if (contentType.includes('application/json')) {
+          // Tentar parsear como JSON
+          const bodyStr = rawBodyBuffer.toString('utf8');
+          try {
+            payload = JSON.parse(bodyStr);
+          } catch {
+            // Se falhar, tentar usar como objeto se já estiver parseado
+            payload = typeof rawBodyBuffer === 'object' && !Buffer.isBuffer(rawBodyBuffer) 
+              ? rawBodyBuffer 
+              : { raw_content: bodyStr };
+          }
+        } else if (contentType.includes('application/x-www-form-urlencoded')) {
+          // Form data - tentar parsear manualmente
+          const bodyStr = rawBodyBuffer.toString('utf8');
+          const params = new URLSearchParams(bodyStr);
+          payload = Object.fromEntries(params);
+        } else if (contentType.includes('text/plain') || contentType.includes('text/xml') || contentType.includes('application/xml')) {
+          // Raw text/XML - tentar parsear como JSON primeiro, senão usar como string
+          const bodyStr = rawBodyBuffer.toString('utf8');
+          try {
+            payload = JSON.parse(bodyStr);
+          } catch {
+            // Se não for JSON válido, tratar como string
+            payload = { raw_content: bodyStr, content_type: contentType };
+          }
+        } else {
+          // Tipo desconhecido - tentar parsear como JSON primeiro
+          const bodyStr = rawBodyBuffer.toString('utf8');
+          if (bodyStr.trim().startsWith('{') || bodyStr.trim().startsWith('[')) {
+            try {
+              payload = JSON.parse(bodyStr);
+            } catch {
+              payload = { raw_content: bodyStr, content_type: contentType };
+            }
+          } else {
+            payload = { raw_content: bodyStr, content_type: contentType };
+          }
+        }
+        
+        console.log(`[Webhook Receive] Payload parseado (${Object.keys(payload).length} campos):`, JSON.stringify(payload, null, 2).substring(0, 1000));
+      } catch (parseError: any) {
+        console.error(`[Webhook Receive] Erro ao fazer parse do payload:`, parseError);
+        const bodyStr = rawBodyBuffer ? rawBodyBuffer.toString('utf8') : 'N/A';
+        payload = { 
+          parse_error: parseError.message,
+          raw_body: bodyStr.substring(0, 500)
+        };
+      }
 
       // Buscar webhook
       const webhook = await dbGet('SELECT * FROM webhooks WHERE webhook_url = ? AND active = 1', [webhookUrl]);
       if (!webhook) {
-        console.log(`[Webhook Receive] Webhook não encontrado ou inativo: ${webhookUrl}`);
-        return res.status(404).json({ error: 'Webhook não encontrado ou inativo' });
+        console.log(`[Webhook Receive] ❌ Webhook não encontrado ou inativo: ${webhookUrl}`);
+        return res.status(404).json({ 
+          error: 'Webhook não encontrado ou inativo',
+          webhook_url: webhookUrl
+        });
       }
 
       const webhookData = webhook as any;
       
-      console.log(`[Webhook Receive] Webhook encontrado: ${webhookData.name} (ID: ${webhookData.id})`);
-
-      // Validar secret key se fornecido
-      const providedSecret = req.headers['x-webhook-secret'] || req.headers['x-secret-key'];
-      if (webhookData.secret_key && providedSecret !== webhookData.secret_key) {
-        await dbRun(`
-          INSERT INTO webhook_logs (webhook_id, status, response_code, payload, error_message, created_at)
-          VALUES (?, ?, ?, ?, ?, ?)
-        `, [
-          webhookData.id,
-          'error',
-          401,
-          JSON.stringify(payload),
-          'Secret key inválida',
-          getBrasiliaTimestamp()
-        ]);
-        return res.status(401).json({ error: 'Secret key inválida' });
-      }
+      console.log(`[Webhook Receive] ✅ Webhook encontrado: ${webhookData.name} (ID: ${webhookData.id})`);
+      console.log(`[Webhook Receive] ℹ️ Processando webhook sem validação de autenticação`);
 
       // Extrair informações do payload (suporta diferentes formatos)
       let title = 'Webhook: ' + webhookData.name;
       let description = JSON.stringify(payload, null, 2);
       let priority = webhookData.priority || 'medium';
 
-      // Tentar extrair informações comuns de sistemas como Zabbix
+      // Tentar extrair informações comuns de diferentes sistemas
+      
+      // Formato Zabbix
       if (payload.alert && payload.alert.name) {
         title = payload.alert.name;
         description = payload.alert.message || description;
         priority = payload.alert.severity === 'High' || payload.alert.severity === 'Disaster' ? 'high' : 
                    payload.alert.severity === 'Average' ? 'medium' : 'low';
-      } else if (payload.event && payload.event.name) {
+      }
+      // Formato genérico de eventos
+      else if (payload.event && payload.event.name) {
         title = payload.event.name;
-        description = payload.event.description || description;
-      } else if (payload.title) {
+        description = payload.event.description || payload.event.message || description;
+        if (payload.event.priority || payload.event.severity) {
+          const eventPriority = (payload.event.priority || payload.event.severity).toLowerCase();
+          if (eventPriority.includes('high') || eventPriority.includes('critical') || eventPriority.includes('urgent')) {
+            priority = 'high';
+          } else if (eventPriority.includes('medium') || eventPriority.includes('warning')) {
+            priority = 'medium';
+          } else {
+            priority = 'low';
+          }
+        }
+      }
+      // Formato simples com title/description
+      else if (payload.title) {
         title = payload.title;
-        description = payload.description || payload.message || description;
-      } else if (payload.message) {
+        description = payload.description || payload.message || payload.body || description;
+        if (payload.priority) {
+          const p = String(payload.priority).toLowerCase();
+          if (p.includes('high') || p.includes('critical') || p.includes('urgent')) priority = 'high';
+          else if (p.includes('medium') || p.includes('warning')) priority = 'medium';
+          else priority = 'low';
+        }
+      }
+      // Formato com message
+      else if (payload.message) {
         title = payload.message.substring(0, 100);
         description = JSON.stringify(payload, null, 2);
       }
+      // Formato com subject
+      else if (payload.subject) {
+        title = payload.subject;
+        description = payload.body || payload.content || payload.text || description;
+      }
+      // Formato com name
+      else if (payload.name) {
+        title = payload.name;
+        description = payload.description || payload.details || description;
+      }
+      // Formato com raw_content (quando não foi possível parsear)
+      else if (payload.raw_content) {
+        title = `Webhook recebido: ${webhookData.name}`;
+        description = `Tipo: ${payload.content_type || 'desconhecido'}\n\nConteúdo:\n${payload.raw_content}`;
+      }
+      
+      // Limitar tamanho do título (máximo 255 caracteres)
+      if (title.length > 255) {
+        title = title.substring(0, 252) + '...';
+      }
+      
+      console.log(`[Webhook Receive] Informações extraídas - Título: "${title}", Prioridade: ${priority}`);
 
       // Criar ticket
       let ticketId: number | null = null;
@@ -433,6 +527,84 @@ router.post(
     } catch (error: any) {
       console.error('Erro ao processar webhook:', error);
       res.status(500).json({ error: 'Erro ao processar webhook: ' + (error.message || 'Erro desconhecido') });
+    }
+  }
+);
+
+// Rota de teste para webhook (não requer autenticação)
+// NOTA: O middleware express.raw() já foi aplicado no server.ts antes dos middlewares globais
+router.post(
+  '/test/:webhookUrl',
+  async (req: express.Request, res: Response) => {
+    try {
+      const { webhookUrl } = req.params;
+      const contentType = req.headers['content-type'] || 'não especificado';
+      const rawBody = req.body as Buffer;
+      
+      console.log(`[Webhook Test] Teste recebido para: ${webhookUrl}`);
+      console.log(`[Webhook Test] Content-Type: ${contentType}`);
+      console.log(`[Webhook Test] Body size: ${rawBody ? rawBody.length : 0} bytes`);
+      
+      // Verificar se webhook existe
+      const webhook = await dbGet('SELECT * FROM webhooks WHERE webhook_url = ?', [webhookUrl]);
+      
+      if (!webhook) {
+        return res.status(404).json({ 
+          error: 'Webhook não encontrado',
+          webhook_url: webhookUrl,
+          message: 'Verifique se a URL do webhook está correta'
+        });
+      }
+      
+      const webhookData = webhook as any;
+      
+      // Tentar parsear o body
+      let parsedBody: any = {};
+      try {
+        const bodyStr = rawBody.toString('utf8');
+        if (contentType.includes('application/json')) {
+          parsedBody = JSON.parse(bodyStr);
+        } else {
+          parsedBody = { raw_content: bodyStr.substring(0, 500) };
+        }
+      } catch (e) {
+        parsedBody = { parse_error: 'Não foi possível fazer parse do body' };
+      }
+      
+      res.json({
+        success: true,
+        message: 'Webhook de teste recebido com sucesso',
+        webhook: {
+          id: webhookData.id,
+          name: webhookData.name,
+          active: webhookData.active === 1,
+          requires_secret: !!webhookData.secret_key
+        },
+        request_info: {
+          content_type: contentType,
+          body_size: rawBody ? rawBody.length : 0,
+          headers: Object.keys(req.headers),
+          parsed_body: parsedBody
+        },
+        instructions: {
+          endpoint: `/api/webhooks/receive/${webhookUrl}`,
+          method: 'POST',
+          content_types_supported: [
+            'application/json',
+            'application/x-www-form-urlencoded',
+            'text/plain',
+            'text/xml',
+            'application/xml'
+          ],
+          authentication: 'Este webhook não requer autenticação (secret key desabilitado)'
+        }
+      });
+    } catch (error: any) {
+      console.error('[Webhook Test] Erro:', error);
+      res.status(500).json({ 
+        error: 'Erro ao processar teste',
+        message: error.message 
+      });
     }
   }
 );
