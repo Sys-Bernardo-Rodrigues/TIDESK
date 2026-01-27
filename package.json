@@ -1,6 +1,6 @@
 {
   "name": "tidesk",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Sistema de Helpdesk Profissional - TIDESK",
   "main": "dist/server.js",
   "scripts": {
