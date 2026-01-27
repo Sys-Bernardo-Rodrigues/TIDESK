@@ -6,7 +6,6 @@ import { formatDateList } from '../utils/dateUtils';
 import { 
   Search, 
   Clock, 
-  User, 
   FileText, 
   CheckCircle, 
   RefreshCw
@@ -29,6 +28,29 @@ interface Ticket {
   scheduled_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+// Formata data/hora de agendamento no formato "HH:mm e dd/MM/yy"
+function formatScheduledDate(dateString: string): string {
+  if (!dateString) return '';
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return '';
+
+  const time = date.toLocaleTimeString('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  });
+
+  const dayDate = date.toLocaleDateString('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    day: '2-digit',
+    month: '2-digit',
+    year: '2-digit'
+  });
+
+  return `${time} e ${dayDate}`;
 }
 
 // Função para gerar ID completo do ticket (sem barras) - usado em URLs
@@ -678,176 +700,247 @@ export default function Tickets() {
                     const cardBorderColor = getCardBorderColor(ticket, column.id);
                     
                     return (
-                    <div
-                      key={ticket.id}
-                      draggable
-                      onDragStart={(e) => handleDragStart(e, ticket)}
-                      onClick={() => handleTicketClick(ticket.id)}
-                      style={{
-                        backgroundColor: cardBgColor,
-                        border: `1px solid ${cardBorderColor}`,
-                        borderRadius: 'var(--radius-sm)',
-                        padding: 'var(--spacing-sm)',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s ease',
-                        position: 'relative',
-                        opacity: draggedTicket?.id === ticket.id ? 0.4 : 1,
-                        boxShadow: '0 1px 2px rgba(0, 0, 0, 0.08)'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.borderColor = column.color;
-                        e.currentTarget.style.boxShadow = `0 2px 8px ${column.bgColor}`;
-                        e.currentTarget.style.transform = 'translateY(-1px)';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.borderColor = cardBorderColor;
-                        e.currentTarget.style.boxShadow = '0 1px 2px rgba(0, 0, 0, 0.08)';
-                        e.currentTarget.style.transform = 'translateY(0)';
-                      }}
-                    >
-                      {/* Header: Priority + Form Badge */}
-                      <div style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'stretch',
-                        marginBottom: '0.375rem',
-                        gap: '0.25rem'
-                      }}>
-                        <span style={{
-                          fontSize: '0.625rem',
-                          fontWeight: '700',
-                          color: '#FFFFFF',
-                          backgroundColor: getPriorityColor(ticket.priority),
-                          padding: '0.125rem 0.375rem',
-                          borderRadius: 'var(--radius-sm)',
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.05em',
-                          lineHeight: '1.2'
-                        }}>
-                          {getPriorityLabel(ticket.priority)}
-                        </span>
-                        {ticket.form_name && (
-                          <span style={{
-                            fontSize: '0.625rem',
-                            color: 'var(--purple)',
-                            backgroundColor: 'var(--purple-light)',
-                            padding: '0.125rem 0.375rem',
-                            borderRadius: 'var(--radius-sm)',
-                            display: 'flex',
-                            alignItems: 'stretch',
-                            gap: '0.125rem',
-                            fontWeight: '500',
-                            lineHeight: '1.2'
-                          }}>
-                            <FileText size={8} />
-                            Form
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Ticket ID */}
-                      {ticket.ticket_number && ticket.created_at && (
-                        <div style={{
-                          fontSize: '0.6875rem',
-                          color: 'var(--text-tertiary)',
-                          marginBottom: '0.25rem',
-                          fontFamily: 'monospace',
-                          fontWeight: '600',
-                          lineHeight: '1.2'
-                        }}>
-                          {formatTicketId(ticket)}
-                        </div>
-                      )}
-                      
-                      {/* Title */}
-                      <h4 style={{
-                        fontSize: '0.8125rem',
-                        fontWeight: '600',
-                        color: 'var(--text-primary)',
-                        marginBottom: '0.25rem',
-                        lineHeight: '1.3',
-                        display: '-webkit-box',
-                        WebkitLineClamp: 2,
-                        WebkitBoxOrient: 'vertical',
-                        overflow: 'hidden'
-                      }}>
-                        {ticket.title}
-                      </h4>
-
-                      {/* Description */}
-                      <p style={{
-                        fontSize: '0.75rem',
-                        color: 'var(--text-secondary)',
-                        marginBottom: '0.375rem',
-                        lineHeight: '1.4',
-                        display: '-webkit-box',
-                        WebkitLineClamp: 2,
-                        WebkitBoxOrient: 'vertical',
-                        overflow: 'hidden'
-                      }}>
-                        {ticket.description}
-                      </p>
-
-                      {/* Meta Info - Compacto */}
-                        <div style={{
-                        display: 'flex',
-                        alignItems: 'stretch',
-                        justifyContent: 'space-between',
-                        gap: '0.375rem',
-                        marginTop: '0.375rem',
-                        paddingTop: '0.375rem',
-                        borderTop: '1px solid var(--border-primary)',
-                        fontSize: '0.6875rem',
-                          color: 'var(--text-tertiary)',
-                        flexWrap: 'wrap'
-                        }}>
-                      <div style={{
-                        display: 'flex',
-                          alignItems: 'stretch', 
-                        gap: '0.25rem',
-                          flex: '1',
-                          minWidth: '0',
+                      <div
+                        key={ticket.id}
+                        draggable
+                        onDragStart={(e) => handleDragStart(e, ticket)}
+                        onClick={() => handleTicketClick(ticket.id)}
+                        style={{
+                          background: `linear-gradient(135deg, rgba(15,23,42,0.02), rgba(88,28,135,0.06))`,
+                          border: `1px solid ${cardBorderColor}`,
+                          borderRadius: 'var(--radius-md)',
+                          padding: '0.75rem 0.75rem 0.7rem',
+                          cursor: 'pointer',
+                          transition: 'all 0.18s ease-out',
+                          position: 'relative',
+                          opacity: draggedTicket?.id === ticket.id ? 0.4 : 1,
+                          boxShadow: '0 6px 18px rgba(15, 23, 42, 0.12)',
                           overflow: 'hidden'
-                      }}>
-                          <User size={10} />
-                          <span style={{
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap'
-                          }}>
-                            {ticket.user_name}
-                          </span>
-                        </div>
-                        {ticket.assigned_name && (
-                          <div style={{ 
-                            display: 'flex', 
-                            alignItems: 'stretch', 
-                            gap: '0.25rem',
-                            flex: '1',
-                            minWidth: '0',
-                            overflow: 'hidden'
-                          }}>
-                            <CheckCircle size={10} />
-                            <span style={{
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap'
-                            }}>
-                              {ticket.assigned_name}
-                            </span>
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.borderColor = column.color;
+                          e.currentTarget.style.boxShadow = `0 10px 24px ${column.bgColor}`;
+                          e.currentTarget.style.transform = 'translateY(-2px)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.borderColor = cardBorderColor;
+                          e.currentTarget.style.boxShadow = '0 6px 18px rgba(15, 23, 42, 0.12)';
+                          e.currentTarget.style.transform = 'translateY(0)';
+                        }}
+                      >
+                        {/* Sombra de fundo suave */}
+                        <div
+                          style={{
+                            position: 'absolute',
+                            inset: 0,
+                            borderRadius: 'inherit',
+                            background:
+                              'radial-gradient(circle at 0 0, rgba(59,130,246,0.12), transparent 55%), radial-gradient(circle at 100% 100%, rgba(147,51,234,0.14), transparent 55%)',
+                            opacity: 0.7,
+                            pointerEvents: 'none'
+                          }}
+                        />
+
+                        {/* Conteúdo do card */}
+                        <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                          {/* Linha superior: prioridade, id e formulário */}
+                          <div
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              gap: '0.5rem'
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                              {/* Badge de prioridade */}
+                              <span
+                                style={{
+                                  fontSize: '0.65rem',
+                                  fontWeight: 700,
+                                  color: '#fff',
+                                  backgroundColor: getPriorityColor(ticket.priority),
+                                  padding: '0.18rem 0.5rem',
+                                  borderRadius: '999px',
+                                  textTransform: 'uppercase',
+                                  letterSpacing: '0.06em',
+                                  boxShadow: '0 0 0 1px rgba(15,23,42,0.3)'
+                                }}
+                              >
+                                {getPriorityLabel(ticket.priority)}
+                              </span>
+
+                              {/* ID do ticket */}
+                              {ticket.ticket_number && ticket.created_at && (
+                                <span
+                                  style={{
+                                    fontSize: '0.7rem',
+                                    fontFamily: 'monospace',
+                                    color: 'var(--text-tertiary)',
+                                    backgroundColor: 'rgba(15,23,42,0.06)',
+                                    padding: '0.15rem 0.4rem',
+                                    borderRadius: '999px',
+                                    border: '1px solid rgba(148,163,184,0.45)'
+                                  }}
+                                >
+                                  {formatTicketId(ticket)}
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Selo de origem (Formulário) */}
+                            {ticket.form_name && (
+                              <div
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '0.25rem',
+                                  fontSize: '0.65rem',
+                                  color: 'var(--purple)',
+                                  background:
+                                    'linear-gradient(135deg, rgba(94,92,255,0.06), rgba(192,132,252,0.16))',
+                                  padding: '0.15rem 0.45rem',
+                                  borderRadius: '999px',
+                                  border: '1px solid rgba(147,51,234,0.45)',
+                                  maxWidth: '55%',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap'
+                                }}
+                              >
+                                <FileText size={10} />
+                                <span
+                                  style={{
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    whiteSpace: 'nowrap'
+                                  }}
+                                >
+                                  Formulário
+                                </span>
+                              </div>
+                            )}
                           </div>
-                        )}
-                        <div style={{ 
-                          display: 'flex', 
-                          alignItems: 'stretch', 
-                          gap: '0.25rem',
-                          flexShrink: 0
-                        }}>
-                          <Clock size={10} />
-                          <span>{formatDate(ticket.created_at)}</span>
+
+                          {/* Título */}
+                          <h4
+                            style={{
+                              fontSize: '0.86rem',
+                              fontWeight: 600,
+                              color: 'var(--text-primary)',
+                              lineHeight: 1.35,
+                              display: '-webkit-box',
+                              WebkitLineClamp: 2,
+                              WebkitBoxOrient: 'vertical',
+                              overflow: 'hidden'
+                            }}
+                          >
+                            {ticket.title}
+                          </h4>
+
+                          {/* Descrição */}
+                          <p
+                            style={{
+                              fontSize: '0.74rem',
+                              color: 'var(--text-secondary)',
+                              lineHeight: 1.4,
+                              display: '-webkit-box',
+                              WebkitLineClamp: 2,
+                              WebkitBoxOrient: 'vertical',
+                              overflow: 'hidden'
+                            }}
+                          >
+                            {ticket.description}
+                          </p>
+
+                          {/* Linha inferior: responsável + datas */}
+                          <div
+                            style={{
+                              display: 'flex',
+                              alignItems: 'flex-end',
+                              justifyContent: 'space-between',
+                              gap: '0.5rem',
+                              marginTop: '0.4rem',
+                              paddingTop: '0.4rem',
+                              borderTop: '1px solid rgba(148,163,184,0.4)',
+                              fontSize: '0.68rem',
+                              color: 'var(--text-tertiary)',
+                              flexWrap: 'wrap'
+                            }}
+                          >
+                            {/* Responsável */}
+                            {ticket.assigned_name && (
+                              <div
+                                style={{
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  gap: '0.1rem',
+                                  minWidth: 0,
+                                  flex: '1'
+                                }}
+                              >
+                                <span
+                                  style={{
+                                    fontSize: '0.6rem',
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '0.08em',
+                                    color: 'var(--text-tertiary)'
+                                  }}
+                                >
+                                  Responsável
+                                </span>
+                                <span
+                                  style={{
+                                    fontWeight: 500,
+                                    color: 'var(--text-primary)',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    whiteSpace: 'nowrap'
+                                  }}
+                                >
+                                  {ticket.assigned_name}
+                                </span>
+                              </div>
+                            )}
+
+                            {/* Datas */}
+                            <div
+                              style={{
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'flex-end',
+                                gap: '0.1rem',
+                                flexShrink: 0,
+                                textAlign: 'right'
+                              }}
+                            >
+                              {ticket.status === 'scheduled' && ticket.scheduled_at && (
+                                <div
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.25rem',
+                                    color: 'var(--purple)'
+                                  }}
+                                >
+                                  <Clock size={10} />
+                                  <span>Agendado: {formatScheduledDate(ticket.scheduled_at)}</span>
+                                </div>
+                              )}
+                              <div
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '0.25rem'
+                                }}
+                              >
+                                <Clock size={10} />
+                                <span>{formatDate(ticket.created_at)}</span>
+                              </div>
+                            </div>
+                          </div>
                         </div>
                       </div>
-                    </div>
                     );
                   })
                 )}

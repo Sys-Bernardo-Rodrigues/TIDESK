@@ -233,7 +233,6 @@ router.get('/agents-performance', requirePermission(RESOURCES.REPORTS, ACTIONS.V
       FROM users u
       INNER JOIN tickets t ON u.id = t.assigned_to
       WHERE t.created_at >= ? AND t.created_at <= ?
-        AND u.role IN ('agent', 'admin')
       GROUP BY u.id, u.name, u.email
       ORDER BY total_tickets DESC
     `;
