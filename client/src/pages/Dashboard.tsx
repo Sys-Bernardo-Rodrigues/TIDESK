@@ -35,6 +35,11 @@ interface DashboardStats {
   groups: {
     total: number;
   };
+  webhooks?: {
+    total: number;
+    active: number;
+    callsToday: number;
+  };
   topForms: Array<{ name: string; ticket_count: number }>;
   timeline: Array<{ date: string; count: number }>;
 }

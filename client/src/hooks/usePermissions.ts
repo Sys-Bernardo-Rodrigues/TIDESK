@@ -45,7 +45,7 @@ export const usePermissions = () => {
   const fetchPermissions = async () => {
     try {
       const response = await axios.get('/api/access-profiles/me/permissions');
-      const userPermissions = new Set(response.data.permissions);
+      const userPermissions = new Set<string>(response.data.permissions);
       setPermissions(userPermissions);
       
       // Verificar se é admin (role ou tem todas as permissões)

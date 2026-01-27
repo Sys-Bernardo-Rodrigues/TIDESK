@@ -508,7 +508,7 @@ export default function PublicForm() {
                               if (fileSizeMB > field.validation.maxSize) {
                                 setErrors(prev => ({
                                   ...prev,
-                                  [field.id]: `Arquivo muito grande. Tamanho máximo: ${field.validation.maxSize}MB`
+                                  [field.id]: `Arquivo muito grande. Tamanho máximo: ${field.validation!.maxSize}MB`
                                 }));
                                 e.target.value = '';
                                 return;

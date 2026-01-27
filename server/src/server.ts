@@ -22,6 +22,11 @@ import { startBackupScheduler } from './services/backup-scheduler';
 
 dotenv.config();
 
+// Definir NODE_ENV como production se não estiver definido e não estiver em modo dev
+if (!process.env.NODE_ENV && !process.argv.includes('watch')) {
+  process.env.NODE_ENV = 'production';
+}
+
 // Configurar timezone para Brasília
 process.env.TZ = 'America/Sao_Paulo';
 
@@ -71,6 +76,9 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'TIDESK API está funcionando' });
 });
 
+// O cliente é servido separadamente pelo Vite preview na porta 3333
+// Não precisamos servir arquivos estáticos aqui
+
 // Função para atualizar tickets finalizados periodicamente
 async function startClosedTicketsUpdater() {
   const updateInterval = 60 * 60 * 1000; // 1 hora
@@ -99,12 +107,13 @@ async function startClosedTicketsUpdater() {
 initDatabase().then(async () => {
   // Escutar em todas as interfaces de rede (0.0.0.0) para aceitar conexões externas
   const HOST = process.env.HOST || '0.0.0.0';
+  const port = typeof PORT === 'string' ? parseInt(PORT, 10) : PORT;
   
-  app.listen(PORT, HOST, () => {
-    console.log(`🚀 Servidor TIDESK rodando em http://${HOST}:${PORT}`);
+  app.listen(port, HOST, () => {
+    console.log(`🚀 Servidor TIDESK rodando em http://${HOST}:${port}`);
     console.log(`🌐 Acessível de qualquer IP na rede`);
     if (HOST === '0.0.0.0') {
-      console.log(`📡 Para acessar externamente, use o IP desta máquina na porta ${PORT}`);
+      console.log(`📡 Para acessar externamente, use o IP desta máquina na porta ${port}`);
     }
   });
   

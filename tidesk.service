@@ -1,0 +1,25 @@
+[Unit]
+Description=TIDESK - Sistema de Helpdesk Profissional
+After=network.target
+
+[Service]
+Type=simple
+User=tidesk
+Group=tidesk
+WorkingDirectory=/home/tidesk/TIDESK
+Environment="NODE_ENV=production"
+Environment="PATH=/home/tidesk/.nvm/versions/node/v24.13.0/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="NVM_DIR=/home/tidesk/.nvm"
+ExecStart=/usr/bin/bash /home/tidesk/TIDESK/start-tidesk.sh
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=tidesk
+
+# Configurações de segurança
+NoNewPrivileges=true
+PrivateTmp=false
+
+[Install]
+WantedBy=multi-user.target

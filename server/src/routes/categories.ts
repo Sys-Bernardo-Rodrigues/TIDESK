@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { requirePermission, RESOURCES, ACTIONS } from '../middleware/permissions';
@@ -23,7 +23,7 @@ router.get('/', requirePermission(RESOURCES.CATEGORIES, ACTIONS.VIEW), async (re
 // Criar categoria
 router.post('/', requirePermission(RESOURCES.CATEGORIES, ACTIONS.CREATE), [
   body('name').notEmpty().withMessage('Nome é obrigatório')
-], async (req: AuthRequest, res) => {
+], async (req: AuthRequest, res: Response) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -49,7 +49,7 @@ router.post('/', requirePermission(RESOURCES.CATEGORIES, ACTIONS.CREATE), [
 // Atualizar categoria
 router.put('/:id', requirePermission(RESOURCES.CATEGORIES, ACTIONS.EDIT), [
   body('name').notEmpty().withMessage('Nome é obrigatório')
-], async (req: AuthRequest, res) => {
+], async (req: AuthRequest, res: Response) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {

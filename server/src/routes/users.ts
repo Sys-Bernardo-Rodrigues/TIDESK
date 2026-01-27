@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import bcrypt from 'bcryptjs';
 import { authenticate, AuthRequest, requireAgent } from '../middleware/auth';
@@ -182,7 +182,7 @@ router.post('/', [
   body('password').isLength({ min: 6 }).withMessage('Senha deve ter no mínimo 6 caracteres'),
   body('access_profile_ids').isArray().withMessage('Perfis de acesso devem ser um array'),
   body('access_profile_ids.*').isInt().withMessage('IDs de perfis devem ser números inteiros')
-], async (req: AuthRequest, res) => {
+], async (req: AuthRequest, res: Response) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -276,7 +276,7 @@ router.put('/:id', [
   body('password').optional().isLength({ min: 6 }).withMessage('Senha deve ter no mínimo 6 caracteres'),
   body('access_profile_ids').optional().isArray().withMessage('Perfis de acesso devem ser um array'),
   body('access_profile_ids.*').optional().isInt().withMessage('IDs de perfis devem ser números inteiros')
-], async (req: AuthRequest, res) => {
+], async (req: AuthRequest, res: Response) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {

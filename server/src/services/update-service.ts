@@ -91,7 +91,7 @@ export async function checkForUpdates(): Promise<UpdateInfo> {
     try {
       const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/releases/latest`);
       if (response.ok) {
-        const release = await response.json();
+        const release = await response.json() as { body?: string; html_url?: string; tag_name?: string };
         releaseNotes = release.body || null;
         releaseUrl = release.html_url || null;
         latestTag = release.tag_name || latestTag;

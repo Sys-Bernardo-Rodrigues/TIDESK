@@ -103,11 +103,11 @@ router.get('/report/monthly', authenticate, requirePermission(RESOURCES.AGENDA, 
     const params = [startStr, endStr, startStr, endStr, startStr, endStr];
     
     // Usuários só veem plantões onde estão vinculados ou que criaram
-    if (req.userRole === 'user') {
+    if (req.userRole === 'user' && req.userId) {
       query += ` AND (s.created_by = ? OR EXISTS (
         SELECT 1 FROM shift_users su WHERE su.shift_id = s.id AND su.user_id = ?
       ))`;
-      params.push(req.userId, req.userId);
+      params.push(req.userId.toString(), req.userId.toString());
     }
     
     query += ' ORDER BY s.start_time ASC';

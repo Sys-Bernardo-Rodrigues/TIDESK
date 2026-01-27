@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import axios from 'axios';
 
@@ -202,22 +202,6 @@ export default function Login() {
             {loading ? 'Entrando...' : 'Entrar'}
           </button>
         </form>
-
-        <p style={{ 
-          textAlign: 'center', 
-          marginTop: '1.5rem', 
-          fontSize: '0.875rem', 
-          color: 'var(--text-secondary)' 
-        }}>
-          Não tem uma conta?{' '}
-          <Link to="/register" style={{ 
-            color: 'var(--purple)', 
-            textDecoration: 'none',
-            fontWeight: '600'
-          }}>
-            Cadastre-se
-          </Link>
-        </p>
       </div>
     </div>
   );

@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
-    "start": "node dist/server.js"
+    "start": "node -r dotenv/config dist/server.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

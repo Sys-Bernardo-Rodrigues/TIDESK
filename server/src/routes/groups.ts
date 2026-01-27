@@ -1,4 +1,5 @@
 import express from 'express';
+import type { Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { requirePermission, RESOURCES, ACTIONS } from '../middleware/permissions';
@@ -78,7 +79,7 @@ router.post('/', [
   authenticate,
   requirePermission(RESOURCES.CONFIG, ACTIONS.CREATE),
   body('name').notEmpty().withMessage('Nome é obrigatório')
-], async (req: AuthRequest, res) => {
+], async (req: AuthRequest, res: Response) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -115,7 +116,7 @@ router.put('/:id', [
   authenticate,
   requirePermission(RESOURCES.CONFIG, ACTIONS.EDIT),
   body('name').notEmpty().withMessage('Nome é obrigatório')
-], async (req: AuthRequest, res) => {
+], async (req: AuthRequest, res: Response) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -175,7 +176,7 @@ router.post('/:id/users', [
   authenticate,
   requirePermission(RESOURCES.CONFIG, ACTIONS.EDIT),
   body('userId').isInt().withMessage('ID do usuário é obrigatório')
-], async (req: AuthRequest, res) => {
+], async (req: AuthRequest, res: Response) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {

@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { requirePermission, RESOURCES, ACTIONS } from '../middleware/permissions';
@@ -17,7 +17,7 @@ const generatePublicUrl = (): string => {
 };
 
 // Listar formulários (requer autenticação)
-router.get('/', authenticate, requirePermission(RESOURCES.FORMS, ACTIONS.VIEW), async (req: AuthRequest, res) => {
+router.get('/', authenticate, requirePermission(RESOURCES.FORMS, ACTIONS.VIEW), async (req: AuthRequest, res: Response) => {
   try {
     const forms = await dbAll(`
       SELECT f.*,
@@ -164,7 +164,7 @@ router.post('/', [
   body('fields').isArray().withMessage('Campos são obrigatórios'),
   body('fields.*.type').notEmpty().withMessage('Tipo do campo é obrigatório'),
   body('fields.*.label').notEmpty().withMessage('Rótulo do campo é obrigatório')
-], async (req: AuthRequest, res) => {
+], async (req: AuthRequest, res: Response) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -242,7 +242,7 @@ router.put('/:id', [
   requirePermission(RESOURCES.FORMS, ACTIONS.EDIT),
   body('name').notEmpty().withMessage('Nome é obrigatório'),
   body('fields').isArray().withMessage('Campos são obrigatórios')
-], async (req: AuthRequest, res) => {
+], async (req: AuthRequest, res: Response) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -308,7 +308,7 @@ router.put('/:id', [
 });
 
 // Excluir formulário
-router.delete('/:id', authenticate, requirePermission(RESOURCES.FORMS, ACTIONS.DELETE), async (req: AuthRequest, res) => {
+router.delete('/:id', authenticate, requirePermission(RESOURCES.FORMS, ACTIONS.DELETE), async (req: AuthRequest, res: Response) => {
   try {
     // Verificar se o formulário pertence ao usuário
     const form = await dbGet('SELECT id FROM forms WHERE id = ? AND created_by = ?', [req.params.id, req.userId]);
@@ -354,7 +354,7 @@ router.post('/public/:url/submit', uploadMultiple, async (req, res) => {
 
     // Processar arquivos enviados
     // Quando usa upload.any(), req.files é um array
-    const files = req.files as Express.Multer.File[] | undefined;
+    const files = req.files as Express.Multer.File[] | { [fieldname: string]: Express.Multer.File[] } | undefined;
     const fileMap: Record<string, Express.Multer.File> = {};
     
     if (files && Array.isArray(files)) {
