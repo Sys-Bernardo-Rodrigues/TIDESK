@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import { authenticate, AuthRequest, requireAdmin } from '../middleware/auth';
 import { dbGet, dbAll, dbRun, getBrasiliaTimestamp } from '../database';
@@ -92,7 +92,7 @@ router.post('/', [
   authenticate,
   requireAdmin,
   body('name').notEmpty().withMessage('Nome é obrigatório')
-], async (req: AuthRequest, res) => {
+], async (req: AuthRequest, res: Response) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -167,7 +167,7 @@ router.put('/:id', [
   authenticate,
   requireAdmin,
   body('name').notEmpty().withMessage('Nome é obrigatório')
-], async (req: AuthRequest, res) => {
+], async (req: AuthRequest, res: Response) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -283,7 +283,7 @@ router.post('/:id/users', [
   authenticate,
   requireAdmin,
   body('userId').isInt().withMessage('ID do usuário é obrigatório')
-], async (req: AuthRequest, res) => {
+], async (req: AuthRequest, res: Response) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {

@@ -45,7 +45,7 @@ export default function ServiceCalendar() {
   const [loading, setLoading] = useState(true);
   const [showEventModal, setShowEventModal] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [, setSelectedDate] = useState<Date | null>(null);
   const [allUsers, setAllUsers] = useState<any[]>([]);
   
   const canCreate = hasPermission(RESOURCES.AGENDA, ACTIONS.CREATE);

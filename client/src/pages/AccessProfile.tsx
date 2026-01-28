@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { Shield, Plus, Search, Edit, Trash2, Users, X, Save, CheckSquare, Square, Home, Ticket, FileEdit, FileText, User, Database, RefreshCw, CheckCircle, Eye, History, FileBarChart, Calendar, CalendarDays, Webhook } from 'lucide-react';
 import { RESOURCES, ACTIONS } from '../hooks/usePermissions';
@@ -65,7 +64,6 @@ const SYSTEM_PAGES = [
 ];
 
 export default function AccessProfile() {
-  const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
   const [profiles, setProfiles] = useState<AccessProfile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -139,7 +137,6 @@ export default function AccessProfile() {
   };
 
   const togglePermission = (resource: string, action: string) => {
-    const key = `${resource}:${action}`;
     const exists = formData.permissions.some(
       p => p.resource === resource && p.action === action
     );
@@ -475,7 +472,7 @@ export default function AccessProfile() {
                   maxHeight: '400px',
                   overflow: 'auto'
                 }}>
-                  {Object.entries(RESOURCES).map(([key, resource]) => (
+                  {Object.entries(RESOURCES).map(([, resource]) => (
                     <div key={resource} style={{ marginBottom: 'var(--spacing-xl)' }}>
                       <h3 style={{
                         fontSize: '1rem',
@@ -490,7 +487,7 @@ export default function AccessProfile() {
                         gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
                         gap: 'var(--spacing-sm)'
                       }}>
-                        {Object.entries(ACTIONS).map(([actionKey, action]) => {
+                        {Object.entries(ACTIONS).map(([, action]) => {
                           // Filtrar ações relevantes por recurso
                           if (resource === 'approve' && action !== 'view' && action !== 'approve' && action !== 'reject') {
                             return null;

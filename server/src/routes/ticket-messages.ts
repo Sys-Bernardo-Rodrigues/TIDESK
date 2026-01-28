@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { requirePermission, RESOURCES, ACTIONS } from '../middleware/permissions';
@@ -229,7 +229,7 @@ router.post('/ticket/:ticketId', requirePermission(RESOURCES.TICKETS, ACTIONS.ED
 router.put('/:id', [
   requirePermission(RESOURCES.TICKETS, ACTIONS.EDIT),
   body('message').notEmpty().withMessage('Mensagem é obrigatória')
-], async (req: AuthRequest, res) => {
+], async (req: AuthRequest, res: Response) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {

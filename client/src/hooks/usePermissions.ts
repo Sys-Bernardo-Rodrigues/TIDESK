@@ -45,7 +45,8 @@ export const usePermissions = () => {
   const fetchPermissions = async () => {
     try {
       const response = await axios.get('/api/access-profiles/me/permissions');
-      const userPermissions = new Set(response.data.permissions);
+      const permissions = response.data.permissions as string[];
+      const userPermissions = new Set<string>(permissions);
       setPermissions(userPermissions);
 
       // Apenas role === 'admin' tem acesso total; perfis usam exatamente o configurado

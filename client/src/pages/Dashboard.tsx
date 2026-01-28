@@ -206,55 +206,62 @@ export default function Dashboard() {
     to?: string,
     opts?: { highlight?: boolean; badge?: string }
   ) => {
-    const Wrapper = to && hasPageAccess(to) ? Link : 'div';
-    const props = to && hasPageAccess(to) ? { to, style: { textDecoration: 'none' } } : {};
+    const canNavigate = to && hasPageAccess(to);
     const { highlight, badge } = opts || {};
-    return (
-      <Wrapper {...props}>
-        <div
-          className="card"
-          style={{
-            border: '1px solid var(--border-primary)',
-            padding: 'var(--spacing-lg)',
-            cursor: to && hasPageAccess(to) ? 'pointer' : 'default',
-            transition: 'all var(--transition-base)',
-            height: '100%',
-            ...(highlight ? { background: 'linear-gradient(135deg, rgba(245,158,11,0.08) 0%, rgba(245,158,11,0.03) 100%)', borderColor: 'rgba(245,158,11,0.3)' } : {}),
-          }}
-          onMouseEnter={(e) => {
-            if (to && hasPageAccess(to)) {
-              e.currentTarget.style.transform = 'translateY(-2px)';
-              e.currentTarget.style.boxShadow = 'var(--shadow-lg)';
-            }
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.transform = 'translateY(0)';
-            e.currentTarget.style.boxShadow = 'none';
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 'var(--spacing-sm)' }}>
-            <div style={{ padding: 'var(--spacing-sm)', background: iconBg, borderRadius: 'var(--radius-md)' }}>
-              {icon}
-            </div>
-            {badge && (
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', fontWeight: '600' }}>{badge}</span>
-            )}
+    const cardContent = (
+      <div
+        className="card"
+        style={{
+          border: '1px solid var(--border-primary)',
+          padding: 'var(--spacing-lg)',
+          cursor: canNavigate ? 'pointer' : 'default',
+          transition: 'all var(--transition-base)',
+          height: '100%',
+          ...(highlight ? { background: 'linear-gradient(135deg, rgba(245,158,11,0.08) 0%, rgba(245,158,11,0.03) 100%)', borderColor: 'rgba(245,158,11,0.3)' } : {}),
+        }}
+        onMouseEnter={(e) => {
+          if (canNavigate) {
+            e.currentTarget.style.transform = 'translateY(-2px)';
+            e.currentTarget.style.boxShadow = 'var(--shadow-lg)';
+          }
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.transform = 'translateY(0)';
+          e.currentTarget.style.boxShadow = 'none';
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 'var(--spacing-sm)' }}>
+          <div style={{ padding: 'var(--spacing-sm)', background: iconBg, borderRadius: 'var(--radius-md)' }}>
+            {icon}
           </div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>
-            {label}
-          </div>
-          <div style={{ fontSize: '1.75rem', fontWeight: '800', color: 'var(--text-primary)', lineHeight: 1.2 }}>
-            {value}
-          </div>
-          {sub && (
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginTop: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-              <Activity size={12} />
-              {sub}
-            </div>
+          {badge && (
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', fontWeight: '600' }}>{badge}</span>
           )}
         </div>
-      </Wrapper>
+        <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>
+          {label}
+        </div>
+        <div style={{ fontSize: '1.75rem', fontWeight: '800', color: 'var(--text-primary)', lineHeight: 1.2 }}>
+          {value}
+        </div>
+        {sub && (
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginTop: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+            <Activity size={12} />
+            {sub}
+          </div>
+        )}
+      </div>
     );
+    
+    if (canNavigate && to) {
+      return (
+        <Link to={to} style={{ textDecoration: 'none' }}>
+          {cardContent}
+        </Link>
+      );
+    }
+    
+    return cardContent;
   };
 
   const sysCard = (label: string, value: number, sub: string, icon: React.ReactNode, to: string) => {

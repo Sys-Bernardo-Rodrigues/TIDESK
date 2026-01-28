@@ -72,7 +72,7 @@ export default function Reports() {
   const [overview, setOverview] = useState<OverviewData | null>(null);
   const [formsData, setFormsData] = useState<FormData[]>([]);
   const [agentsData, setAgentsData] = useState<AgentPerformance[]>([]);
-  const [timeline, setTimeline] = useState<TimelineData[]>([]);
+  const [, setTimeline] = useState<TimelineData[]>([]);
   const [responseTime, setResponseTime] = useState<ResponseTimeData[]>([]);
   const [webhooksData, setWebhooksData] = useState<any>(null);
 

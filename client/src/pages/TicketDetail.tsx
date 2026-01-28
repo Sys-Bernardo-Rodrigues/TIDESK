@@ -13,7 +13,6 @@ import {
   FileText,
   Settings,
   Download,
-  Image as ImageIcon,
   Paperclip,
   X,
   Calendar,
@@ -54,19 +53,20 @@ interface FormAttachment {
 }
 
 // Função para gerar ID completo do ticket (sem barras) - usado em URLs
-function getTicketFullId(ticket: Ticket): string {
-  if (!ticket.ticket_number || !ticket.created_at) {
-    return ticket.id.toString();
-  }
-  
-  const date = new Date(ticket.created_at);
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  const number = String(ticket.ticket_number).padStart(3, '0');
-  
-  return `${year}${month}${day}${number}`;
-}
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+// function getTicketFullId(ticket: Ticket): string {
+//   if (!ticket.ticket_number || !ticket.created_at) {
+//     return ticket.id.toString();
+//   }
+//   
+//   const date = new Date(ticket.created_at);
+//   const year = date.getFullYear();
+//   const month = String(date.getMonth() + 1).padStart(2, '0');
+//   const day = String(date.getDate()).padStart(2, '0');
+//   const number = String(ticket.ticket_number).padStart(3, '0');
+//   
+//   return `${year}${month}${day}${number}`;
+// }
 
 // Função para formatar ID do ticket para exibição (com barras)
 function formatTicketId(ticket: Ticket): string {
@@ -585,7 +585,7 @@ export default function TicketDetail() {
 
   const formatDate = formatDateChat;
 
-  const canEditMessage = (message: TicketMessage) => {
+  const canEditMessage = (_message: TicketMessage) => {
     return canEditTicket;
   };
 

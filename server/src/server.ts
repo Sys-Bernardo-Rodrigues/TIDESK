@@ -26,7 +26,7 @@ dotenv.config();
 process.env.TZ = 'America/Sao_Paulo';
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = Number(process.env.PORT) || 5000;
 
 // Configurar trust proxy para obter IP real do cliente quando atrás de proxy/load balancer
 // Isso permite que o Express confie nos headers X-Forwarded-* de proxies reversos

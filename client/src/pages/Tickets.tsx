@@ -119,7 +119,7 @@ export default function Tickets() {
   const [autoRefresh, setAutoRefresh] = useState<string>('0');
   const [draggedTicket, setDraggedTicket] = useState<Ticket | null>(null);
   const [draggedOverColumn, setDraggedOverColumn] = useState<string | null>(null);
-  const [viewedTickets, setViewedTickets] = useState<Set<number>>(new Set());
+  const [, setViewedTickets] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     fetchTickets();

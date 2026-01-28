@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { requirePermission, RESOURCES, ACTIONS } from '../middleware/permissions';
@@ -164,7 +164,7 @@ router.post('/', [
   body('fields').isArray().withMessage('Campos são obrigatórios'),
   body('fields.*.type').notEmpty().withMessage('Tipo do campo é obrigatório'),
   body('fields.*.label').notEmpty().withMessage('Rótulo do campo é obrigatório')
-], async (req: AuthRequest, res) => {
+], async (req: AuthRequest, res: Response) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -242,7 +242,7 @@ router.put('/:id', [
   requirePermission(RESOURCES.FORMS, ACTIONS.EDIT),
   body('name').notEmpty().withMessage('Nome é obrigatório'),
   body('fields').isArray().withMessage('Campos são obrigatórios')
-], async (req: AuthRequest, res) => {
+], async (req: AuthRequest, res: Response) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -373,8 +373,9 @@ router.post('/public/:url/submit', uploadMultiple, async (req, res) => {
     } else if (files && !Array.isArray(files)) {
       // Se for um objeto (formato antigo do multer)
       console.log('Formato de arquivos é objeto, convertendo...');
-      Object.keys(files).forEach(key => {
-        const fileArray = files[key];
+      const filesObj = files as Record<string, Express.Multer.File[]>;
+      Object.keys(filesObj).forEach(key => {
+        const fileArray = filesObj[key];
         if (Array.isArray(fileArray) && fileArray.length > 0) {
           const file = fileArray[0];
           if (key.startsWith('file_')) {

@@ -118,7 +118,7 @@ export default function Backup() {
       setError(null);
       setSuccess(null);
       
-      const response = await axios.post('/api/backup');
+      await axios.post('/api/backup');
       setSuccess('Backup criado com sucesso!');
       await fetchBackups();
     } catch (err: any) {
@@ -254,7 +254,7 @@ export default function Backup() {
       const formData = new FormData();
       formData.append('backupFile', uploadFile);
 
-      const response = await axios.post('/api/backup/upload', formData, {
+      await axios.post('/api/backup/upload', formData, {
         headers: {
           'Content-Type': 'multipart/form-data'
         }

@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import { authenticate, AuthRequest, requireAgent } from '../middleware/auth';
 import { requirePermission, RESOURCES, ACTIONS } from '../middleware/permissions';
@@ -355,7 +355,7 @@ router.post('/', [
   body('title').notEmpty().withMessage('Título é obrigatório'),
   body('description').notEmpty().withMessage('Descrição é obrigatória'),
   body('priority').isIn(['low', 'medium', 'high', 'urgent']).withMessage('Prioridade inválida')
-], async (req: AuthRequest, res) => {
+], async (req: AuthRequest, res: Response) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -473,7 +473,7 @@ router.put('/:id', [
   body('status').optional().isIn(['open', 'in_progress', 'resolved', 'closed', 'pending_approval', 'scheduled', 'rejected']),
   body('priority').optional().isIn(['low', 'medium', 'high', 'urgent']),
   body('assigned_to').optional().isInt({ min: 1 })
-], async (req: AuthRequest, res) => {
+], async (req: AuthRequest, res: Response) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -614,7 +614,7 @@ router.post('/:id/schedule', [
   requirePermission(RESOURCES.TICKETS, ACTIONS.EDIT),
   body('scheduled_at').notEmpty().withMessage('Data e horário de agendamento são obrigatórios'),
   body('scheduled_at').isISO8601().withMessage('Data e horário devem estar no formato ISO 8601')
-], async (req: AuthRequest, res) => {
+], async (req: AuthRequest, res: Response) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {

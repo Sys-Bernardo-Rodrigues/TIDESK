@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { User, Plus, Search, Edit, Trash2, Mail, Shield, X, Link as LinkIcon, Unlink, Save } from 'lucide-react';
 import { formatDateBR } from '../utils/dateUtils';
@@ -20,7 +19,6 @@ interface UserData {
 }
 
 export default function Users() {
-  const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
   const [users, setUsers] = useState<UserData[]>([]);
   const [loading, setLoading] = useState(true);

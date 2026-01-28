@@ -62,7 +62,7 @@ export default function ShiftCalendar() {
   const [reportData, setReportData] = useState<ReportData | null>(null);
   const [showShiftModal, setShowShiftModal] = useState(false);
   const [selectedShift, setSelectedShift] = useState<Shift | null>(null);
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [, setSelectedDate] = useState<Date | null>(null);
   const [allUsers, setAllUsers] = useState<any[]>([]);
   
   const canCreate = hasPermission(RESOURCES.AGENDA, ACTIONS.CREATE);
@@ -240,7 +240,7 @@ export default function ShiftCalendar() {
     const secondaryColor = [59, 130, 246]; // Azul
     const successColor = [34, 197, 94]; // Verde
     const warningColor = [245, 158, 11]; // Amarelo
-    const dangerColor = [239, 68, 68]; // Vermelho
+    // const dangerColor = [239, 68, 68]; // Vermelho
     const textColor = [30, 30, 30];
     const textSecondary = [100, 100, 100];
     const borderColor = [220, 220, 230];
@@ -356,7 +356,7 @@ export default function ShiftCalendar() {
       const boxWidth = (contentWidth - 9) / 4;
       const boxHeight = 28;
       const totalHours = reportData.users.reduce((sum, user) => sum + user.totalHours, 0);
-      const totalShifts = reportData.users.reduce((sum, user) => sum + user.shiftsCount, 0);
+      // const totalShifts = reportData.users.reduce((sum, user) => sum + user.shiftsCount, 0);
       const avgHours = reportData.users.length > 0 ? totalHours / reportData.users.length : 0;
 
       const metrics = [
