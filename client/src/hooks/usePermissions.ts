@@ -47,24 +47,15 @@ export const usePermissions = () => {
       const response = await axios.get('/api/access-profiles/me/permissions');
       const userPermissions = new Set(response.data.permissions);
       setPermissions(userPermissions);
-      
-      // Verificar se é admin (role ou tem todas as permissões)
-      const userIsAdmin = user?.role === 'admin' || (() => {
-        const requiredPerms = [
-          'tickets:create', 'tickets:view', 'tickets:edit', 'tickets:delete',
-          'forms:create', 'forms:view', 'forms:edit', 'forms:delete',
-          'pages:create', 'pages:view', 'pages:edit', 'pages:delete',
-          'users:view', 'users:edit', 'config:view'
-        ];
-        return requiredPerms.every(perm => userPermissions.has(perm));
-      })();
-      
-      // Se admin, dar acesso a todas as páginas
+
+      // Apenas role === 'admin' tem acesso total; perfis usam exatamente o configurado
+      const userIsAdmin = user?.role === 'admin';
+
       if (userIsAdmin) {
         const allPages = new Set<string>([
-          '/', '/tickets', '/create/forms', '/create/pages', '/create/webhooks', 
-          '/create/forms/builder', '/create/pages/builder', // Rotas de criação
-          '/config/perfil-de-acesso', '/config/usuarios', '/config/backup', 
+          '/', '/tickets', '/create/forms', '/create/pages', '/create/webhooks',
+          '/create/forms/builder', '/create/pages/builder',
+          '/config/perfil-de-acesso', '/config/usuarios', '/config/backup',
           '/config/atualizar', '/config/grupos',
           '/acompanhar/aprovar', '/acompanhar/acompanhar-tratativa', '/historico',
           '/relatorios', '/agenda/calendario-de-servico', '/agenda/calendario-de-plantoes'
@@ -72,21 +63,13 @@ export const usePermissions = () => {
         setAllowedPages(allPages);
       } else {
         const pages = new Set<string>(response.data.pages || []);
-        // Adicionar rotas de builder se o usuário tem permissão de criar
-        if (userPermissions.has('pages:create')) {
-          pages.add('/create/pages/builder');
-        }
-        if (userPermissions.has('forms:create')) {
-          pages.add('/create/forms/builder');
-        }
+        if (userPermissions.has('pages:create')) pages.add('/create/pages/builder');
+        if (userPermissions.has('forms:create')) pages.add('/create/forms/builder');
         setAllowedPages(pages);
       }
     } catch (error) {
       console.error('Erro ao buscar permissões:', error);
-      // Verificar se é admin (role ou tem todas as permissões)
       const userIsAdmin = user?.role === 'admin';
-      
-      // Se admin, dar todas as permissões
       if (userIsAdmin) {
         const allPerms = new Set<string>();
         Object.values(RESOURCES).forEach(resource => {
@@ -95,54 +78,37 @@ export const usePermissions = () => {
           });
         });
         setPermissions(allPerms);
-        const allPages = new Set<string>([
+        setAllowedPages(new Set([
           '/', '/tickets', '/create/forms', '/create/pages', '/create/webhooks',
-          '/create/forms/builder', '/create/pages/builder', // Rotas de criação
+          '/create/forms/builder', '/create/pages/builder',
           '/config/perfil-de-acesso', '/config/usuarios', '/config/backup',
           '/config/atualizar', '/config/grupos',
           '/acompanhar/aprovar', '/acompanhar/acompanhar-tratativa', '/historico',
           '/relatorios', '/agenda/calendario-de-servico', '/agenda/calendario-de-plantoes'
-        ]);
-        setAllowedPages(allPages);
+        ]));
+      } else {
+        setPermissions(new Set());
+        setAllowedPages(new Set());
       }
     } finally {
       setLoading(false);
     }
   };
 
-  // Verificar se usuário tem todas as permissões (indica admin)
-  const isAdmin = (): boolean => {
-    if (user?.role === 'admin') {
-      return true;
-    }
-    // Se tem todas as permissões principais, considerar como admin
-    const requiredPerms = [
-      'tickets:create', 'tickets:view', 'tickets:edit', 'tickets:delete',
-      'forms:create', 'forms:view', 'forms:edit', 'forms:delete',
-      'pages:create', 'pages:view', 'pages:edit', 'pages:delete',
-      'users:view', 'users:edit', 'config:view'
-    ];
-    return requiredPerms.every(perm => permissions.has(perm));
-  };
+  const isAdmin = (): boolean => user?.role === 'admin';
 
   const hasPermission = (resource: string, action: string): boolean => {
-    if (isAdmin()) {
-      return true; // Admin tem todas as permissões
-    }
+    if (isAdmin()) return true;
     return permissions.has(`${resource}:${action}`);
   };
 
   const hasAnyPermission = (...perms: Array<{ resource: string; action: string }>): boolean => {
-    if (isAdmin()) {
-      return true;
-    }
+    if (isAdmin()) return true;
     return perms.some(({ resource, action }) => permissions.has(`${resource}:${action}`));
   };
 
   const hasPageAccess = (pagePath: string): boolean => {
-    if (isAdmin()) {
-      return true; // Admin tem acesso a todas as páginas
-    }
+    if (isAdmin()) return true;
     
     // Verificar se a página está na lista de páginas permitidas
     if (allowedPages.has(pagePath)) {
@@ -157,11 +123,14 @@ export const usePermissions = () => {
       return permissions.has('forms:create') || permissions.has('forms:edit');
     }
     
-    // Permitir acesso a rotas dinâmicas de tickets se o usuário tem permissão de visualizar tickets
-    if (pagePath.startsWith('/tickets/') && pagePath !== '/tickets') {
+    // Permitir acesso a tickets (lista e detalhe) se o usuário tem permissão de visualizar
+    if (pagePath === '/tickets' || (pagePath.startsWith('/tickets/') && pagePath !== '/tickets')) {
       return permissions.has('tickets:view') || permissions.has('approve:view') || permissions.has('track:view');
     }
-    
+    if (pagePath === '/historico') return permissions.has('history:view');
+    if (pagePath === '/relatorios') return permissions.has('reports:view');
+    if (pagePath.startsWith('/agenda/')) return permissions.has('agenda:view');
+
     // Permitir acesso a rotas públicas (formulários e páginas públicas)
     if (pagePath.startsWith('/form/') || pagePath.startsWith('/page/')) {
       return true; // Rotas públicas sempre permitidas

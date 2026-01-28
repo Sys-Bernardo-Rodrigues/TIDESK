@@ -86,9 +86,34 @@ export default function Forms() {
     form.description.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const copyUrl = (url: string) => {
-    navigator.clipboard.writeText(`${window.location.origin}${url}`);
-    alert('URL copiada para a área de transferência!');
+  const copyUrl = async (url: string) => {
+    const fullUrl = `${window.location.origin}${url}`;
+    try {
+      await navigator.clipboard.writeText(fullUrl);
+      alert('URL copiada para a área de transferência!');
+    } catch {
+      const textArea = document.createElement('textarea');
+      textArea.value = fullUrl;
+      textArea.style.position = 'fixed';
+      textArea.style.left = '-9999px';
+      textArea.style.top = '-9999px';
+      textArea.style.opacity = '0';
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      try {
+        const ok = document.execCommand('copy');
+        document.body.removeChild(textArea);
+        if (ok) {
+          alert('URL copiada para a área de transferência!');
+        } else {
+          alert('Não foi possível copiar. Copie manualmente: ' + fullUrl);
+        }
+      } catch {
+        document.body.removeChild(textArea);
+        alert('Não foi possível copiar. Copie manualmente: ' + fullUrl);
+      }
+    }
   };
 
   const startCreatingForm = () => {

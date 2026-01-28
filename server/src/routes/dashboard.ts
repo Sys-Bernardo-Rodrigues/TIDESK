@@ -100,15 +100,18 @@ router.get(
         [todayStartStr, todayEndStr]
       );
 
-      // Tempo médio de resolução (últimos 30 dias)
-      const timeDiffExpr = DB_TYPE === 'sqlite'
-        ? "(julianday(updated_at) - julianday(created_at)) * 24"
-        : "EXTRACT(EPOCH FROM (updated_at - created_at)) / 3600";
+      // Tempo médio de resolução (últimos 30 dias; exclui tempo em pausa)
+      const activeHoursExpr = DB_TYPE === 'sqlite'
+        ? `(julianday(t.updated_at) - julianday(t.created_at)) * 24 - COALESCE((SELECT SUM((julianday(p.resumed_at) - julianday(p.paused_at)) * 24) FROM ticket_pauses p WHERE p.ticket_id = t.id AND p.resumed_at IS NOT NULL), 0)`
+        : `EXTRACT(EPOCH FROM (t.updated_at - t.created_at)) / 3600 - COALESCE((SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (p.resumed_at - p.paused_at))), 0) / 3600 FROM ticket_pauses p WHERE p.ticket_id = t.id AND p.resumed_at IS NOT NULL), 0)`;
       const avgResolutionTime = await dbGet(`
-        SELECT AVG(${timeDiffExpr}) as avg_hours
-        FROM tickets
-        WHERE status IN ('resolved', 'closed')
-        AND created_at >= ?
+        SELECT AVG(active_hours) as avg_hours
+        FROM (
+          SELECT ${activeHoursExpr} AS active_hours
+          FROM tickets t
+          WHERE t.status IN ('resolved', 'closed')
+          AND t.created_at >= ?
+        ) x
       `, [thirtyDaysAgoStr]);
 
       // Top formulários (substituindo categorias)

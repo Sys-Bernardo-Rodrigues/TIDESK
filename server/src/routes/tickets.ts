@@ -242,7 +242,8 @@ router.get('/', requirePermission(RESOURCES.TICKETS, ACTIONS.VIEW), async (req: 
              f.name as form_name,
              f.public_url as form_url,
              f.id as form_id,
-             t.scheduled_at
+             t.scheduled_at,
+             EXISTS (SELECT 1 FROM ticket_pauses p WHERE p.ticket_id = t.id AND p.resumed_at IS NULL) AS is_paused
       FROM tickets t
       LEFT JOIN users u ON t.user_id = u.id
       LEFT JOIN users a ON t.assigned_to = a.id
@@ -251,12 +252,6 @@ router.get('/', requirePermission(RESOURCES.TICKETS, ACTIONS.VIEW), async (req: 
     `;
     const params: any[] = [];
     const conditions: string[] = [];
-
-    // Filtros baseados no papel do usuário
-    if (req.userRole === 'user') {
-      conditions.push('t.user_id = ?');
-      params.push(req.userId);
-    }
 
     // Excluir tickets pendentes de aprovação - eles devem aparecer apenas em /pending-approval
     conditions.push("t.status != 'pending_approval'");
@@ -337,11 +332,16 @@ router.get('/:id', requirePermission(RESOURCES.TICKETS, ACTIONS.VIEW), async (re
     }
     // Se tem approve:view ou track:view, pode acessar qualquer ticket (sem restrição adicional)
 
-    const ticket = await dbGet(query, params);
+    const ticket = await dbGet(query, params) as any;
     if (!ticket) {
       return res.status(404).json({ error: 'Ticket não encontrado' });
     }
-    res.json(ticket);
+    const openPause = await dbGet(
+      'SELECT id, paused_at FROM ticket_pauses WHERE ticket_id = ? AND resumed_at IS NULL',
+      [ticketId]
+    ) as any;
+    const out = { ...ticket, is_paused: !!openPause, paused_at: openPause?.paused_at || null };
+    res.json(out);
   } catch (error) {
     console.error('Erro ao buscar ticket:', error);
     res.status(500).json({ error: 'Erro ao buscar ticket' });
@@ -471,7 +471,8 @@ router.put('/:id', [
   authenticate,
   requirePermission(RESOURCES.TICKETS, ACTIONS.EDIT),
   body('status').optional().isIn(['open', 'in_progress', 'resolved', 'closed', 'pending_approval', 'scheduled', 'rejected']),
-  body('priority').optional().isIn(['low', 'medium', 'high', 'urgent'])
+  body('priority').optional().isIn(['low', 'medium', 'high', 'urgent']),
+  body('assigned_to').optional().isInt({ min: 1 })
 ], async (req: AuthRequest, res) => {
   try {
     const errors = validationResult(req);
@@ -506,7 +507,7 @@ router.put('/:id', [
       updates.push('description = ?');
       values.push(req.body.description);
     }
-    if (req.body.status && (req.userRole === 'admin' || req.userRole === 'agent')) {
+    if (req.body.status) {
       updates.push('status = ?');
       values.push(req.body.status);
     }
@@ -518,19 +519,30 @@ router.put('/:id', [
       updates.push('category_id = ?');
       values.push(req.body.category_id);
     }
-    if (req.body.assigned_to && (req.userRole === 'admin' || req.userRole === 'agent')) {
+    const assignId = req.body.assigned_to != null ? Number(req.body.assigned_to) : null;
+    const canAssign = (req.userRole === 'admin' || req.userRole === 'agent') ||
+      (assignId != null && assignId === req.userId);
+    if (assignId != null && canAssign) {
       updates.push('assigned_to = ?');
-      values.push(req.body.assigned_to);
+      values.push(assignId);
     }
 
+    const now = getBrasiliaTimestamp();
     updates.push('updated_at = ?');
-    values.push(getBrasiliaTimestamp());
+    values.push(now);
     values.push(ticketId);
 
     await dbRun(
       `UPDATE tickets SET ${updates.join(', ')} WHERE id = ?`,
       values
     );
+
+    if (req.body.status === 'resolved' || req.body.status === 'closed') {
+      await dbRun(
+        'UPDATE ticket_pauses SET resumed_at = ? WHERE ticket_id = ? AND resumed_at IS NULL',
+        [now, ticketId]
+      );
+    }
 
     const updatedTicket = await dbGet(
       `SELECT t.*, 
@@ -685,6 +697,72 @@ router.post('/:id/unschedule', authenticate, requirePermission(RESOURCES.TICKETS
   } catch (error) {
     console.error('Erro ao cancelar agendamento:', error);
     res.status(500).json({ error: 'Erro ao cancelar agendamento' });
+  }
+});
+
+// Pausar ticket (tempo em pausa não conta no tempo médio)
+router.post('/:id/pause', authenticate, requirePermission(RESOURCES.TICKETS, ACTIONS.EDIT), async (req: AuthRequest, res) => {
+  try {
+    const ticketId = await getTicketIdFromFullId(req.params.id);
+    if (!ticketId) {
+      return res.status(404).json({ error: 'Ticket não encontrado' });
+    }
+
+    const ticket = await dbGet('SELECT id, status FROM tickets WHERE id = ?', [ticketId]) as any;
+    if (!ticket) {
+      return res.status(404).json({ error: 'Ticket não encontrado' });
+    }
+    if (ticket.status !== 'in_progress') {
+      return res.status(400).json({ error: 'Só é possível pausar tickets em progresso' });
+    }
+
+    const openPause = await dbGet(
+      'SELECT id FROM ticket_pauses WHERE ticket_id = ? AND resumed_at IS NULL',
+      [ticketId]
+    );
+    if (openPause) {
+      return res.status(400).json({ error: 'Ticket já está em pausa' });
+    }
+
+    const now = getBrasiliaTimestamp();
+    await dbRun(
+      'INSERT INTO ticket_pauses (ticket_id, paused_at, paused_by) VALUES (?, ?, ?)',
+      [ticketId, now, req.userId]
+    );
+
+    res.json({ message: 'Ticket pausado', paused_at: now });
+  } catch (error) {
+    console.error('Erro ao pausar ticket:', error);
+    res.status(500).json({ error: 'Erro ao pausar ticket' });
+  }
+});
+
+// Retomar ticket (encerrar pausa)
+router.post('/:id/resume', authenticate, requirePermission(RESOURCES.TICKETS, ACTIONS.EDIT), async (req: AuthRequest, res) => {
+  try {
+    const ticketId = await getTicketIdFromFullId(req.params.id);
+    if (!ticketId) {
+      return res.status(404).json({ error: 'Ticket não encontrado' });
+    }
+
+    const openPause = await dbGet(
+      'SELECT id FROM ticket_pauses WHERE ticket_id = ? AND resumed_at IS NULL',
+      [ticketId]
+    ) as any;
+    if (!openPause) {
+      return res.status(400).json({ error: 'Ticket não está em pausa' });
+    }
+
+    const now = getBrasiliaTimestamp();
+    await dbRun(
+      'UPDATE ticket_pauses SET resumed_at = ? WHERE id = ?',
+      [now, openPause.id]
+    );
+
+    res.json({ message: 'Ticket retomado', resumed_at: now });
+  } catch (error) {
+    console.error('Erro ao retomar ticket:', error);
+    res.status(500).json({ error: 'Erro ao retomar ticket' });
   }
 });
 

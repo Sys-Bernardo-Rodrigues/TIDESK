@@ -1148,7 +1148,7 @@ export default function Reports() {
               color: 'var(--text-tertiary)',
               marginTop: 'var(--spacing-xs)'
             }}>
-              Tempo médio de resolução
+              Tempo médio de resolução (exclui pausas)
         </div>
       </div>
 

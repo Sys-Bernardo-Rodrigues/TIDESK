@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
+import { usePermissions, RESOURCES, ACTIONS } from '../hooks/usePermissions';
 import { formatDateChat } from '../utils/dateUtils';
 import { 
   ArrowLeft, 
@@ -16,7 +17,9 @@ import {
   Paperclip,
   X,
   Calendar,
-  Clock
+  Clock,
+  Pause,
+  Play
 } from 'lucide-react';
 
 interface Ticket {
@@ -35,6 +38,8 @@ interface Ticket {
   scheduled_at: string | null;
   created_at: string;
   updated_at: string;
+  is_paused?: boolean;
+  paused_at?: string | null;
 }
 
 interface FormAttachment {
@@ -103,6 +108,8 @@ export default function TicketDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { hasPermission } = usePermissions();
+  const canEditTicket = hasPermission(RESOURCES.TICKETS, ACTIONS.EDIT);
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [messages, setMessages] = useState<TicketMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
@@ -121,6 +128,7 @@ export default function TicketDetail() {
   const [scheduleDate, setScheduleDate] = useState('');
   const [scheduleTime, setScheduleTime] = useState('');
   const [scheduling, setScheduling] = useState(false);
+  const [pausingResume, setPausingResume] = useState(false);
 
   // Determinar para onde voltar baseado no status do ticket
   const getBackPath = (): string => {
@@ -133,11 +141,9 @@ export default function TicketDetail() {
   useEffect(() => {
     if (id) {
       fetchTicket();
-      if (user?.role === 'admin' || user?.role === 'agent') {
-        fetchAgents();
-      }
+      if (canEditTicket) fetchAgents();
     }
-  }, [id, user]);
+  }, [id, canEditTicket]);
 
   // Buscar mensagens após o ticket ser carregado
   useEffect(() => {
@@ -434,6 +440,34 @@ export default function TicketDetail() {
     }
   };
 
+  const handlePause = async () => {
+    if (pausingResume || !ticket) return;
+    setPausingResume(true);
+    try {
+      await axios.post(`/api/tickets/${id}/pause`);
+      await fetchTicket();
+    } catch (err: any) {
+      console.error('Erro ao pausar ticket:', err);
+      alert(err.response?.data?.error || 'Erro ao pausar ticket');
+    } finally {
+      setPausingResume(false);
+    }
+  };
+
+  const handleResume = async () => {
+    if (pausingResume || !ticket) return;
+    setPausingResume(true);
+    try {
+      await axios.post(`/api/tickets/${id}/resume`);
+      await fetchTicket();
+    } catch (err: any) {
+      console.error('Erro ao retomar ticket:', err);
+      alert(err.response?.data?.error || 'Erro ao retomar ticket');
+    } finally {
+      setPausingResume(false);
+    }
+  };
+
   const handleSendMessage = async () => {
     if ((!newMessage.trim() && messageFiles.length === 0) || sending || !ticket) return;
 
@@ -552,7 +586,7 @@ export default function TicketDetail() {
   const formatDate = formatDateChat;
 
   const canEditMessage = (message: TicketMessage) => {
-    return message.user_id === user?.id || user?.role === 'admin' || user?.role === 'agent';
+    return canEditTicket;
   };
 
   if (loading) {
@@ -637,7 +671,6 @@ export default function TicketDetail() {
               alignItems: 'center'
             }}>
               <span><strong>ID:</strong> {formatTicketId(ticket)}</span>
-              <span><strong>Criado por:</strong> {ticket.user_name}</span>
               {ticket.assigned_name && <span><strong>Atribuído a:</strong> {ticket.assigned_name}</span>}
               {ticket.form_name && (
                 <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
@@ -645,22 +678,51 @@ export default function TicketDetail() {
                   <strong>Formulário:</strong> {ticket.form_name}
                 </span>
               )}
+              {ticket.status === 'in_progress' && ticket.is_paused && (
+                <span style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.25rem',
+                  padding: '0.2rem 0.5rem',
+                  borderRadius: 'var(--radius-sm)',
+                  background: 'var(--warning)',
+                  color: 'var(--bg-primary)',
+                  fontWeight: '600',
+                  fontSize: '0.75rem'
+                }}>
+                  <Pause size={12} />
+                  Em pausa
+                </span>
+              )}
             </div>
           </div>
-          {/* Mostrar botão de configurações apenas se o ticket NÃO estiver pendente de aprovação */}
-          {(user?.role === 'admin' || user?.role === 'agent') && ticket.status !== 'pending_approval' && (
-            <button
-              className="btn btn-secondary btn-sm"
-              onClick={() => setShowSettings(!showSettings)}
-              style={{ padding: 'var(--spacing-xs) var(--spacing-sm)' }}
-            >
-              <Settings size={18} />
-            </button>
-          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)' }}>
+            {canEditTicket && ticket.status === 'in_progress' && (
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={ticket.is_paused ? handleResume : handlePause}
+                disabled={pausingResume}
+                style={{ padding: 'var(--spacing-xs) var(--spacing-sm)' }}
+                title={ticket.is_paused ? 'Retomar (tempo volta a contar)' : 'Pausar (tempo não conta no tempo médio)'}
+              >
+                {ticket.is_paused ? <Play size={18} /> : <Pause size={18} />}
+                {pausingResume ? '…' : (ticket.is_paused ? ' Retomar' : ' Pausar')}
+              </button>
+            )}
+            {canEditTicket && ticket.status !== 'pending_approval' && (
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={() => setShowSettings(!showSettings)}
+                style={{ padding: 'var(--spacing-xs) var(--spacing-sm)' }}
+              >
+                <Settings size={18} />
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Painel de Configurações - Não mostrar se ticket estiver pendente de aprovação */}
-        {showSettings && (user?.role === 'admin' || user?.role === 'agent') && ticket.status !== 'pending_approval' && (
+        {showSettings && canEditTicket && ticket.status !== 'pending_approval' && (
           <div style={{
             marginTop: 'var(--spacing-md)',
             padding: 'var(--spacing-md)',
@@ -1523,7 +1585,8 @@ export default function TicketDetail() {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input de mensagem - Estilo WhatsApp */}
+      {/* Input de mensagem - apenas para quem pode editar ticket */}
+      {canEditTicket && (
       <div style={{
         padding: 'var(--spacing-md)',
         borderTop: '1px solid var(--border-primary)',
@@ -1717,6 +1780,7 @@ export default function TicketDetail() {
           </button>
         </div>
       </div>
+      )}
 
       {/* Modal de Agendamento */}
       {showScheduleModal && (

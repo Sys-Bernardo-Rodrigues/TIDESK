@@ -51,7 +51,8 @@ export default function ServiceCalendar() {
   const canCreate = hasPermission(RESOURCES.AGENDA, ACTIONS.CREATE);
   const canEdit = hasPermission(RESOURCES.AGENDA, ACTIONS.EDIT);
   const canDelete = hasPermission(RESOURCES.AGENDA, ACTIONS.DELETE);
-  
+  const canViewUsers = hasPermission(RESOURCES.USERS, ACTIONS.VIEW);
+
   // Formulário de evento
   const [eventTitle, setEventTitle] = useState('');
   const [eventDescription, setEventDescription] = useState('');
@@ -101,21 +102,30 @@ export default function ServiceCalendar() {
     }
   };
 
-  // Buscar eventos e tickets
+  // Buscar eventos e tickets (usuários só se tiver users:view)
   const fetchData = async () => {
     try {
       setLoading(true);
       const { start, end } = getPeriodRange();
-      
-      const [eventsRes, ticketsRes, usersRes] = await Promise.all([
-        axios.get(`/api/calendar?start=${start}&end=${end}`),
-        axios.get(`/api/calendar/tickets?start=${start}&end=${end}`),
-        axios.get('/api/users')
-      ]);
-      
-      setEvents(eventsRes.data);
-      setTickets(ticketsRes.data);
-      setAllUsers(usersRes.data);
+
+      if (canViewUsers) {
+        const [eventsRes, ticketsRes, usersRes] = await Promise.all([
+          axios.get(`/api/calendar?start=${start}&end=${end}`),
+          axios.get(`/api/calendar/tickets?start=${start}&end=${end}`),
+          axios.get('/api/users')
+        ]);
+        setEvents(eventsRes.data);
+        setTickets(ticketsRes.data);
+        setAllUsers(usersRes.data);
+      } else {
+        const [eventsRes, ticketsRes] = await Promise.all([
+          axios.get(`/api/calendar?start=${start}&end=${end}`),
+          axios.get(`/api/calendar/tickets?start=${start}&end=${end}`)
+        ]);
+        setEvents(eventsRes.data);
+        setTickets(ticketsRes.data);
+        setAllUsers([]);
+      }
     } catch (error) {
       console.error('Erro ao buscar dados:', error);
     } finally {
@@ -125,7 +135,7 @@ export default function ServiceCalendar() {
 
   useEffect(() => {
     fetchData();
-  }, [currentDate, viewMode]);
+  }, [currentDate, viewMode, canViewUsers]);
 
   // Navegação do calendário
   const goToPrevious = () => {

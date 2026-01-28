@@ -68,7 +68,8 @@ export default function ShiftCalendar() {
   const canCreate = hasPermission(RESOURCES.AGENDA, ACTIONS.CREATE);
   const canEdit = hasPermission(RESOURCES.AGENDA, ACTIONS.EDIT);
   const canDelete = hasPermission(RESOURCES.AGENDA, ACTIONS.DELETE);
-  
+  const canViewUsers = hasPermission(RESOURCES.USERS, ACTIONS.VIEW);
+
   // Formulário de plantão
   const [shiftTitle, setShiftTitle] = useState('');
   const [shiftStartDate, setShiftStartDate] = useState('');
@@ -162,19 +163,24 @@ export default function ShiftCalendar() {
     }
   };
 
-  // Buscar plantões
+  // Buscar plantões (usuários só se tiver users:view)
   const fetchData = async () => {
     try {
       setLoading(true);
       const { start, end } = getPeriodRange();
-      
-      const [shiftsRes, usersRes] = await Promise.all([
-        axios.get(`/api/shifts?start=${start}&end=${end}`),
-        axios.get('/api/users')
-      ]);
-      
-      setShifts(shiftsRes.data);
-      setAllUsers(usersRes.data);
+
+      if (canViewUsers) {
+        const [shiftsRes, usersRes] = await Promise.all([
+          axios.get(`/api/shifts?start=${start}&end=${end}`),
+          axios.get('/api/users')
+        ]);
+        setShifts(shiftsRes.data);
+        setAllUsers(usersRes.data);
+      } else {
+        const shiftsRes = await axios.get(`/api/shifts?start=${start}&end=${end}`);
+        setShifts(shiftsRes.data);
+        setAllUsers([]);
+      }
     } catch (error) {
       console.error('Erro ao buscar dados:', error);
     } finally {
@@ -188,7 +194,7 @@ export default function ShiftCalendar() {
     } else {
       fetchReportData();
     }
-  }, [currentDate, viewMode, tabMode]);
+  }, [currentDate, viewMode, tabMode, canViewUsers]);
 
   // Buscar dados do relatório
   const fetchReportData = async () => {

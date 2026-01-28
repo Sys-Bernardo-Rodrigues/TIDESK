@@ -94,19 +94,6 @@ export default function AccessProfile() {
     }
   };
 
-  const createDefaultProfiles = async () => {
-    try {
-      await axios.post('/api/access-profiles/seed-default');
-      // Recarregar perfis após criação
-      const response = await axios.get('/api/access-profiles');
-      setProfiles(response.data);
-      alert('Perfis padrão criados com sucesso!');
-    } catch (error: any) {
-      console.error('Erro ao criar perfis padrão:', error);
-      alert(error.response?.data?.error || 'Erro ao criar perfis padrão');
-    }
-  };
-
   const handleCreate = () => {
     setFormData({
       name: '',
@@ -309,18 +296,10 @@ export default function AccessProfile() {
                 <button 
                   className="btn btn-primary" 
                   style={{ marginTop: 'var(--spacing-md)' }}
-                  onClick={createDefaultProfiles}
-                >
-                  <Shield size={20} />
-                  Criar Perfis Padrão (Administrador, Agente, Usuário)
-                </button>
-                <span style={{ fontSize: '0.875rem', color: 'var(--text-tertiary)' }}>ou</span>
-                <button 
-                  className="btn btn-secondary" 
                   onClick={handleCreate}
                 >
                   <Plus size={20} />
-                  Criar Perfil Personalizado
+                  Criar perfil de acesso
                 </button>
               </div>
             )}
