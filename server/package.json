@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
-    "start": "node -r dotenv/config dist/server.js"
+    "start": "node -r dotenv/config dist/server.js",
+    "generate-certs": "tsx src/scripts/generate-certificates.ts"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -32,6 +33,7 @@
     "@types/nodemailer": "^6.4.14",
     "@types/pg": "^8.10.9",
     "tsx": "^4.7.0",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "selfsigned": "^2.1.1"
   }
 }
