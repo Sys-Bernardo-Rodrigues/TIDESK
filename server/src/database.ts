@@ -640,6 +640,19 @@ const initSQLite = async () => {
     )
   `);
 
+  // Tabela de pausas de ticket (tempo em pausa não conta no tempo médio)
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS ticket_pauses (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ticket_id INTEGER NOT NULL,
+      paused_at DATETIME NOT NULL,
+      resumed_at DATETIME,
+      paused_by INTEGER,
+      FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE CASCADE,
+      FOREIGN KEY (paused_by) REFERENCES users(id) ON DELETE SET NULL
+    )
+  `);
+
   // Tabela de páginas permitidas por perfil de acesso
   await dbRun(`
     CREATE TABLE IF NOT EXISTS access_profile_pages (
@@ -973,6 +986,19 @@ const initPostgreSQL = async () => {
     )
   `);
 
+  // Tabela de pausas de ticket (tempo em pausa não conta no tempo médio)
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS ticket_pauses (
+      id SERIAL PRIMARY KEY,
+      ticket_id INTEGER NOT NULL,
+      paused_at TIMESTAMP NOT NULL,
+      resumed_at TIMESTAMP,
+      paused_by INTEGER,
+      FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE CASCADE,
+      FOREIGN KEY (paused_by) REFERENCES users(id) ON DELETE SET NULL
+    )
+  `);
+
   // Tabela de páginas permitidas por perfil de acesso
   await dbRun(`
     CREATE TABLE IF NOT EXISTS access_profile_pages (
@@ -1096,197 +1122,6 @@ const seedDatabase = async () => {
       [adminName, adminEmail, hashedPassword, 'admin']
     );
     console.log(`✅ Usuário admin criado: ${adminEmail} / ${adminPassword}`);
-  }
-
-  // Criar perfis de acesso padrão (verificar cada um individualmente)
-  const adminProfileExists = await dbGet('SELECT id FROM access_profiles WHERE name = ?', ['Administrador']);
-  const agentProfileExists = await dbGet('SELECT id FROM access_profiles WHERE name = ?', ['Agente']);
-  const userProfileExists = await dbGet('SELECT id FROM access_profiles WHERE name = ?', ['Usuário']);
-
-  let adminProfileId: number | null = null;
-  let agentProfileId: number | null = null;
-  let userProfileId: number | null = null;
-
-  // Criar perfil Administrador se não existir
-  if (!adminProfileExists) {
-    const adminProfileResult = await dbRun(
-      'INSERT INTO access_profiles (name, description) VALUES (?, ?)',
-      ['Administrador', 'Perfil com acesso total ao sistema']
-    );
-    adminProfileId = (adminProfileResult as any).lastID || (adminProfileResult as any).id;
-    console.log('✅ Perfil Administrador criado');
-  } else {
-    adminProfileId = (adminProfileExists as any).id;
-  }
-
-  // Criar perfil Agente se não existir
-  if (!agentProfileExists) {
-    const agentProfileResult = await dbRun(
-      'INSERT INTO access_profiles (name, description) VALUES (?, ?)',
-      ['Agente', 'Perfil para agentes de suporte com permissões para gerenciar tickets']
-    );
-    agentProfileId = (agentProfileResult as any).lastID || (agentProfileResult as any).id;
-    console.log('✅ Perfil Agente criado');
-  } else {
-    agentProfileId = (agentProfileExists as any).id;
-  }
-
-  // Criar perfil Usuário se não existir
-  if (!userProfileExists) {
-    const userProfileResult = await dbRun(
-      'INSERT INTO access_profiles (name, description) VALUES (?, ?)',
-      ['Usuário', 'Perfil básico para usuários do sistema']
-    );
-    userProfileId = (userProfileResult as any).lastID || (userProfileResult as any).id;
-    console.log('✅ Perfil Usuário criado');
-  } else {
-    userProfileId = (userProfileExists as any).id;
-  }
-
-  // Configurar permissões para cada perfil (se não tiverem)
-  if (adminProfileId) {
-    // Verificar se já tem permissões, se não tiver, criar
-    const adminPermsCount = await dbGet('SELECT COUNT(*) as count FROM permissions WHERE access_profile_id = ?', [adminProfileId]) as any;
-    if (!adminPermsCount || adminPermsCount.count === 0) {
-      // Permissões do Administrador (todas)
-      const allResources = ['tickets', 'forms', 'pages', 'users', 'categories', 'reports', 'history', 'approve', 'track', 'config', 'agenda'];
-      const allActions = ['create', 'view', 'edit', 'delete', 'approve', 'reject'];
-      
-      for (const resource of allResources) {
-        for (const action of allActions) {
-          // Aprovar e rejeitar só para approve
-          if ((action === 'approve' || action === 'reject') && resource !== 'approve') {
-            continue;
-          }
-          try {
-            await dbRun(
-              'INSERT INTO permissions (access_profile_id, resource, action) VALUES (?, ?, ?)',
-              [adminProfileId, resource, action]
-            );
-          } catch (error: any) {
-            // Ignorar erros de duplicata
-          }
-        }
-      }
-      console.log('✅ Permissões do Administrador configuradas');
-    }
-  }
-
-  if (agentProfileId) {
-    const agentPermsCount = await dbGet('SELECT COUNT(*) as count FROM permissions WHERE access_profile_id = ?', [agentProfileId]) as any;
-    if (!agentPermsCount || agentPermsCount.count === 0) {
-      // Permissões do Agente
-      const agentPermissions = [
-        // Tickets
-        { resource: 'tickets', action: 'view' },
-        { resource: 'tickets', action: 'edit' },
-        // Aprovar
-        { resource: 'approve', action: 'view' },
-        { resource: 'approve', action: 'approve' },
-        { resource: 'approve', action: 'reject' },
-        // Acompanhar
-        { resource: 'track', action: 'view' },
-        { resource: 'track', action: 'edit' },
-        // Histórico
-        { resource: 'history', action: 'view' },
-        // Relatórios
-        { resource: 'reports', action: 'view' },
-        // Formulários (visualizar)
-        { resource: 'forms', action: 'view' },
-        // Páginas (visualizar)
-        { resource: 'pages', action: 'view' },
-        // Agenda
-        { resource: 'agenda', action: 'view' },
-        { resource: 'agenda', action: 'create' },
-        { resource: 'agenda', action: 'edit' },
-        { resource: 'agenda', action: 'delete' }
-      ];
-
-      for (const perm of agentPermissions) {
-        try {
-          await dbRun(
-            'INSERT INTO permissions (access_profile_id, resource, action) VALUES (?, ?, ?)',
-            [agentProfileId, perm.resource, perm.action]
-          );
-        } catch (error: any) {
-          // Ignorar erros de duplicata
-        }
-      }
-      console.log('✅ Permissões do Agente configuradas');
-    } else {
-      // Verificar e adicionar permissões de agenda se não existirem
-      const agendaPerms = [
-        { resource: 'agenda', action: 'view' },
-        { resource: 'agenda', action: 'create' },
-        { resource: 'agenda', action: 'edit' },
-        { resource: 'agenda', action: 'delete' }
-      ];
-      
-      for (const perm of agendaPerms) {
-        const exists = await dbGet(
-          'SELECT id FROM permissions WHERE access_profile_id = ? AND resource = ? AND action = ?',
-          [agentProfileId, perm.resource, perm.action]
-        );
-        if (!exists) {
-          try {
-            await dbRun(
-              'INSERT INTO permissions (access_profile_id, resource, action) VALUES (?, ?, ?)',
-              [agentProfileId, perm.resource, perm.action]
-            );
-          } catch (error: any) {
-            // Ignorar erros
-          }
-        }
-      }
-    }
-  }
-
-  if (userProfileId) {
-    const userPermsCount = await dbGet('SELECT COUNT(*) as count FROM permissions WHERE access_profile_id = ?', [userProfileId]) as any;
-    if (!userPermsCount || userPermsCount.count === 0) {
-      // Permissões do Usuário (básicas)
-      const userPermissions = [
-        // Tickets (apenas visualizar próprios)
-        { resource: 'tickets', action: 'view' },
-        { resource: 'tickets', action: 'create' },
-        // Histórico (apenas visualizar próprios)
-        { resource: 'history', action: 'view' },
-        // Formulários (apenas visualizar)
-        { resource: 'forms', action: 'view' },
-        // Páginas (apenas visualizar)
-        { resource: 'pages', action: 'view' },
-        // Agenda (apenas visualizar)
-        { resource: 'agenda', action: 'view' }
-      ];
-
-      for (const perm of userPermissions) {
-        try {
-          await dbRun(
-            'INSERT INTO permissions (access_profile_id, resource, action) VALUES (?, ?, ?)',
-            [userProfileId, perm.resource, perm.action]
-          );
-        } catch (error: any) {
-          // Ignorar erros de duplicata
-        }
-      }
-      console.log('✅ Permissões do Usuário configuradas');
-    } else {
-      // Verificar e adicionar permissão de visualização de agenda se não existir
-      const exists = await dbGet(
-        'SELECT id FROM permissions WHERE access_profile_id = ? AND resource = ? AND action = ?',
-        [userProfileId, 'agenda', 'view']
-      );
-      if (!exists) {
-        try {
-          await dbRun(
-            'INSERT INTO permissions (access_profile_id, resource, action) VALUES (?, ?, ?)',
-            [userProfileId, 'agenda', 'view']
-          );
-        } catch (error: any) {
-          // Ignorar erros
-        }
-      }
-    }
   }
 
   // Criar categorias padrão

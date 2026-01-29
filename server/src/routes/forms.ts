@@ -373,8 +373,9 @@ router.post('/public/:url/submit', uploadMultiple, async (req, res) => {
     } else if (files && !Array.isArray(files)) {
       // Se for um objeto (formato antigo do multer)
       console.log('Formato de arquivos é objeto, convertendo...');
-      Object.keys(files).forEach(key => {
-        const fileArray = files[key];
+      const filesObj = files as Record<string, Express.Multer.File[]>;
+      Object.keys(filesObj).forEach(key => {
+        const fileArray = filesObj[key];
         if (Array.isArray(fileArray) && fileArray.length > 0) {
           const file = fileArray[0];
           if (key.startsWith('file_')) {

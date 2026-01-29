@@ -90,19 +90,19 @@ router.get('/overview', requirePermission(RESOURCES.REPORTS, ACTIONS.VIEW), asyn
       GROUP BY priority
     `, [start, end]);
 
-    // Tempo médio de resolução (apenas tickets resolvidos/fechados)
-    const timeDiffExpr = DB_TYPE === 'sqlite' 
-      ? '(julianday(updated_at) - julianday(created_at)) * 24'
-      : 'EXTRACT(EPOCH FROM (updated_at - created_at)) / 3600';
-    
+    // Tempo médio de resolução (apenas tickets resolvidos/fechados; exclui tempo em pausa)
+    const activeHoursExpr = DB_TYPE === 'sqlite'
+      ? `(julianday(t.updated_at) - julianday(t.created_at)) * 24 - COALESCE((SELECT SUM((julianday(p.resumed_at) - julianday(p.paused_at)) * 24) FROM ticket_pauses p WHERE p.ticket_id = t.id AND p.resumed_at IS NOT NULL), 0)`
+      : `EXTRACT(EPOCH FROM (t.updated_at - t.created_at)) / 3600 - COALESCE((SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (p.resumed_at - p.paused_at))), 0) / 3600 FROM ticket_pauses p WHERE p.ticket_id = t.id AND p.resumed_at IS NOT NULL), 0)`;
     const avgResolutionTimeQuery = `
-      SELECT 
-        AVG(${timeDiffExpr}) as avg_hours
-      FROM tickets
-      WHERE status IN ('resolved', 'closed')
-        AND created_at >= ? AND created_at <= ?
+      SELECT AVG(active_hours) as avg_hours
+      FROM (
+        SELECT ${activeHoursExpr} AS active_hours
+        FROM tickets t
+        WHERE t.status IN ('resolved', 'closed')
+          AND t.created_at >= ? AND t.created_at <= ?
+      ) x
     `;
-    
     const avgResolutionTime = await dbGet(avgResolutionTimeQuery, [start, end]);
 
     // Tickets resolvidos
@@ -149,10 +149,9 @@ router.get('/by-form', requirePermission(RESOURCES.REPORTS, ACTIONS.VIEW), async
       end = dateRange.end;
     }
 
-    const timeDiffFormExpr = DB_TYPE === 'sqlite' 
-      ? '(julianday(t.updated_at) - julianday(t.created_at)) * 24'
-      : 'EXTRACT(EPOCH FROM (t.updated_at - t.created_at)) / 3600';
-    
+    const activeHoursFormExpr = DB_TYPE === 'sqlite'
+      ? `(julianday(t.updated_at) - julianday(t.created_at)) * 24 - COALESCE((SELECT SUM((julianday(p.resumed_at) - julianday(p.paused_at)) * 24) FROM ticket_pauses p WHERE p.ticket_id = t.id AND p.resumed_at IS NOT NULL), 0)`
+      : `EXTRACT(EPOCH FROM (t.updated_at - t.created_at)) / 3600 - COALESCE((SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (p.resumed_at - p.paused_at))), 0) / 3600 FROM ticket_pauses p WHERE p.ticket_id = t.id AND p.resumed_at IS NOT NULL), 0)`;
     const ticketsByFormQuery = `
       SELECT 
         f.id,
@@ -162,7 +161,7 @@ router.get('/by-form', requirePermission(RESOURCES.REPORTS, ACTIONS.VIEW), async
         AVG(
           CASE 
             WHEN t.status IN ('resolved', 'closed') 
-            THEN ${timeDiffFormExpr}
+            THEN ${activeHoursFormExpr}
             ELSE NULL
           END
         ) as avg_resolution_hours
@@ -198,10 +197,9 @@ router.get('/agents-performance', requirePermission(RESOURCES.REPORTS, ACTIONS.V
       end = dateRange.end;
     }
 
-    const timeDiffAgentExpr = DB_TYPE === 'sqlite' 
-      ? '(julianday(t.updated_at) - julianday(t.created_at)) * 24'
-      : 'EXTRACT(EPOCH FROM (t.updated_at - t.created_at)) / 3600';
-    
+    const activeHoursAgentExpr = DB_TYPE === 'sqlite'
+      ? `(julianday(t.updated_at) - julianday(t.created_at)) * 24 - COALESCE((SELECT SUM((julianday(p.resumed_at) - julianday(p.paused_at)) * 24) FROM ticket_pauses p WHERE p.ticket_id = t.id AND p.resumed_at IS NOT NULL), 0)`
+      : `EXTRACT(EPOCH FROM (t.updated_at - t.created_at)) / 3600 - COALESCE((SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (p.resumed_at - p.paused_at))), 0) / 3600 FROM ticket_pauses p WHERE p.ticket_id = t.id AND p.resumed_at IS NOT NULL), 0)`;
     const agentPerformanceQuery = `
       SELECT 
         u.id,
@@ -212,21 +210,21 @@ router.get('/agents-performance', requirePermission(RESOURCES.REPORTS, ACTIONS.V
         AVG(
           CASE 
             WHEN t.status IN ('resolved', 'closed') 
-            THEN ${timeDiffAgentExpr}
+            THEN ${activeHoursAgentExpr}
             ELSE NULL
           END
         ) as avg_resolution_hours,
         MIN(
           CASE 
             WHEN t.status IN ('resolved', 'closed') 
-            THEN ${timeDiffAgentExpr}
+            THEN ${activeHoursAgentExpr}
             ELSE NULL
           END
         ) as min_resolution_hours,
         MAX(
           CASE 
             WHEN t.status IN ('resolved', 'closed') 
-            THEN ${timeDiffAgentExpr}
+            THEN ${activeHoursAgentExpr}
             ELSE NULL
           END
         ) as max_resolution_hours
@@ -315,41 +313,22 @@ router.get('/response-time-by-priority', requirePermission(RESOURCES.REPORTS, AC
       end = dateRange.end;
     }
 
-    const timeDiffPriorityExpr = DB_TYPE === 'sqlite' 
-      ? '(julianday(updated_at) - julianday(created_at)) * 24'
-      : 'EXTRACT(EPOCH FROM (updated_at - created_at)) / 3600';
-    
+    const activeHoursPriorityExpr = DB_TYPE === 'sqlite'
+      ? `(julianday(t.updated_at) - julianday(t.created_at)) * 24 - COALESCE((SELECT SUM((julianday(p.resumed_at) - julianday(p.paused_at)) * 24) FROM ticket_pauses p WHERE p.ticket_id = t.id AND p.resumed_at IS NOT NULL), 0)`
+      : `EXTRACT(EPOCH FROM (t.updated_at - t.created_at)) / 3600 - COALESCE((SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (p.resumed_at - p.paused_at))), 0) / 3600 FROM ticket_pauses p WHERE p.ticket_id = t.id AND p.resumed_at IS NOT NULL), 0)`;
     const responseTimeQuery = `
       SELECT 
-        priority,
+        t.priority,
         COUNT(*) as total_tickets,
-        AVG(
-          CASE 
-            WHEN status IN ('resolved', 'closed') 
-            THEN ${timeDiffPriorityExpr}
-            ELSE NULL
-          END
-        ) as avg_hours,
-        MIN(
-          CASE 
-            WHEN status IN ('resolved', 'closed') 
-            THEN ${timeDiffPriorityExpr}
-            ELSE NULL
-          END
-        ) as min_hours,
-        MAX(
-          CASE 
-            WHEN status IN ('resolved', 'closed') 
-            THEN ${timeDiffPriorityExpr}
-            ELSE NULL
-          END
-        ) as max_hours
-      FROM tickets
-      WHERE created_at >= ? AND created_at <= ?
-        AND status IN ('resolved', 'closed')
-      GROUP BY priority
+        AVG(${activeHoursPriorityExpr}) as avg_hours,
+        MIN(${activeHoursPriorityExpr}) as min_hours,
+        MAX(${activeHoursPriorityExpr}) as max_hours
+      FROM tickets t
+      WHERE t.created_at >= ? AND t.created_at <= ?
+        AND t.status IN ('resolved', 'closed')
+      GROUP BY t.priority
       ORDER BY 
-        CASE priority
+        CASE t.priority
           WHEN 'urgent' THEN 1
           WHEN 'high' THEN 2
           WHEN 'medium' THEN 3

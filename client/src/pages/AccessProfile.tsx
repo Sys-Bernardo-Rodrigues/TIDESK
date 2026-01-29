@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { Shield, Plus, Search, Edit, Trash2, Users, X, Save, CheckSquare, Square, Home, Ticket, FileEdit, FileText, User, Database, RefreshCw, CheckCircle, Eye, History, FileBarChart, Calendar, CalendarDays, Webhook } from 'lucide-react';
 import { RESOURCES, ACTIONS } from '../hooks/usePermissions';
@@ -65,7 +64,6 @@ const SYSTEM_PAGES = [
 ];
 
 export default function AccessProfile() {
-  const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
   const [profiles, setProfiles] = useState<AccessProfile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -91,19 +89,6 @@ export default function AccessProfile() {
       alert('Erro ao buscar perfis de acesso');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const createDefaultProfiles = async () => {
-    try {
-      await axios.post('/api/access-profiles/seed-default');
-      // Recarregar perfis após criação
-      const response = await axios.get('/api/access-profiles');
-      setProfiles(response.data);
-      alert('Perfis padrão criados com sucesso!');
-    } catch (error: any) {
-      console.error('Erro ao criar perfis padrão:', error);
-      alert(error.response?.data?.error || 'Erro ao criar perfis padrão');
     }
   };
 
@@ -152,7 +137,6 @@ export default function AccessProfile() {
   };
 
   const togglePermission = (resource: string, action: string) => {
-    const key = `${resource}:${action}`;
     const exists = formData.permissions.some(
       p => p.resource === resource && p.action === action
     );
@@ -309,18 +293,10 @@ export default function AccessProfile() {
                 <button 
                   className="btn btn-primary" 
                   style={{ marginTop: 'var(--spacing-md)' }}
-                  onClick={createDefaultProfiles}
-                >
-                  <Shield size={20} />
-                  Criar Perfis Padrão (Administrador, Agente, Usuário)
-                </button>
-                <span style={{ fontSize: '0.875rem', color: 'var(--text-tertiary)' }}>ou</span>
-                <button 
-                  className="btn btn-secondary" 
                   onClick={handleCreate}
                 >
                   <Plus size={20} />
-                  Criar Perfil Personalizado
+                  Criar perfil de acesso
                 </button>
               </div>
             )}
@@ -496,7 +472,7 @@ export default function AccessProfile() {
                   maxHeight: '400px',
                   overflow: 'auto'
                 }}>
-                  {Object.entries(RESOURCES).map(([key, resource]) => (
+                  {Object.entries(RESOURCES).map(([, resource]) => (
                     <div key={resource} style={{ marginBottom: 'var(--spacing-xl)' }}>
                       <h3 style={{
                         fontSize: '1rem',
@@ -511,7 +487,7 @@ export default function AccessProfile() {
                         gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
                         gap: 'var(--spacing-sm)'
                       }}>
-                        {Object.entries(ACTIONS).map(([actionKey, action]) => {
+                        {Object.entries(ACTIONS).map(([, action]) => {
                           // Filtrar ações relevantes por recurso
                           if (resource === 'approve' && action !== 'view' && action !== 'approve' && action !== 'reject') {
                             return null;

@@ -495,9 +495,12 @@ export default function PageBuilder() {
                   <select
                     className="select"
                     value={selectedButton.style?.size || 'medium'}
-                    onChange={(e) => updateButton(selectedButton.id, {
-                      style: { ...selectedButton.style, size: e.target.value as 'small' | 'medium' | 'large' }
-                    })}
+                    onChange={(e) => {
+                      const size = e.target.value as 'small' | 'medium' | 'large';
+                      updateButton(selectedButton.id, {
+                        style: { ...selectedButton.style, size }
+                      });
+                    }}
                   >
                     <option value="small">Pequeno</option>
                     <option value="medium">Médio</option>

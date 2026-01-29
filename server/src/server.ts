@@ -31,11 +31,27 @@ if (!process.env.NODE_ENV && !process.argv.includes('watch')) {
 process.env.TZ = 'America/Sao_Paulo';
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = Number(process.env.PORT) || 5000;
 
 // Configurar trust proxy para obter IP real do cliente quando atrás de proxy/load balancer
 // Isso permite que o Express confie nos headers X-Forwarded-* de proxies reversos
 app.set('trust proxy', true);
+
+// Middleware para garantir que não há redirecionamento HTTPS forçado
+// Isso é importante para permitir acesso via HTTP em dispositivos móveis
+app.use((req, res, next) => {
+  // Remover headers que podem forçar HTTPS
+  res.removeHeader('Strict-Transport-Security');
+  
+  // Garantir que o protocolo detectado seja HTTP quando não há proxy HTTPS configurado
+  // Se não houver certificado SSL configurado, manter HTTP
+  const protocol = req.protocol || 'http';
+  const isSecure = req.secure || (req.headers['x-forwarded-proto'] === 'https');
+  
+  // Não redirecionar para HTTPS se não estiver configurado
+  // Permitir acesso via HTTP explicitamente
+  next();
+});
 
 // Middleware CORS - Permitir acesso de qualquer origem
 app.use(cors({

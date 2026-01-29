@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import axios from 'axios';
 import { FileEdit, CheckCircle } from 'lucide-react';
 
@@ -27,7 +27,6 @@ interface Form {
 
 export default function PublicForm() {
   const { formId } = useParams<{ formId: string }>();
-  const navigate = useNavigate();
   const [form, setForm] = useState<Form | null>(null);
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -162,7 +161,7 @@ export default function PublicForm() {
         }
       });
 
-      const { needsApproval: apiNeedsApproval, ticket_number, created_at } = response.data;
+      const { ticket_number, created_at } = response.data;
       
       console.log('[PublicForm] Resposta do servidor:', { ticket_number, created_at, fullResponse: response.data });
 
@@ -505,10 +504,10 @@ export default function PublicForm() {
                             // Validar tamanho
                             if (field.validation?.maxSize) {
                               const fileSizeMB = file.size / (1024 * 1024);
-                              if (fileSizeMB > field.validation.maxSize) {
+                              if (field.validation && fileSizeMB > field.validation.maxSize) {
                                 setErrors(prev => ({
                                   ...prev,
-                                  [field.id]: `Arquivo muito grande. Tamanho máximo: ${field.validation!.maxSize}MB`
+                                  [field.id]: `Arquivo muito grande. Tamanho máximo: ${field.validation?.maxSize || 0}MB`
                                 }));
                                 e.target.value = '';
                                 return;

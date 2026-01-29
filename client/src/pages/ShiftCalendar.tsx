@@ -62,13 +62,14 @@ export default function ShiftCalendar() {
   const [reportData, setReportData] = useState<ReportData | null>(null);
   const [showShiftModal, setShowShiftModal] = useState(false);
   const [selectedShift, setSelectedShift] = useState<Shift | null>(null);
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [, setSelectedDate] = useState<Date | null>(null);
   const [allUsers, setAllUsers] = useState<any[]>([]);
   
   const canCreate = hasPermission(RESOURCES.AGENDA, ACTIONS.CREATE);
   const canEdit = hasPermission(RESOURCES.AGENDA, ACTIONS.EDIT);
   const canDelete = hasPermission(RESOURCES.AGENDA, ACTIONS.DELETE);
-  
+  const canViewUsers = hasPermission(RESOURCES.USERS, ACTIONS.VIEW);
+
   // Formulário de plantão
   const [shiftTitle, setShiftTitle] = useState('');
   const [shiftStartDate, setShiftStartDate] = useState('');
@@ -162,19 +163,24 @@ export default function ShiftCalendar() {
     }
   };
 
-  // Buscar plantões
+  // Buscar plantões (usuários só se tiver users:view)
   const fetchData = async () => {
     try {
       setLoading(true);
       const { start, end } = getPeriodRange();
-      
-      const [shiftsRes, usersRes] = await Promise.all([
-        axios.get(`/api/shifts?start=${start}&end=${end}`),
-        axios.get('/api/users')
-      ]);
-      
-      setShifts(shiftsRes.data);
-      setAllUsers(usersRes.data);
+
+      if (canViewUsers) {
+        const [shiftsRes, usersRes] = await Promise.all([
+          axios.get(`/api/shifts?start=${start}&end=${end}`),
+          axios.get('/api/users')
+        ]);
+        setShifts(shiftsRes.data);
+        setAllUsers(usersRes.data);
+      } else {
+        const shiftsRes = await axios.get(`/api/shifts?start=${start}&end=${end}`);
+        setShifts(shiftsRes.data);
+        setAllUsers([]);
+      }
     } catch (error) {
       console.error('Erro ao buscar dados:', error);
     } finally {
@@ -188,7 +194,7 @@ export default function ShiftCalendar() {
     } else {
       fetchReportData();
     }
-  }, [currentDate, viewMode, tabMode]);
+  }, [currentDate, viewMode, tabMode, canViewUsers]);
 
   // Buscar dados do relatório
   const fetchReportData = async () => {
@@ -234,7 +240,7 @@ export default function ShiftCalendar() {
     const secondaryColor = [59, 130, 246]; // Azul
     const successColor = [34, 197, 94]; // Verde
     const warningColor = [245, 158, 11]; // Amarelo
-    const dangerColor = [239, 68, 68]; // Vermelho
+    // const dangerColor = [239, 68, 68]; // Vermelho
     const textColor = [30, 30, 30];
     const textSecondary = [100, 100, 100];
     const borderColor = [220, 220, 230];
@@ -350,7 +356,7 @@ export default function ShiftCalendar() {
       const boxWidth = (contentWidth - 9) / 4;
       const boxHeight = 28;
       const totalHours = reportData.users.reduce((sum, user) => sum + user.totalHours, 0);
-      const totalShifts = reportData.users.reduce((sum, user) => sum + user.shiftsCount, 0);
+      // const totalShifts = reportData.users.reduce((sum, user) => sum + user.shiftsCount, 0);
       const avgHours = reportData.users.length > 0 ? totalHours / reportData.users.length : 0;
 
       const metrics = [

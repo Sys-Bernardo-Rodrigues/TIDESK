@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Webhook, Plus, Search, Edit, Trash2, Copy, Link as LinkIcon, Eye, CheckCircle, XCircle, Activity, Settings, Filter, X, Send, RefreshCw } from 'lucide-react';
+import { Webhook, Plus, Search, Edit, Trash2, Copy, Link as LinkIcon, Eye, CheckCircle, XCircle, Filter, X, Send, RefreshCw } from 'lucide-react';
 import { formatDateBR } from '../utils/dateUtils';
 import { usePermissions, RESOURCES, ACTIONS } from '../hooks/usePermissions';
 
@@ -52,7 +52,7 @@ export default function Webhooks() {
   const [filterActive, setFilterActive] = useState<string>('all'); // all, active, inactive
   const [filterPriority, setFilterPriority] = useState<string>('all'); // all, low, medium, high, urgent
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
-  const [copiedSecret, setCopiedSecret] = useState<number | null>(null);
+  // const [, setCopiedSecret] = useState<number | null>(null);
   
   // Form state
   const [formData, setFormData] = useState({
@@ -185,29 +185,30 @@ export default function Webhooks() {
     }
   };
 
-  const copySecretKey = async (secretKey: string, webhookId: number) => {
-    try {
-      await navigator.clipboard.writeText(secretKey);
-      setCopiedSecret(webhookId);
-      setTimeout(() => setCopiedSecret(null), 2000);
-    } catch (err) {
-      // Fallback para navegadores mais antigos
-      const textArea = document.createElement('textarea');
-      textArea.value = secretKey;
-      textArea.style.position = 'fixed';
-      textArea.style.opacity = '0';
-      document.body.appendChild(textArea);
-      textArea.select();
-      try {
-        document.execCommand('copy');
-        setCopiedSecret(webhookId);
-        setTimeout(() => setCopiedSecret(null), 2000);
-      } catch (err) {
-        alert('Erro ao copiar secret key. Por favor, copie manualmente.');
-      }
-      document.body.removeChild(textArea);
-    }
-  };
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // const copySecretKey = async (secretKey: string, webhookId: number) => {
+  //   try {
+  //     await navigator.clipboard.writeText(secretKey);
+  //     setCopiedSecret(webhookId);
+  //     setTimeout(() => setCopiedSecret(null), 2000);
+  //   } catch (err) {
+  //     // Fallback para navegadores mais antigos
+  //     const textArea = document.createElement('textarea');
+  //     textArea.value = secretKey;
+  //     textArea.style.position = 'fixed';
+  //     textArea.style.opacity = '0';
+  //     document.body.appendChild(textArea);
+  //     textArea.select();
+  //     try {
+  //       document.execCommand('copy');
+  //       setCopiedSecret(webhookId);
+  //       setTimeout(() => setCopiedSecret(null), 2000);
+  //     } catch (err) {
+  //       alert('Erro ao copiar secret key. Por favor, copie manualmente.');
+  //     }
+  //     document.body.removeChild(textArea);
+  //   }
+  // };
 
   const toggleActive = async (webhook: WebhookData) => {
     if (!canEdit) {

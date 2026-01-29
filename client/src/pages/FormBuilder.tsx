@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import axios from 'axios';
-import { ArrowLeft, Plus, GripVertical, X, Users, User, Settings, Save } from 'lucide-react';
+import { ArrowLeft, Plus, GripVertical, X, Settings, Save } from 'lucide-react';
 
 interface FormField {
   id: string;
@@ -61,9 +61,6 @@ export default function FormBuilder() {
     { value: 'image', label: 'Imagem/Foto' },
   ];
 
-  const generatePublicUrl = () => {
-    return `/form/${Math.random().toString(36).substring(2, 15)}`;
-  };
 
   const addField = () => {
     const newField: FormField = {

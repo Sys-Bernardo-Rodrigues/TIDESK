@@ -3,10 +3,6 @@
  * Retorna o nome do feriado para uma data específica
  */
 
-interface Holiday {
-  name: string;
-  date: Date;
-}
 // Feriados fixos (mesmo dia todo ano)
 const fixedHolidays: Array<{ month: number; day: number; name: string }> = [
   { month: 0, day: 1, name: 'Confraternização Universal' }, // 1 de Janeiro

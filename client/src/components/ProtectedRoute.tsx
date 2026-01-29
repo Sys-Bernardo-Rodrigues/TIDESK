@@ -1,5 +1,5 @@
 import { Navigate, useLocation } from 'react-router-dom';
-import { usePermissions, RESOURCES, ACTIONS } from '../hooks/usePermissions';
+import { usePermissions } from '../hooks/usePermissions';
 import { useAuth } from '../contexts/AuthContext';
 
 interface ProtectedRouteProps {
