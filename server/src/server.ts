@@ -45,9 +45,10 @@ app.set('trust proxy', true);
 const USE_HTTPS = process.env.USE_HTTPS === 'true';
 const SSL_KEY_PATH = process.env.SSL_KEY_PATH || path.join(process.cwd(), 'certs', 'server.key');
 const SSL_CERT_PATH = process.env.SSL_CERT_PATH || path.join(process.cwd(), 'certs', 'server.crt');
+const SSL_CHAIN_PATH = process.env.SSL_CHAIN_PATH || path.join(process.cwd(), 'certs', 'server.chain.crt');
 
 // Função para carregar certificados SSL
-function loadSSLCertificates(): { key: Buffer; cert: Buffer } | null {
+function loadSSLCertificates(): { key: Buffer; cert: Buffer; ca?: Buffer } | null {
   if (!USE_HTTPS) {
     return null;
   }
@@ -61,10 +62,18 @@ function loadSSLCertificates(): { key: Buffer; cert: Buffer } | null {
       return null;
     }
 
-    return {
+    const sslOptions: { key: Buffer; cert: Buffer; ca?: Buffer } = {
       key: fs.readFileSync(SSL_KEY_PATH),
       cert: fs.readFileSync(SSL_CERT_PATH)
     };
+
+    // Suportar certificado intermediário (chain) - útil para Cloudflare Origin Certificates
+    if (fs.existsSync(SSL_CHAIN_PATH)) {
+      sslOptions.ca = fs.readFileSync(SSL_CHAIN_PATH);
+      console.log('✅ Certificado intermediário (chain) carregado');
+    }
+
+    return sslOptions;
   } catch (error) {
     console.error('❌ Erro ao carregar certificados SSL:', error);
     return null;

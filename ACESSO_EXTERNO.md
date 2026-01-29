@@ -4,7 +4,8 @@ Este documento descreve como configurar o acesso externo ao TIDESK através do d
 
 ## 🌐 Acessos Configurados
 
-- **Domínio**: http://tidesk.invicco.com.br:3333
+- **Domínio Principal**: http://tidesk.invicco.com.br:3333
+- **Domínio Alternativo**: http://tidesk.invixap.com.br:3333
 - **IP Externo**: http://187.45.113.150:3333
 - **IP Interno**: http://192.168.60.104:3333
 
@@ -43,6 +44,7 @@ Este script irá:
 
 Certifique-se de que o DNS está configurado corretamente:
 - `tidesk.invicco.com.br` → `187.45.113.150`
+- `tidesk.invixap.com.br` → `187.45.113.150`
 
 ### 4. Verificar se o Servidor Está Rodando
 
@@ -66,6 +68,7 @@ curl http://192.168.60.104:5000/api/health
 ```bash
 curl http://187.45.113.150:3333
 curl http://tidesk.invicco.com.br:3333
+curl http://tidesk.invixap.com.br:3333
 curl http://187.45.113.150:5000/api/health
 ```
 
@@ -73,7 +76,10 @@ curl http://187.45.113.150:5000/api/health
 
 ### Recomendações para Produção:
 
-1. **Use HTTPS**: Configure um proxy reverso (nginx) com SSL/TLS
+1. **Use HTTPS**: Configure certificados SSL/TLS
+   - **Cloudflare Origin Certificates** (recomendado se usar Cloudflare): Veja `server/CONFIGURACAO_CLOUDFLARE.md`
+   - **Let's Encrypt**: Veja `server/CONFIGURACAO_HTTPS.md`
+   - Configure um proxy reverso (nginx) com SSL/TLS
 2. **Restrinja CORS**: Em produção, considere restringir CORS para domínios específicos
 3. **Firewall**: Mantenha apenas as portas necessárias abertas
 4. **Autenticação**: O sistema já possui autenticação JWT ativa
@@ -87,7 +93,9 @@ No arquivo `server/src/server.ts`, altere:
 app.use(cors({
   origin: [
     'http://tidesk.invicco.com.br:3333',
+    'http://tidesk.invixap.com.br:3333',
     'https://tidesk.invicco.com.br',
+    'https://tidesk.invixap.com.br',
     'http://187.45.113.150:3333'
   ],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
@@ -129,7 +137,8 @@ app.use(cors({
 
 - Verifique se o DNS está configurado corretamente
 - Teste: `nslookup tidesk.invicco.com.br`
-- Deve retornar: `187.45.113.150`
+- Teste: `nslookup tidesk.invixap.com.br`
+- Ambos devem retornar: `187.45.113.150`
 
 ## 📝 Notas Importantes
 

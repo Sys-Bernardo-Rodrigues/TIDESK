@@ -60,9 +60,30 @@ openssl req -new -x509 -key certs/server.key -out certs/server.crt -days 365 \
   -subj "/C=BR/ST=Sao Paulo/L=Sao Paulo/O=TIDESK/CN=localhost"
 ```
 
-### Método 3: Certificados para Produção (Let's Encrypt)
+### Método 3: Certificados Cloudflare (Origin Certificates)
 
-Para produção, use certificados de uma CA confiável:
+Se você usa Cloudflare como proxy reverso, pode usar os Origin Certificates do Cloudflare:
+
+**Vantagens:**
+- Válidos por até 15 anos
+- Gratuitos
+- Fáceis de configurar
+- Específicos para uso com Cloudflare
+
+**Como configurar:**
+1. Siga o guia completo em: `CONFIGURACAO_CLOUDFLARE.md`
+2. Ou execute o script interativo:
+   ```bash
+   npm run setup-cloudflare-certs
+   ```
+
+**Requisitos:**
+- Conta no Cloudflare com o domínio configurado
+- Origin Certificate gerado no painel do Cloudflare
+
+### Método 4: Certificados para Produção (Let's Encrypt)
+
+Para produção sem Cloudflare, use certificados de uma CA confiável:
 
 #### Usando Certbot (Let's Encrypt):
 
@@ -255,6 +276,7 @@ sudo certbot renew
 | `USE_HTTPS` | Habilita HTTPS (`true`/`false`) | `false` | Não |
 | `SSL_KEY_PATH` | Caminho para a chave privada | `certs/server.key` | Não* |
 | `SSL_CERT_PATH` | Caminho para o certificado | `certs/server.crt` | Não* |
+| `SSL_CHAIN_PATH` | Caminho para o certificado intermediário (chain) | `certs/server.chain.crt` | Não |
 | `SSL_DOMAIN` | Domínio ao gerar certs (`npm run generate-certs`) | `tidesk.invicco.com.br` | Não |
 | `HTTP_REDIRECT_PORT` | Porta para redirecionamento HTTP→HTTPS | - | Não |
 | `PORT` | Porta do servidor HTTPS | `5000` | Não |

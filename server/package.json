@@ -7,7 +7,8 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "start": "node -r dotenv/config dist/server.js",
-    "generate-certs": "tsx src/scripts/generate-certificates.ts"
+    "generate-certs": "tsx src/scripts/generate-certificates.ts",
+    "setup-cloudflare-certs": "tsx src/scripts/setup-cloudflare-certs.ts"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
