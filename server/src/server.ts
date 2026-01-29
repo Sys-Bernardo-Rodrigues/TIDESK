@@ -1,6 +1,10 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import https from 'https';
+import http from 'http';
+import fs from 'fs';
+import path from 'path';
 import { initDatabase } from './database';
 import authRoutes from './routes/auth';
 import ticketRoutes from './routes/tickets';
@@ -32,19 +36,42 @@ const PORT = Number(process.env.PORT) || 5000;
 // Isso permite que o Express confie nos headers X-Forwarded-* de proxies reversos
 app.set('trust proxy', true);
 
-// Middleware para garantir que não há redirecionamento HTTPS forçado
-// Isso é importante para permitir acesso via HTTP em dispositivos móveis
+// Configuração HTTPS
+const USE_HTTPS = process.env.USE_HTTPS === 'true';
+const SSL_KEY_PATH = process.env.SSL_KEY_PATH || path.join(process.cwd(), 'certs', 'server.key');
+const SSL_CERT_PATH = process.env.SSL_CERT_PATH || path.join(process.cwd(), 'certs', 'server.crt');
+
+// Função para carregar certificados SSL
+function loadSSLCertificates(): { key: Buffer; cert: Buffer } | null {
+  if (!USE_HTTPS) {
+    return null;
+  }
+
+  try {
+    if (!fs.existsSync(SSL_KEY_PATH) || !fs.existsSync(SSL_CERT_PATH)) {
+      console.warn('⚠️  HTTPS habilitado mas certificados não encontrados!');
+      console.warn(`   Chave esperada em: ${SSL_KEY_PATH}`);
+      console.warn(`   Certificado esperado em: ${SSL_CERT_PATH}`);
+      console.warn('   Execute: npm run generate-certs');
+      return null;
+    }
+
+    return {
+      key: fs.readFileSync(SSL_KEY_PATH),
+      cert: fs.readFileSync(SSL_CERT_PATH)
+    };
+  } catch (error) {
+    console.error('❌ Erro ao carregar certificados SSL:', error);
+    return null;
+  }
+}
+
+// Middleware para configuração de segurança HTTPS
 app.use((req, res, next) => {
-  // Remover headers que podem forçar HTTPS
-  res.removeHeader('Strict-Transport-Security');
-  
-  // Garantir que o protocolo detectado seja HTTP quando não há proxy HTTPS configurado
-  // Se não houver certificado SSL configurado, manter HTTP
-  const protocol = req.protocol || 'http';
-  const isSecure = req.secure || (req.headers['x-forwarded-proto'] === 'https');
-  
-  // Não redirecionar para HTTPS se não estiver configurado
-  // Permitir acesso via HTTP explicitamente
+  if (USE_HTTPS && req.secure) {
+    // Adicionar HSTS apenas quando usando HTTPS
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
   next();
 });
 
@@ -73,7 +100,6 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Servir arquivos estáticos (uploads)
-import path from 'path';
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
 // Rotas
@@ -130,13 +156,49 @@ initDatabase().then(async () => {
   // Escutar em todas as interfaces de rede (0.0.0.0) para aceitar conexões externas
   const HOST = process.env.HOST || '0.0.0.0';
   
-  app.listen(PORT, HOST, () => {
-    console.log(`🚀 Servidor TIDESK rodando em http://${HOST}:${PORT}`);
-    console.log(`🌐 Acessível de qualquer IP na rede`);
-    if (HOST === '0.0.0.0') {
-      console.log(`📡 Para acessar externamente, use o IP desta máquina na porta ${PORT}`);
+  const sslOptions = loadSSLCertificates();
+  
+  if (USE_HTTPS && sslOptions) {
+    // Criar servidor HTTPS
+    const httpsServer = https.createServer(sslOptions, app);
+    
+    httpsServer.listen(PORT, HOST, () => {
+      console.log(`🔒 Servidor TIDESK rodando em HTTPS`);
+      console.log(`   URL: https://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
+      console.log(`🌐 Acessível de qualquer IP na rede`);
+      if (HOST === '0.0.0.0') {
+        console.log(`📡 Para acessar externamente, use o IP desta máquina na porta ${PORT}`);
+      }
+      console.log(`🔐 Certificados SSL carregados com sucesso`);
+    });
+    
+    // Opcional: Redirecionar HTTP para HTTPS na porta 80 (se configurado)
+    const HTTP_PORT = Number(process.env.HTTP_REDIRECT_PORT) || null;
+    if (HTTP_PORT) {
+      const httpApp = express();
+      httpApp.use((req, res) => {
+        res.redirect(`https://${req.hostname}:${PORT}${req.url}`);
+      });
+      
+      http.createServer(httpApp).listen(HTTP_PORT, HOST, () => {
+        console.log(`🔄 Redirecionamento HTTP (porta ${HTTP_PORT}) → HTTPS (porta ${PORT})`);
+      });
     }
-  });
+  } else {
+    // Criar servidor HTTP (padrão)
+    app.listen(PORT, HOST, () => {
+      console.log(`🚀 Servidor TIDESK rodando em HTTP`);
+      console.log(`   URL: http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
+      console.log(`🌐 Acessível de qualquer IP na rede`);
+      if (HOST === '0.0.0.0') {
+        console.log(`📡 Para acessar externamente, use o IP desta máquina na porta ${PORT}`);
+      }
+      if (USE_HTTPS) {
+        console.log(`⚠️  HTTPS habilitado mas certificados não encontrados. Usando HTTP.`);
+        console.log(`   Execute: npm run generate-certs`);
+      }
+    });
+  }
   
   // Iniciar job de atualização de tickets finalizados
   await startClosedTicketsUpdater();
