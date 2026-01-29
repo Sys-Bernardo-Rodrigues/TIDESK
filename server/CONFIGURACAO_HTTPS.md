@@ -18,21 +18,30 @@ O servidor TIDESK suporta HTTPS através de certificados SSL/TLS. Para desenvolv
 
 ### Método 1: Usando o Script Automático (Recomendado)
 
-O projeto inclui um script que gera certificados SSL auto-assinados automaticamente:
+O script gera certificados SSL auto-assinados configurados para o domínio **tidesk.invicco.com.br** e para os IPs do ambiente:
 
 ```bash
+cd server
 npm run generate-certs
 ```
 
-Este script:
+**O que o script faz:**
 - Cria o diretório `certs/` se não existir
 - Gera certificados válidos por 365 dias
-- Suporta localhost e IPs locais (127.0.0.1, ::1)
-- Funciona com OpenSSL (se disponível) ou Node.js (fallback)
+- **Domínio padrão:** `tidesk.invicco.com.br`
+- **Subject Alternative Names (SANs):**
+  - DNS: `tidesk.invicco.com.br`, `www.tidesk.invicco.com.br`, `localhost`, `*.localhost`
+  - IPs: `127.0.0.1`, `::1`, `192.168.60.104`, `187.45.113.150`
+- Usa OpenSSL se disponível; caso contrário, Node.js (pacote `selfsigned`)
 
-**Com hostname personalizado:**
+**Com outro domínio:**
 ```bash
-npm run generate-certs meu-dominio.com
+npm run generate-certs outro-dominio.com
+```
+
+**Via variável de ambiente:**
+```bash
+SSL_DOMAIN=meu-dominio.com npm run generate-certs
 ```
 
 ### Método 2: Usando OpenSSL Manualmente
@@ -63,12 +72,12 @@ sudo apt-get install certbot  # Ubuntu/Debian
 # ou
 brew install certbot  # macOS
 
-# Gerar certificados
-sudo certbot certonly --standalone -d seu-dominio.com
+# Gerar certificados para tidesk.invicco.com.br
+sudo certbot certonly --standalone -d tidesk.invicco.com.br -d www.tidesk.invicco.com.br
 
 # Os certificados estarão em:
-# /etc/letsencrypt/live/seu-dominio.com/fullchain.pem
-# /etc/letsencrypt/live/seu-dominio.com/privkey.pem
+# /etc/letsencrypt/live/tidesk.invicco.com.br/fullchain.pem
+# /etc/letsencrypt/live/tidesk.invicco.com.br/privkey.pem
 ```
 
 ## ⚙️ Configuração do Servidor
@@ -106,7 +115,16 @@ HTTP_REDIRECT_PORT=80
 
 Isso criará um servidor HTTP na porta 80 que redireciona todas as requisições para HTTPS.
 
-### 4. Reiniciar o Servidor
+### 4. Frontend (Vite) – porta 3333
+
+O **frontend** (Vite, porta 3333) usa os **mesmos certificados** em `server/certs/` automaticamente quando eles existem. Não é necessário configurar nada extra.
+
+- **Acesso:** `https://tidesk.invicco.com.br:3333` ou `https://localhost:3333`
+- O proxy `/api` e `/uploads` encaminha para o backend (porta 5000).
+- **Com certs:** o proxy usa **HTTPS** para o backend por padrão (backend deve estar com `USE_HTTPS=true`).
+- Se o backend rodar só em HTTP, defina `VITE_API_HTTPS=false` ao iniciar (ex.: `VITE_API_HTTPS=false npm run start`).
+
+### 5. Reiniciar o Servidor
 
 ```bash
 npm run dev
@@ -136,24 +154,24 @@ npm run build && npm start
    - Use TLS 1.2 ou superior
    - Configure ciphers seguros
 
-### Exemplo de Configuração Nginx com HTTPS
+### Exemplo de Configuração Nginx com HTTPS (tidesk.invicco.com.br)
 
 ```nginx
 # Redirecionar HTTP para HTTPS
 server {
     listen 80;
-    server_name seu-dominio.com;
+    server_name tidesk.invicco.com.br 187.45.113.150;
     return 301 https://$server_name$request_uri;
 }
 
 # Servidor HTTPS
 server {
     listen 443 ssl http2;
-    server_name seu-dominio.com;
+    server_name tidesk.invicco.com.br 187.45.113.150;
 
-    # Certificados SSL
-    ssl_certificate /etc/letsencrypt/live/seu-dominio.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/seu-dominio.com/privkey.pem;
+    # Certificados SSL (Let's Encrypt em produção)
+    ssl_certificate /etc/letsencrypt/live/tidesk.invicco.com.br/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/tidesk.invicco.com.br/privkey.pem;
 
     # Configurações SSL
     ssl_protocols TLSv1.2 TLSv1.3;
@@ -237,6 +255,7 @@ sudo certbot renew
 | `USE_HTTPS` | Habilita HTTPS (`true`/`false`) | `false` | Não |
 | `SSL_KEY_PATH` | Caminho para a chave privada | `certs/server.key` | Não* |
 | `SSL_CERT_PATH` | Caminho para o certificado | `certs/server.crt` | Não* |
+| `SSL_DOMAIN` | Domínio ao gerar certs (`npm run generate-certs`) | `tidesk.invicco.com.br` | Não |
 | `HTTP_REDIRECT_PORT` | Porta para redirecionamento HTTP→HTTPS | - | Não |
 | `PORT` | Porta do servidor HTTPS | `5000` | Não |
 | `HOST` | Host para escutar | `0.0.0.0` | Não |
