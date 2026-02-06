@@ -529,6 +529,7 @@ router.put('/:id', [
       updates.push('category_id = ?');
       values.push(req.body.category_id);
     }
+    const now = getBrasiliaTimestamp();
     const assignId = req.body.assigned_to != null && req.body.assigned_to !== '' ? Number(req.body.assigned_to) : null;
     const canAssign = (req.userRole === 'admin' || req.userRole === 'agent') ||
       (assignId != null && assignId === req.userId);
@@ -544,8 +545,6 @@ router.put('/:id', [
       updates.push('assigned_to = NULL');
       updates.push('assigned_at = NULL');
     }
-
-    const now = getBrasiliaTimestamp();
     updates.push('updated_at = ?');
     values.push(now);
     values.push(ticketId);

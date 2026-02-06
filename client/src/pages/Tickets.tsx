@@ -736,7 +736,7 @@ export default function Tickets() {
           line-height: 1.4;
           margin-bottom: 0.5rem;
           display: -webkit-box;
-          -webkit-line-clamp: 2;
+          -webkit-line-clamp: 4;
           -webkit-box-orient: vertical;
           overflow: hidden;
         }

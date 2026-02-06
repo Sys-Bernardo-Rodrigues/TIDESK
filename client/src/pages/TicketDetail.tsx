@@ -129,6 +129,7 @@ export default function TicketDetail() {
   const [scheduleTime, setScheduleTime] = useState('');
   const [scheduling, setScheduling] = useState(false);
   const [pausingResume, setPausingResume] = useState(false);
+  const [showRawWebhookJson, setShowRawWebhookJson] = useState(false);
 
   // Determinar para onde voltar baseado no status do ticket
   const getBackPath = (): string => {
@@ -299,6 +300,94 @@ export default function TicketDetail() {
   // Verificar se um arquivo é uma imagem
   const isImage = (mimeType: string): boolean => {
     return mimeType?.startsWith('image/') || false;
+  };
+
+  // Tentar interpretar descrição como JSON (payload de webhook)
+  const tryParseWebhookDescription = (description: string): object | null => {
+    if (!description || typeof description !== 'string') return null;
+    const trimmed = description.trim();
+    if ((!trimmed.startsWith('{') && !trimmed.startsWith('[')) || trimmed.length < 2) return null;
+    try {
+      const parsed = JSON.parse(description);
+      return typeof parsed === 'object' && parsed !== null ? parsed : null;
+    } catch {
+      return null;
+    }
+  };
+
+  // Humanizar nome de chave para exibição (snake_case -> "Snake case")
+  const humanizeKey = (key: string): string => {
+    return key
+      .replace(/_/g, ' ')
+      .replace(/([A-Z])/g, ' $1')
+      .replace(/^./, (s) => s.toUpperCase())
+      .trim();
+  };
+
+  // Renderizar valor do payload (objeto/array vira bloco recuado)
+  const renderWebhookValue = (value: unknown, keyLabel: string): React.ReactNode => {
+    if (value === null || value === undefined) {
+      return <span style={{ color: 'var(--text-tertiary)', fontStyle: 'italic' }}>—</span>;
+    }
+    if (typeof value === 'boolean') {
+      return value ? 'Sim' : 'Não';
+    }
+    if (typeof value === 'number' || typeof value === 'string') {
+      const str = String(value);
+      if (str.length > 500) {
+        return (
+          <span style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+            {str.substring(0, 500)}
+            <span style={{ color: 'var(--text-tertiary)' }}> … (+{str.length - 500} caracteres)</span>
+          </span>
+        );
+      }
+      return <span style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{str}</span>;
+    }
+    if (Array.isArray(value)) {
+      return (
+        <div style={{
+          marginTop: '0.25rem',
+          paddingLeft: '0.75rem',
+          borderLeft: '2px solid var(--purple)',
+          fontSize: '0.8125rem'
+        }}>
+          {value.length === 0 && <span style={{ color: 'var(--text-tertiary)', fontStyle: 'italic' }}>Lista vazia</span>}
+          {value.map((item, i) => (
+            <div key={i} style={{ marginBottom: '0.5rem' }}>
+              {typeof item === 'object' && item !== null ? (
+                renderWebhookValue(item, `${keyLabel}[${i}]`)
+              ) : (
+                <span style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{String(item)}</span>
+              )}
+            </div>
+          ))}
+        </div>
+      );
+    }
+    if (typeof value === 'object') {
+      return (
+        <div style={{
+          marginTop: '0.25rem',
+          padding: '0.5rem 0.75rem',
+          backgroundColor: 'var(--bg-tertiary)',
+          borderRadius: '0.375rem',
+          fontSize: '0.8125rem'
+        }}>
+          {Object.entries(value as Record<string, unknown>).map(([k, v]) => (
+            <div key={k} style={{ marginBottom: '0.5rem' }}>
+              <div style={{ fontWeight: '600', color: 'var(--purple)', marginBottom: '0.125rem' }}>
+                {humanizeKey(k)}
+              </div>
+              <div style={{ color: 'var(--text-secondary)' }}>
+                {renderWebhookValue(v, k)}
+              </div>
+            </div>
+          ))}
+        </div>
+      );
+    }
+    return String(value);
   };
 
   // Formatar tamanho do arquivo
@@ -1162,61 +1251,144 @@ export default function TicketDetail() {
               </>
             );
           })()
-        ) : (
-          <>
-            {/* Mensagem normal (não é formulário) */}
-            <div style={{
-              display: 'flex',
-              justifyContent: 'flex-start',
-              marginBottom: 'var(--spacing-sm)'
-            }}>
+        ) : (() => {
+          const webhookPayload = tryParseWebhookDescription(ticket.description);
+          const isWebhookJson = webhookPayload !== null && typeof webhookPayload === 'object';
+
+          return (
+            <>
+              {/* Mensagem inicial: webhook (JSON formatado) ou texto normal */}
               <div style={{
-                maxWidth: '75%',
                 display: 'flex',
-                gap: 'var(--spacing-xs)',
-                alignItems: 'flex-end'
+                justifyContent: 'flex-start',
+                marginBottom: 'var(--spacing-sm)'
               }}>
                 <div style={{
-                  width: '32px',
-                  height: '32px',
-                  borderRadius: '50%',
-                  backgroundColor: 'var(--purple)',
+                  maxWidth: '75%',
                   display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexShrink: 0,
-                  marginBottom: '2px'
+                  gap: 'var(--spacing-xs)',
+                  alignItems: 'flex-end'
                 }}>
-                  <User size={16} color="#FFFFFF" />
-                </div>
-                <div>
                   <div style={{
-                    backgroundColor: '#1E1E22',
-                    padding: '0.5rem 0.75rem',
-                    borderRadius: '0.5rem 0.5rem 0.5rem 0.125rem',
-                    color: 'var(--text-primary)',
-                    fontSize: '0.875rem',
-                    lineHeight: '1.4',
-                    boxShadow: '0 1px 2px rgba(0, 0, 0, 0.3)',
-                    whiteSpace: 'pre-wrap',
-                    wordBreak: 'break-word'
+                    width: '32px',
+                    height: '32px',
+                    borderRadius: '50%',
+                    backgroundColor: 'var(--purple)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                    marginBottom: '2px'
                   }}>
-                    {ticket.description}
+                    <User size={16} color="#FFFFFF" />
                   </div>
-                  <div style={{
-                    fontSize: '0.6875rem',
-                    color: 'var(--text-tertiary)',
-                    paddingLeft: '0.5rem',
-                    marginTop: '0.25rem'
-                  }}>
-                    {formatDate(ticket.created_at)}
+                  <div style={{ flex: 1 }}>
+                    <div style={{
+                      backgroundColor: '#1E1E22',
+                      padding: '0.75rem 1rem',
+                      borderRadius: '0.5rem 0.5rem 0.5rem 0.125rem',
+                      color: 'var(--text-primary)',
+                      fontSize: '0.875rem',
+                      lineHeight: '1.4',
+                      boxShadow: '0 1px 2px rgba(0, 0, 0, 0.3)'
+                    }}>
+                      {isWebhookJson ? (
+                        <>
+                          <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.5rem',
+                            marginBottom: '0.75rem',
+                            paddingBottom: '0.5rem',
+                            borderBottom: '1px solid var(--border-primary)'
+                          }}>
+                            <FileText size={16} color="var(--purple)" />
+                            <strong style={{ fontSize: '0.8125rem', color: 'var(--purple)' }}>
+                              Dados do webhook
+                            </strong>
+                            <button
+                              type="button"
+                              onClick={() => setShowRawWebhookJson((v) => !v)}
+                              style={{
+                                marginLeft: 'auto',
+                                padding: '0.25rem 0.5rem',
+                                fontSize: '0.75rem',
+                                backgroundColor: 'var(--bg-tertiary)',
+                                border: '1px solid var(--border-primary)',
+                                borderRadius: '0.25rem',
+                                color: 'var(--text-secondary)',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.25rem'
+                              }}
+                            >
+                              <FileText size={12} />
+                              {showRawWebhookJson ? 'Ver resumo' : 'Ver JSON completo'}
+                            </button>
+                          </div>
+                          {showRawWebhookJson ? (
+                            <pre style={{
+                              margin: 0,
+                              padding: '0.75rem',
+                              backgroundColor: 'var(--bg-tertiary)',
+                              borderRadius: '0.375rem',
+                              fontSize: '0.75rem',
+                              lineHeight: '1.5',
+                              overflow: 'auto',
+                              maxHeight: '400px',
+                              whiteSpace: 'pre-wrap',
+                              wordBreak: 'break-word',
+                              color: 'var(--text-secondary)',
+                              fontFamily: 'ui-monospace, monospace'
+                            }}>
+                              {JSON.stringify(webhookPayload, null, 2)}
+                            </pre>
+                          ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                              {Object.entries(webhookPayload).map(([key, value]) => (
+                                <div key={key}>
+                                  <div style={{
+                                    fontSize: '0.75rem',
+                                    fontWeight: '600',
+                                    color: 'var(--purple)',
+                                    marginBottom: '0.125rem'
+                                  }}>
+                                    {humanizeKey(key)}
+                                  </div>
+                                  <div style={{
+                                    fontSize: '0.8125rem',
+                                    color: 'var(--text-secondary)',
+                                    whiteSpace: 'pre-wrap',
+                                    wordBreak: 'break-word'
+                                  }}>
+                                    {renderWebhookValue(value, key)}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <span style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                          {ticket.description}
+                        </span>
+                      )}
+                    </div>
+                    <div style={{
+                      fontSize: '0.6875rem',
+                      color: 'var(--text-tertiary)',
+                      paddingLeft: '0.5rem',
+                      marginTop: '0.25rem'
+                    }}>
+                      {formatDate(ticket.created_at)}
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-
-          </>
-        )}
+            </>
+          );
+        })()}
 
         {/* Mensagens do chat - Estilo WhatsApp */}
         {messages.map((message) => {
