@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
 import { History, Search, Calendar, User, CheckCircle, Clock, ChevronLeft, ChevronRight } from 'lucide-react';
-import { formatDateBR } from '../utils/dateUtils';
+import { formatDateBR, formatTicketTitle } from '../utils/dateUtils';
 
 interface Ticket {
   id: number;
@@ -392,7 +392,7 @@ export default function Historico() {
                         flex: 1,
                         minWidth: 0
                       }}>
-                        {ticket.title}
+                        {formatTicketTitle(ticket.title)}
                       </h3>
                       <span style={{
                         fontSize: '0.625rem',
@@ -427,13 +427,9 @@ export default function Historico() {
                       flexWrap: 'wrap',
                       alignItems: 'center'
                     }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                        <User size={12} />
-                        <span>{ticket.user_name}</span>
-                      </div>
                       {ticket.assigned_name && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                          <CheckCircle size={12} />
+                          <User size={12} />
                           <span>{ticket.assigned_name}</span>
                         </div>
                       )}

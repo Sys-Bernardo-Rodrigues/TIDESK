@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
 import { usePermissions, RESOURCES, ACTIONS } from '../hooks/usePermissions';
-import { formatDateList } from '../utils/dateUtils';
+import { formatDateList, formatTicketTitle } from '../utils/dateUtils';
 import {
   Search,
   Clock,
@@ -408,7 +408,7 @@ export default function Tickets() {
                             </span>
                           )}
                         </div>
-                        <h4 className="tickets-card-title">{ticket.title}</h4>
+                        <h4 className="tickets-card-title">{formatTicketTitle(ticket.title)}</h4>
                         <p className="tickets-card-desc">{ticket.description}</p>
                         <div className="tickets-card-meta">
                           {ticket.assigned_name && (

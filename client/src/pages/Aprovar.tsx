@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { CheckCircle, XCircle, Search, Clock, User, FileText } from 'lucide-react';
-import { formatDateBR } from '../utils/dateUtils';
+import { formatDateBR, formatTicketTitle } from '../utils/dateUtils';
 
 // Função para gerar ID completo do ticket (sem barras) - usado em URLs
 function getTicketFullId(ticket: any): string {
@@ -65,7 +65,7 @@ export default function Aprovar() {
           id: ticket.id,
           ticketId: ticketIdDisplay,
           fullId: getTicketFullId(ticket),
-          title: ticket.title,
+          title: formatTicketTitle(ticket.title),
           type: ticket.form_id ? 'Formulário' : 'Ticket',
           requester: ticket.user_name || 'Usuário Anônimo',
           date: ticket.created_at,

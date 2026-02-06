@@ -523,8 +523,8 @@ router.post('/public/:url/submit', uploadMultiple, async (req, res) => {
     
     // Usar o nome encontrado APENAS no título do ticket (não cria usuário)
     const ticketTitle = userName 
-      ? `Submissão: ${form.name} - ${userName}`
-      : `Submissão: ${form.name}`;
+      ? `${form.name} - ${userName}`
+      : form.name;
 
     console.log(`[Form Submit] Criando ticket para formulário ${form.id}:`);
     console.log(`  - linked_user_id: ${form.linked_user_id}`);

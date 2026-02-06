@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
 import { usePermissions, RESOURCES, ACTIONS } from '../hooks/usePermissions';
-import { formatDateChat } from '../utils/dateUtils';
+import { formatDateChat, formatTicketTitle } from '../utils/dateUtils';
 import { 
   ArrowLeft, 
   Send, 
@@ -670,7 +670,7 @@ export default function TicketDetail() {
                 color: 'var(--text-primary)',
                 margin: 0
               }}>
-                {ticket.title}
+                {formatTicketTitle(ticket.title)}
               </h1>
             </div>
             <div style={{

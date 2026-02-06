@@ -18,7 +18,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { usePermissions, RESOURCES, ACTIONS } from '../hooks/usePermissions';
-import { formatDateBR } from '../utils/dateUtils';
+import { formatDateBR, formatTicketTitle } from '../utils/dateUtils';
 
 interface DashboardStats {
   tickets: {
@@ -127,7 +127,7 @@ export default function Dashboard() {
         id: `tk-${t.id}`,
         start_time: t.start_time,
         end_time: t.start_time,
-        title: t.title || `Ticket #${t.ticket_number || t.id}`,
+        title: formatTicketTitle(t.title) || `Ticket #${t.ticket_number || t.id}`,
         type: 'ticket',
         link: hasPageAccess('/tickets') ? `/tickets/${t.id}` : undefined,
         color: t.color || null,

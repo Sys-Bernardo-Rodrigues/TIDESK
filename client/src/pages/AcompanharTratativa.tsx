@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Eye, Search, Clock, User, Ticket, TrendingUp, X, FileText, MessageSquare, Download, CheckCircle, XCircle } from 'lucide-react';
-import { formatDateBR } from '../utils/dateUtils';
+import { formatDateBR, formatTicketTitle } from '../utils/dateUtils';
 
 interface TicketDetail {
   id: number;
@@ -99,7 +99,7 @@ export default function AcompanharTratativa() {
         return {
           id: ticket.id,
           ticket: ticketId,
-          title: ticket.title,
+          title: formatTicketTitle(ticket.title),
           agent: ticket.assigned_name || 'Não atribuído',
           status: ticket.status === 'in_progress' ? 'Em Tratamento' : 
                   ticket.status === 'open' ? 'Aberto' : 
@@ -745,7 +745,7 @@ export default function AcompanharTratativa() {
                   color: 'var(--text-primary)',
                   marginBottom: 'var(--spacing-xs)'
                 }}>
-                  {selectedTicket.title}
+                  {formatTicketTitle(selectedTicket.title)}
                 </h2>
                 <div style={{
                   display: 'flex',

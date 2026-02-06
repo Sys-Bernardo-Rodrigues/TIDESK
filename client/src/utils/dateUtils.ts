@@ -112,3 +112,11 @@ export function formatDateList(dateString: string): string {
   
   return formatDateBR(dateString);
 }
+
+/**
+ * Remove o prefixo "Submissão: " do título do ticket (exibição)
+ */
+export function formatTicketTitle(title: string | null | undefined): string {
+  if (!title) return '';
+  return title.replace(/^Submissão:\s*/i, '').trim() || title;
+}
