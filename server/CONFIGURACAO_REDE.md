@@ -88,7 +88,7 @@ http://SEU_IP:5000/api/health
 
 **Frontend (se configurado para produção):**
 ```
-http://SEU_IP:3333
+https://SEU_IP
 ```
 
 ## 🔒 Segurança em Produção

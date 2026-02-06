@@ -465,9 +465,11 @@ router.post(
         const ticketNumber = await generateTicketNumber();
         const ticketIdStr = await generateTicketId();
 
+        const nowTs = getBrasiliaTimestamp();
+        const assignedTo = webhookData.assigned_to || null;
         const ticketResult = await dbRun(`
-          INSERT INTO tickets (ticket_number, title, description, status, priority, category_id, user_id, assigned_to, created_at, updated_at)
-          VALUES (?, ?, ?, 'open', ?, ?, ?, ?, ?, ?)
+          INSERT INTO tickets (ticket_number, title, description, status, priority, category_id, user_id, assigned_to, assigned_at, created_at, updated_at)
+          VALUES (?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?)
         `, [
           ticketNumber,
           title,
@@ -475,9 +477,10 @@ router.post(
           priority,
           webhookData.category_id || null,
           webhookData.created_by, // Usar o criador do webhook como usuário
-          webhookData.assigned_to || null,
-          getBrasiliaTimestamp(),
-          getBrasiliaTimestamp()
+          assignedTo,
+          assignedTo ? nowTs : null, // assigned_at: quando atribuído na criação, registrar momento
+          nowTs,
+          nowTs
         ]);
 
         ticketId = (ticketResult as any).lastID || (ticketResult as any).insertId || (ticketResult as any).id;

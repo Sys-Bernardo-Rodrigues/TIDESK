@@ -124,6 +124,10 @@ Se precisar modificar as configurações do serviço:
    /home/tidesk/TIDESK/start-tidesk.sh
    ```
 
+### Erro 502 / 521 ao acessar via Cloudflare
+
+O frontend escuta na **porta 2053**. Confirme que o serviço está rodando e que a Cloudflare está configurada para usar a **porta de origem 2053**. Verifique se algo está escutando: `ss -tlnp | grep 2053`.
+
 ### Porta já em uso
 
 Se a porta 5000 já estiver em uso:
@@ -155,7 +159,7 @@ sudo systemctl status tidesk
 curl http://localhost:5000/api/health
 
 # Teste do frontend
-curl http://localhost:3333
+curl https://localhost
 ```
 
 Se ambos responderem, o serviço está funcionando corretamente!

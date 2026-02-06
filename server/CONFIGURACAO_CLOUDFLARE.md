@@ -185,7 +185,7 @@ curl https://tidesk.invixap.com.br:5000/api/health
 ```
 
 ### Verificar no Navegador:
-1. Acesse: `https://tidesk.invixap.com.br:3333`
+1. Acesse: `https://tidesk.invixap.com.br`
 2. Verifique se não há avisos de certificado inválido
 3. O certificado deve mostrar como válido
 
@@ -204,6 +204,51 @@ No painel do Cloudflare, configure o modo SSL/TLS:
 ### Recomendação: Use **Full (strict)**
 
 ## 🔧 Troubleshooting
+
+### Erro 521 Web server is down (Cloudflare)
+
+O **521** significa que a Cloudflare **não consegue estabelecer conexão TCP** com o seu servidor de origem. Causas comuns:
+
+1. **Nada escutando na porta 2053** – serviço parado ou Vite não está rodando
+2. **Firewall bloqueando** – porta 2053 fechada ou bloqueando IPs da Cloudflare
+3. **Servidor de origem fora do ar** – máquina desligada ou serviço não iniciado
+4. **Porta de origem errada na Cloudflare** – no painel, verifique se a porta de origem está configurada como **2053** (em **DNS** → registro do hostname ou em **SSL/TLS** → **Origin Server**)
+
+**Checklist no servidor de origem:**
+
+```bash
+# 1. Serviço está rodando?
+sudo systemctl status tidesk
+
+# 2. Algo está escutando na porta 2053?
+ss -tlnp | grep 2053
+
+# 3. Firewall permite entrada na 2053? (firewalld)
+sudo firewall-cmd --list-ports
+
+# Se 2053 não aparecer, abra:
+sudo firewall-cmd --permanent --add-port=2053/tcp
+sudo firewall-cmd --reload
+
+# 4. Teste local na 2053 (deve responder)
+curl -k -I https://127.0.0.1:2053
+# ou
+curl -k -I https://localhost:2053
+```
+
+Se o serviço estiver parado, inicie: `sudo systemctl start tidesk`.
+
+### Erro 502 Bad Gateway (Cloudflare)
+
+A Cloudflare conecta ao seu servidor de **origem na porta 2053** (frontend). Confirme no painel da Cloudflare que a **porta de origem** está definida como **2053**. Se o frontend (Vite) não estiver escutando na 2053, a Cloudflare retorna **502 Bad Gateway**.
+
+Verifique se algo está escutando na 2053:
+
+```bash
+ss -tlnp | grep 2053
+```
+
+Deve aparecer o processo Node na porta 2053. Se não aparecer, reinicie o serviço: `sudo systemctl restart tidesk`.
 
 ### Erro: "Certificados não encontrados"
 

@@ -141,7 +141,7 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'TIDESK API está funcionando' });
 });
 
-// O cliente é servido separadamente pelo Vite preview na porta 3333
+// O cliente é servido separadamente pelo Vite preview na porta 2053
 // Não precisamos servir arquivos estáticos aqui
 
 // Função para atualizar tickets finalizados periodicamente
@@ -220,8 +220,10 @@ initDatabase().then(async () => {
   // Iniciar job de atualização de tickets finalizados
   await startClosedTicketsUpdater();
   
-  // Iniciar agendador de backup automático
-  startBackupScheduler();
+  // Iniciar agendador de backup automático apenas se ENABLE_BACKUP_SCHEDULER=true (não inicia em dev/start por padrão)
+  if (process.env.ENABLE_BACKUP_SCHEDULER === 'true') {
+    startBackupScheduler();
+  }
 }).catch((error) => {
   console.error('Erro ao inicializar banco de dados:', error);
   process.exit(1);

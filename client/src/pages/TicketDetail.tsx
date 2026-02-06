@@ -240,47 +240,59 @@ export default function TicketDetail() {
     }
   };
 
-  // Função para parsear descrição markdown e extrair dados do formulário
+  // Função para parsear descrição markdown e extrair dados do formulário (suporta valores multilinha)
   const parseFormDescription = (description: string) => {
     const lines = description.split('\n');
     const formData: Array<{ label: string; value: string }> = [];
     const attachmentsList: string[] = [];
     let inAttachmentsSection = false;
+    let currentLabel: string | null = null;
+    let currentValueLines: string[] = [];
 
-    console.log('[TicketDetail] Parseando descrição:', description);
+    const flushCurrentField = () => {
+      if (currentLabel !== null) {
+        let value = currentValueLines.join('\n').trim();
+        if (value.startsWith('[Arquivo]')) {
+          value = value.replace('[Arquivo]', '').trim();
+        }
+        formData.push({ label: currentLabel, value });
+        currentLabel = null;
+        currentValueLines = [];
+      }
+    };
 
-    lines.forEach(line => {
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
       const trimmedLine = line.trim();
       
       if (trimmedLine.includes('**Arquivos anexados:**') || trimmedLine.includes('**Arquivos anexados::**')) {
+        flushCurrentField();
         inAttachmentsSection = true;
-        return;
+        continue;
       }
       
       if (inAttachmentsSection) {
         if (trimmedLine.startsWith('- ')) {
           attachmentsList.push(trimmedLine.substring(2));
         }
-        return;
+        continue;
       }
 
       // Parsear linhas no formato **Label:** value ou **Label::** value
-      // Aceita um ou dois dois pontos após o label
-      const match = line.match(/\*\*(.+?):+?\*\*\s*(.+)/);
+      const match = line.match(/\*\*(.+?):+?\*\*\s*(.*)/);
       if (match) {
+        flushCurrentField();
         const label = match[1].trim();
-        let value = match[2].trim();
-        
-        // Verificar se é um arquivo
-        if (value.startsWith('[Arquivo]')) {
-          value = value.replace('[Arquivo]', '').trim();
-        }
-        
-        formData.push({ label, value });
+        const valueStart = match[2]; // Pode ser vazio para valor que começa na próxima linha
+        currentLabel = label;
+        currentValueLines = valueStart ? [valueStart] : [];
+      } else if (currentLabel !== null) {
+        // Linha de continuação do valor anterior (preserva linhas em branco)
+        currentValueLines.push(line);
       }
-    });
+    }
+    flushCurrentField();
 
-    console.log('[TicketDetail] Dados parseados:', { formData, attachmentsList });
     return { formData, attachmentsList };
   };
 

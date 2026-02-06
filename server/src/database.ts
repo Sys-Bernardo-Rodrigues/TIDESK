@@ -28,6 +28,7 @@ export interface Ticket {
   category_id: number;
   user_id: number;
   assigned_to: number | null;
+  assigned_at: string | null; // Momento em que o agente pegou o ticket para si (para métricas corretas)
   form_id: number | null;
   form_submission_id: number | null;
   needs_approval: number;
@@ -729,6 +730,13 @@ const initSQLite = async () => {
     // Coluna já existe, ignorar erro
   }
 
+  // Adicionar coluna assigned_at - momento em que o agente pegou o ticket para si
+  try {
+    await dbRun(`ALTER TABLE tickets ADD COLUMN assigned_at DATETIME`);
+  } catch (error) {
+    // Coluna já existe, ignorar erro
+  }
+
   // Tabela de webhooks
   await dbRun(`
     CREATE TABLE IF NOT EXISTS webhooks (
@@ -830,6 +838,15 @@ const initPostgreSQL = async () => {
   try {
     await dbRun(`
       ALTER TABLE tickets ADD COLUMN IF NOT EXISTS scheduled_at TIMESTAMP
+    `);
+  } catch (error) {
+    // Coluna já existe, ignorar erro
+  }
+
+  // Adicionar coluna assigned_at - momento em que o agente pegou o ticket para si
+  try {
+    await dbRun(`
+      ALTER TABLE tickets ADD COLUMN IF NOT EXISTS assigned_at TIMESTAMP
     `);
   } catch (error) {
     // Coluna já existe, ignorar erro

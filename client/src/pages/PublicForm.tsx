@@ -192,14 +192,7 @@ export default function PublicForm() {
 
   if (!form) {
     return (
-      <div style={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: 'var(--bg-primary)',
-        padding: 'var(--spacing-lg)'
-      }}>
+      <div className="public-form-wrapper" style={{ alignItems: 'center', justifyContent: 'center' }}>
         <div style={{ textAlign: 'center' }}>
           <FileEdit size={48} color="var(--text-tertiary)" style={{ marginBottom: 'var(--spacing-md)' }} />
           <p style={{ color: 'var(--text-secondary)', fontSize: '1rem' }}>
@@ -212,15 +205,8 @@ export default function PublicForm() {
 
   if (submitted) {
     return (
-      <div style={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: 'var(--bg-primary)',
-        padding: 'var(--spacing-lg)'
-      }}>
-        <div className="card" style={{
+      <div className="public-form-wrapper public-form-success-wrapper">
+        <div className="card public-form-success-card" style={{
           maxWidth: '600px',
           width: '100%',
           border: '1px solid var(--border-primary)',
@@ -296,11 +282,10 @@ export default function PublicForm() {
             )}
           </p>
           <button
-            className="btn btn-primary"
+            className="btn btn-primary public-form-submit"
             onClick={() => {
               setSubmitted(false);
               setFormData({});
-              // Recarregar página ou resetar formulário
               window.location.reload();
             }}
           >
@@ -312,40 +297,22 @@ export default function PublicForm() {
   }
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      backgroundColor: 'var(--bg-primary)',
-      padding: 'var(--spacing-2xl)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center'
-    }}>
-      <div style={{ maxWidth: '800px', width: '100%' }}>
-        <div className="card" style={{
-          border: '1px solid var(--border-primary)',
-          padding: 'var(--spacing-2xl)'
-        }}>
+    <div className="public-form-wrapper">
+      <div className="public-form-container">
+        <div className="card public-form-card">
           <div style={{ marginBottom: 'var(--spacing-xl)' }}>
-            <h1 style={{
-              fontSize: '2rem',
-              fontWeight: '700',
-              color: 'var(--text-primary)',
-              marginBottom: 'var(--spacing-sm)'
-            }}>
+            <h1 className="public-form-title">
               {form.name}
             </h1>
             {form.description && (
-              <p style={{
-                color: 'var(--text-secondary)',
-                fontSize: '1rem'
-              }}>
+              <p className="public-form-description">
                 {form.description}
               </p>
             )}
           </div>
 
-          <form onSubmit={handleSubmit}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-lg)' }}>
+          <form className="public-form" onSubmit={handleSubmit}>
+            <div className="public-form-fields">
               {form.fields.map(field => (
                 <div key={field.id}>
                   <label style={{
@@ -424,7 +391,8 @@ export default function PublicForm() {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-xs)' }}>
                       {field.options?.map((opt, idx) => (
                         <label 
-                          key={idx} 
+                          key={idx}
+                          className="public-form-option"
                           style={{ 
                             display: 'flex', 
                             alignItems: 'center', 
@@ -455,15 +423,17 @@ export default function PublicForm() {
                   )}
 
                   {field.type === 'checkbox' && (
-                    <label style={{ 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      gap: 'var(--spacing-xs)',
-                      cursor: 'pointer',
-                      padding: 'var(--spacing-xs)',
-                      borderRadius: 'var(--radius-md)',
-                      transition: 'background var(--transition-base)'
-                    }}
+                    <label
+                      className="public-form-option"
+                      style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: 'var(--spacing-xs)',
+                        cursor: 'pointer',
+                        padding: 'var(--spacing-xs)',
+                        borderRadius: 'var(--radius-md)',
+                        transition: 'background var(--transition-base)'
+                      }}
                     onMouseEnter={(e) => {
                       e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
                     }}
@@ -571,17 +541,11 @@ export default function PublicForm() {
               ))}
             </div>
 
-            <div style={{
-              display: 'flex',
-              gap: 'var(--spacing-md)',
-              marginTop: 'var(--spacing-xl)',
-              justifyContent: 'flex-end'
-            }}>
+            <div className="public-form-actions">
               <button
                 type="submit"
-                className="btn btn-primary"
+                className="btn btn-primary public-form-submit"
                 disabled={isSubmitting}
-                style={{ minWidth: '150px' }}
               >
                 {isSubmitting ? 'Enviando...' : 'Enviar Formulário'}
               </button>

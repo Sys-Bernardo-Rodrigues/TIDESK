@@ -58,7 +58,7 @@ server {
 
     # Proxy para o frontend (Vite)
     location / {
-        proxy_pass http://localhost:3333;
+        proxy_pass http://localhost:2053;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -124,7 +124,7 @@ server {
 
     # Proxy para o frontend
     location / {
-        proxy_pass http://localhost:3333;
+        proxy_pass http://localhost:2053;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -151,15 +151,15 @@ Alguns navegadores móveis podem ter cacheado o redirecionamento HTTPS. Limpe o 
 ### 2. Testar Acesso Direto
 Tente acessar diretamente via HTTP:
 ```
-http://tidesk.invicco.com.br:3333
-http://187.45.113.150:3333
+https://tidesk.invicco.com.br
+https://187.45.113.150
 ```
 
 ### 3. Verificar se o Servidor Está Respondendo
 Teste se o servidor está respondendo corretamente:
 ```bash
-curl -I http://tidesk.invicco.com.br:3333
-curl -I http://187.45.113.150:3333
+curl -I https://tidesk.invicco.com.br
+curl -I https://187.45.113.150
 ```
 
 ## ⚠️ Troubleshooting
@@ -172,7 +172,7 @@ curl -I http://187.45.113.150:3333
 
 2. **Verifique headers HTTP:**
    ```bash
-   curl -I http://tidesk.invicco.com.br:3333
+   curl -I https://tidesk.invicco.com.br
    ```
    Procure por headers como `Strict-Transport-Security` ou `Location: https://`
 

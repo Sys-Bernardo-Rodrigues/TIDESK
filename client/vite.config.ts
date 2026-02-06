@@ -24,7 +24,9 @@ if (fs.existsSync(defaultKeyPath) && fs.existsSync(defaultCertPath)) {
   certPath = cloudflareCertPath
 }
 
-const useHttps = keyPath !== null && certPath !== null
+// Use HTTPS apenas se houver certs E não estiver desativado (VITE_HTTPS=false permite HTTP na origem, ex.: atrás da Cloudflare)
+const forceHttp = process.env.VITE_HTTPS === 'false'
+const useHttps = !forceHttp && keyPath !== null && certPath !== null
 const httpsOpts = useHttps
   ? { key: fs.readFileSync(keyPath!), cert: fs.readFileSync(certPath!) }
   : false
@@ -41,7 +43,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     host: '0.0.0.0',
-    port: 3333,
+    port: 2053,
     strictPort: false,
     https: httpsOpts,
     allowedHosts: [
@@ -68,7 +70,7 @@ export default defineConfig({
   },
   preview: {
     host: '0.0.0.0',
-    port: 3333,
+    port: 2053,
     https: httpsOpts,
     allowedHosts: [
       'tidesk.invicco.com.br',

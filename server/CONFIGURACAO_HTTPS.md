@@ -136,11 +136,11 @@ HTTP_REDIRECT_PORT=80
 
 Isso criará um servidor HTTP na porta 80 que redireciona todas as requisições para HTTPS.
 
-### 4. Frontend (Vite) – porta 3333
+### 4. Frontend (Vite) – porta 2053
 
-O **frontend** (Vite, porta 3333) usa os **mesmos certificados** em `server/certs/` automaticamente quando eles existem. Não é necessário configurar nada extra.
+O **frontend** (Vite, porta 2053) usa os **mesmos certificados** em `server/certs/` automaticamente quando eles existem. Não é necessário configurar nada extra.
 
-- **Acesso:** `https://tidesk.invicco.com.br:3333` ou `https://localhost:3333`
+- **Acesso:** `https://tidesk.invicco.com.br` ou `https://localhost`
 - O proxy `/api` e `/uploads` encaminha para o backend (porta 5000).
 - **Com certs:** o proxy usa **HTTPS** para o backend por padrão (backend deve estar com `USE_HTTPS=true`).
 - Se o backend rodar só em HTTP, defina `VITE_API_HTTPS=false` ao iniciar (ex.: `VITE_API_HTTPS=false npm run start`).
@@ -245,16 +245,13 @@ chmod 644 certs/server.crt
 **Solução para Produção:**
 - Use certificados de uma CA confiável (Let's Encrypt)
 
-### Porta 443 já em uso
+### Porta 2053 já em uso
 
-**Causa:** Outro serviço está usando a porta 443.
+**Causa:** Outro serviço está usando a porta 2053.
 
 **Solução:**
-- Use outra porta (ex: 8443) e configure no `.env`:
-  ```env
-  PORT=8443
-  ```
-- Ou configure um proxy reverso (Nginx/Apache) na porta 443
+- Use outra porta (ex: 8443) e configure no `client/vite.config.ts`
+- Ou configure um proxy reverso (Nginx/Apache) na porta 443 que encaminhe para a 2053
 
 ### Certificados Expirados
 

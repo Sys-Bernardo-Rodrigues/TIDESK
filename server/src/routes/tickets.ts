@@ -4,6 +4,13 @@ import { authenticate, AuthRequest, requireAgent } from '../middleware/auth';
 import { requirePermission, RESOURCES, ACTIONS } from '../middleware/permissions';
 import { dbGet, dbAll, dbRun, getBrasiliaTimestamp } from '../database';
 
+const DB_TYPE = process.env.DB_TYPE || 'sqlite';
+
+// Subquery para total de segundos em pausa (inclui pausa atual se ticket estiver pausado)
+const TOTAL_PAUSE_SECONDS = DB_TYPE === 'sqlite'
+  ? `(SELECT COALESCE(SUM((julianday(COALESCE(p.resumed_at, datetime('now'))) - julianday(p.paused_at)) * 86400), 0) FROM ticket_pauses p WHERE p.ticket_id = t.id)`
+  : `(SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(p.resumed_at, NOW()) - p.paused_at))), 0)::bigint FROM ticket_pauses p WHERE p.ticket_id = t.id)`;
+
 const router = express.Router();
 
 // Função para obter data atual no timezone de Brasília
@@ -200,7 +207,8 @@ router.get('/in-treatment', requirePermission(RESOURCES.TRACK, ACTIONS.VIEW), as
              f.name as form_name,
              f.public_url as form_url,
              f.linked_user_id,
-             f.linked_group_id
+             f.linked_group_id,
+             ${TOTAL_PAUSE_SECONDS} AS total_pause_seconds
       FROM tickets t
       LEFT JOIN users u ON t.user_id = u.id
       LEFT JOIN users a ON t.assigned_to = a.id
@@ -243,7 +251,8 @@ router.get('/', requirePermission(RESOURCES.TICKETS, ACTIONS.VIEW), async (req: 
              f.public_url as form_url,
              f.id as form_id,
              t.scheduled_at,
-             EXISTS (SELECT 1 FROM ticket_pauses p WHERE p.ticket_id = t.id AND p.resumed_at IS NULL) AS is_paused
+             EXISTS (SELECT 1 FROM ticket_pauses p WHERE p.ticket_id = t.id AND p.resumed_at IS NULL) AS is_paused,
+             ${TOTAL_PAUSE_SECONDS} AS total_pause_seconds
       FROM tickets t
       LEFT JOIN users u ON t.user_id = u.id
       LEFT JOIN users a ON t.assigned_to = a.id
@@ -312,7 +321,8 @@ router.get('/:id', requirePermission(RESOURCES.TICKETS, ACTIONS.VIEW), async (re
              a.name as assigned_name,
              c.name as category_name,
              f.name as form_name,
-             f.id as form_id
+             f.id as form_id,
+             ${TOTAL_PAUSE_SECONDS} AS total_pause_seconds
       FROM tickets t
       LEFT JOIN users u ON t.user_id = u.id
       LEFT JOIN users a ON t.assigned_to = a.id
@@ -519,12 +529,20 @@ router.put('/:id', [
       updates.push('category_id = ?');
       values.push(req.body.category_id);
     }
-    const assignId = req.body.assigned_to != null ? Number(req.body.assigned_to) : null;
+    const assignId = req.body.assigned_to != null && req.body.assigned_to !== '' ? Number(req.body.assigned_to) : null;
     const canAssign = (req.userRole === 'admin' || req.userRole === 'agent') ||
       (assignId != null && assignId === req.userId);
+    const canUnassign = (req.userRole === 'admin' || req.userRole === 'agent') && req.body.assigned_to !== undefined;
     if (assignId != null && canAssign) {
       updates.push('assigned_to = ?');
       values.push(assignId);
+      // Registrar quando o agente pegou o ticket (para métricas de tempo corretas nos relatórios)
+      updates.push('assigned_at = ?');
+      values.push(now);
+    } else if (assignId === null && canUnassign) {
+      // Ao desatribuir, limpar assigned_to e assigned_at
+      updates.push('assigned_to = NULL');
+      updates.push('assigned_at = NULL');
     }
 
     const now = getBrasiliaTimestamp();

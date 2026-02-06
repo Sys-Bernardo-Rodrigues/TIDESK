@@ -4,15 +4,15 @@ Este documento descreve como configurar o acesso externo ao TIDESK através do d
 
 ## 🌐 Acessos Configurados
 
-- **Domínio Principal**: http://tidesk.invicco.com.br:3333
-- **Domínio Alternativo**: http://tidesk.invixap.com.br:3333
-- **IP Externo**: http://187.45.113.150:3333
-- **IP Interno**: http://192.168.60.104:3333
+- **Domínio Principal**: https://tidesk.invicco.com.br
+- **Domínio Alternativo**: https://tidesk.invixap.com.br
+- **IP Externo**: https://187.45.113.150
+- **IP Interno**: https://192.168.60.104
 
 ## ✅ Configurações Aplicadas
 
 ### 1. Servidor Vite (Frontend)
-- ✅ Configurado para escutar em `0.0.0.0:3333` (todas as interfaces)
+- ✅ Configurado para escutar em `0.0.0.0:2053` (todas as interfaces)
 - ✅ Proxy configurado para `/api` e `/uploads`
 
 ### 2. Servidor Backend
@@ -29,7 +29,7 @@ sudo bash /home/tidesk/TIDESK/configurar-acesso-externo.sh
 ```
 
 Este script irá:
-- Abrir a porta 3333 (Vite/Frontend) no firewall
+- Abrir a porta 2053 (Vite/Frontend) no firewall
 - Abrir a porta 5000 (Backend/API) no firewall
 - Recarregar o firewall para aplicar as mudanças
 
@@ -37,7 +37,7 @@ Este script irá:
 
 **IMPORTANTE**: Você precisa configurar o roteador/firewall externo para redirecionar as portas:
 
-- **Porta 3333** → Redirecionar para `192.168.60.104:3333`
+- **Porta 2053** → Redirecionar para `192.168.60.104:2053`
 - **Porta 5000** → Redirecionar para `192.168.60.104:5000`
 
 ### 3. Configurar DNS
@@ -53,22 +53,22 @@ Certifique-se de que o DNS está configurado corretamente:
 ps aux | grep -E '(vite|npm|node)' | grep -v grep
 
 # Verificar portas abertas
-ss -tlnp | grep -E ':(3333|5000)'
+ss -tlnp | grep -E ':(2053|5000)'
 ```
 
 ### 5. Testar Acesso
 
 **Teste local:**
 ```bash
-curl http://192.168.60.104:3333
+curl https://192.168.60.104
 curl http://192.168.60.104:5000/api/health
 ```
 
 **Teste externo (de outra máquina):**
 ```bash
-curl http://187.45.113.150:3333
-curl http://tidesk.invicco.com.br:3333
-curl http://tidesk.invixap.com.br:3333
+curl https://187.45.113.150
+curl https://tidesk.invicco.com.br
+curl https://tidesk.invixap.com.br
 curl http://187.45.113.150:5000/api/health
 ```
 
@@ -92,11 +92,9 @@ No arquivo `server/src/server.ts`, altere:
 ```typescript
 app.use(cors({
   origin: [
-    'http://tidesk.invicco.com.br:3333',
-    'http://tidesk.invixap.com.br:3333',
     'https://tidesk.invicco.com.br',
     'https://tidesk.invixap.com.br',
-    'http://187.45.113.150:3333'
+    'https://187.45.113.150'
   ],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'x-webhook-secret', 'x-secret-key'],
@@ -114,18 +112,18 @@ app.use(cors({
    ```
 
 2. **Verifique o firewall do roteador:**
-   - Certifique-se de que as portas 3333 e 5000 estão redirecionadas
+   - Certifique-se de que as portas 2053 e 5000 estão redirecionadas
    - Verifique se o IP externo está correto (187.45.113.150)
 
 3. **Verifique se o servidor está escutando:**
    ```bash
-   ss -tlnp | grep -E ':(3333|5000)'
+   ss -tlnp | grep -E ':(2053|5000)'
    ```
-   Deve mostrar `0.0.0.0:3333` e `0.0.0.0:5000`
+   Deve mostrar `0.0.0.0:2053` e `0.0.0.0:5000`
 
 4. **Teste conectividade:**
    ```bash
-   nc -zv 192.168.60.104 3333
+   nc -zv 192.168.60.104 2053
    ```
 
 ### Problema: CORS bloqueando requisições
@@ -143,7 +141,7 @@ app.use(cors({
 ## 📝 Notas Importantes
 
 - O servidor deve estar rodando com `npm run dev` na raiz do projeto
-- As portas 3333 e 5000 devem estar abertas no firewall local e no roteador
+- As portas 2053 e 5000 devem estar abertas no firewall local e no roteador
 - O DNS deve estar apontando corretamente para o IP externo
 - Para produção, considere usar HTTPS com nginx como proxy reverso
 
@@ -153,6 +151,6 @@ Para melhorar a segurança e performance em produção:
 
 1. **Instalar e configurar Nginx** como proxy reverso
 2. **Configurar SSL/TLS** com Let's Encrypt
-3. **Configurar domínio sem porta** (ex: `http://tidesk.invicco.com.br` ao invés de `:3333`)
+3. **Configurar domínio** (ex: `https://tidesk.invicco.com.br`)
 4. **Implementar rate limiting**
 5. **Configurar logs e monitoramento**

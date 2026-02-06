@@ -14,8 +14,10 @@ interface Ticket {
   category_name: string;
   user_name: string;
   assigned_name: string | null;
+  assigned_at: string | null; // Momento em que o agente pegou o ticket (para tempo de resolução correto)
   created_at: string;
   updated_at: string;
+  total_pause_seconds?: number; // Tempo em pausa (não contabilizado)
   form_name?: string;
 }
 
@@ -115,10 +117,17 @@ export default function Historico() {
     return formatDateBR(dateString, { includeTime: true });
   };
 
-  const calculateTimeToResolve = (createdAt: string, updatedAt: string) => {
-    const created = new Date(createdAt);
+  const calculateTimeToResolve = (createdAt: string, updatedAt: string, assignedAt?: string | null, totalPauseSeconds?: number) => {
+    // Usar assigned_at quando disponível (tempo que o agente pegou até fechar), senão created_at
+    const start = assignedAt || createdAt;
+    const startDate = new Date(start);
     const updated = new Date(updatedAt);
-    const diff = updated.getTime() - created.getTime();
+    let diffMs = updated.getTime() - startDate.getTime();
+    // Subtrair tempo em pausa (não contabilizado)
+    if (totalPauseSeconds != null && totalPauseSeconds > 0) {
+      diffMs -= totalPauseSeconds * 1000;
+    }
+    const diff = Math.max(0, diffMs);
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
     const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
     const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
@@ -430,7 +439,7 @@ export default function Historico() {
                       )}
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                         <Clock size={12} />
-                        <span>{calculateTimeToResolve(ticket.created_at, ticket.updated_at)}</span>
+                        <span>{calculateTimeToResolve(ticket.created_at, ticket.updated_at, ticket.assigned_at, ticket.total_pause_seconds)}</span>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                         <Calendar size={12} />
