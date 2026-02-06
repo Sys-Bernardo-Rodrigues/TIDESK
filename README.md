@@ -69,7 +69,7 @@ ADMIN_PASSWORD=admin123
 ADMIN_NAME=Administrador
 ```
 
-📖 **Veja mais detalhes em:** `server/CONFIGURACAO_BANCO.md`
+📖 **Veja mais detalhes em:** `docs/CONFIGURACAO_BANCO.md`
 
 ## 🚀 Executando o Projeto
 
@@ -120,13 +120,6 @@ Ao iniciar o sistema pela primeira vez, um usuário administrador é criado auto
 
 ```
 TIDESK/
-├── server/                 # Backend (Node.js + Express)
-│   ├── src/
-│   │   ├── routes/        # Rotas da API
-│   │   ├── middleware/    # Middlewares (auth, etc)
-│   │   ├── database.ts    # Configuração do banco
-│   │   └── server.ts      # Servidor principal
-│   └── package.json
 ├── client/                 # Frontend (React + TypeScript)
 │   ├── src/
 │   │   ├── components/    # Componentes React
@@ -134,7 +127,23 @@ TIDESK/
 │   │   ├── contexts/      # Context API (Auth)
 │   │   └── App.tsx
 │   └── package.json
-└── package.json           # Scripts principais
+├── server/                 # Backend (Node.js + Express)
+│   ├── src/
+│   │   ├── routes/        # Rotas da API
+│   │   ├── middleware/    # Middlewares (auth, etc)
+│   │   ├── database.ts    # Configuração do banco
+│   │   └── server.ts      # Servidor principal
+│   └── package.json
+├── docs/                   # Documentação
+│   ├── CONFIGURACAO_BANCO.md
+│   ├── CONFIGURACAO_HTTPS.md
+│   ├── SERVICO_SYSTEMD.md
+│   └── ...
+├── scripts/                # Scripts de deploy e manutenção
+│   ├── install-service.sh
+│   ├── start-tidesk.sh
+│   └── ...
+└── package.json            # Scripts principais
 ```
 
 ## 🔐 Níveis de Acesso
@@ -200,7 +209,7 @@ O sistema suporta **SQLite** (padrão) e **PostgreSQL**. O banco é configurado 
 - **tickets**: Tickets de suporte
 - **categories**: Categorias de tickets
 
-📖 **Documentação completa:** `server/CONFIGURACAO_BANCO.md`
+📖 **Documentação completa:** `docs/CONFIGURACAO_BANCO.md`
 
 ## 🎨 Tecnologias Utilizadas
 

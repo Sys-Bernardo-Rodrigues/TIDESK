@@ -25,7 +25,7 @@ Este documento descreve como configurar o acesso externo ao TIDESK através do d
 ### 1. Executar Script de Configuração do Firewall
 
 ```bash
-sudo bash /home/tidesk/TIDESK/configurar-acesso-externo.sh
+sudo bash /home/tidesk/TIDESK/scripts/configurar-acesso-externo.sh
 ```
 
 Este script irá:
@@ -77,8 +77,8 @@ curl http://187.45.113.150:5000/api/health
 ### Recomendações para Produção:
 
 1. **Use HTTPS**: Configure certificados SSL/TLS
-   - **Cloudflare Origin Certificates** (recomendado se usar Cloudflare): Veja `server/CONFIGURACAO_CLOUDFLARE.md`
-   - **Let's Encrypt**: Veja `server/CONFIGURACAO_HTTPS.md`
+   - **Cloudflare Origin Certificates** (recomendado se usar Cloudflare): Veja `docs/CONFIGURACAO_CLOUDFLARE.md`
+   - **Let's Encrypt**: Veja `docs/CONFIGURACAO_HTTPS.md`
    - Configure um proxy reverso (nginx) com SSL/TLS
 2. **Restrinja CORS**: Em produção, considere restringir CORS para domínios específicos
 3. **Firewall**: Mantenha apenas as portas necessárias abertas

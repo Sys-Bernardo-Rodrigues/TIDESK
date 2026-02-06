@@ -8,18 +8,18 @@ set -e
 echo "🚀 Instalando serviço systemd do TIDESK..."
 
 # Garante permissão de execução no script
-chmod +x /home/tidesk/TIDESK/start-tidesk.sh
+chmod +x /home/tidesk/TIDESK/scripts/start-tidesk.sh
 
 # Configura contexto SELinux (se disponível)
 if command -v chcon &> /dev/null; then
     echo "🔧 Configurando contexto SELinux..."
-    chcon -t bin_t /home/tidesk/TIDESK/start-tidesk.sh 2>/dev/null || \
-    chcon -u system_u -t bin_t /home/tidesk/TIDESK/start-tidesk.sh 2>/dev/null || \
+    chcon -t bin_t /home/tidesk/TIDESK/scripts/start-tidesk.sh 2>/dev/null || \
+    chcon -u system_u -t bin_t /home/tidesk/TIDESK/scripts/start-tidesk.sh 2>/dev/null || \
     echo "⚠️  Não foi possível configurar contexto SELinux automaticamente"
 fi
 
 # Copia o arquivo de serviço
-cp /home/tidesk/TIDESK/tidesk.service /etc/systemd/system/tidesk.service
+cp /home/tidesk/TIDESK/scripts/tidesk.service /etc/systemd/system/tidesk.service
 
 # Recarrega o systemd
 systemctl daemon-reload

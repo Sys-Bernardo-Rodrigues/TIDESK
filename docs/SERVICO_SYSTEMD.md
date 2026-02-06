@@ -12,7 +12,7 @@ Este documento explica como configurar o TIDESK como um serviço systemd para in
 
 1. **Execute o script de instalação com sudo:**
    ```bash
-   sudo ./install-service.sh
+   sudo ./scripts/install-service.sh
    ```
 
 2. **Inicie o serviço:**
@@ -71,7 +71,7 @@ O arquivo de serviço está localizado em:
 - `/etc/systemd/system/tidesk.service`
 
 O script de inicialização está em:
-- `/home/tidesk/TIDESK/start-tidesk.sh`
+- `/home/tidesk/TIDESK/scripts/start-tidesk.sh`
 
 ### Modificar Configurações
 
