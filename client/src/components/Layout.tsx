@@ -152,18 +152,18 @@ export default function Layout() {
         {/* Header */}
         <div className={`sidebar-header ${sidebarCollapsed ? 'sidebar-header--collapsed' : ''}`}>
           {sidebarCollapsed ? (
-            <button
+           <button
               className="sidebar-toggle sidebar-toggle--expand"
               onClick={() => setSidebarCollapsed(false)}
               title="Expandir menu"
             >
               <PanelLeft size={20} />
-            </button>
+           </button>
           ) : (
             <>
               <div className="sidebar-logo">
                 <LayoutDashboard size={18} color="#FFF" strokeWidth={2.5} />
-              </div>
+         </div>
               <div className="sidebar-logo-text">
                 TIDESK<span className="sidebar-logo-badge">BETA</span>
               </div>
@@ -175,8 +175,8 @@ export default function Layout() {
                 <PanelLeftClose size={18} />
               </button>
             </>
-          )}
-        </div>
+                  )}
+                </div>
 
         {/* Navigation */}
         <nav className="sidebar-nav">
@@ -198,7 +198,7 @@ export default function Layout() {
                         {item.children
                           .filter((c) => c.permission && hasPageAccess(c.permission))
                           .map((child) => (
-                            <Link
+                <Link
                               key={child.path}
                               to={child.path}
                               className={`sidebar-item tooltip ${location.pathname === child.path ? 'sidebar-item--active' : ''}`}
@@ -207,15 +207,15 @@ export default function Layout() {
                             >
                               <child.icon size={18} strokeWidth={location.pathname === child.path ? 2.5 : 2} className="sidebar-item-icon" />
                               <span className="sidebar-item-text">{child.label}</span>
-                            </Link>
+                </Link>
                           ))}
-                      </div>
+            </div>
                     );
                   }
 
                   return (
                     <div key={item.path}>
-                      <button
+              <button
                         type="button"
                         className={`sidebar-group-btn ${isActive ? 'sidebar-group-btn--active' : ''}`}
                         onClick={() => toggleGroup(groupKey)}
@@ -223,26 +223,26 @@ export default function Layout() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                           <item.icon size={18} strokeWidth={isActive ? 2.5 : 2} className="sidebar-item-icon" />
                           <span className="sidebar-item-text">{item.label}</span>
-                        </div>
+                </div>
                         {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                      </button>
+              </button>
                       {isOpen && (
                         <div className="sidebar-submenu">
                           {item.children
                             .filter((c) => c.permission && hasPageAccess(c.permission))
                             .map((child) => (
-                              <Link
+                  <Link
                                 key={child.path}
                                 to={child.path}
                                 className={`sidebar-subitem ${location.pathname === child.path ? 'sidebar-subitem--active' : ''}`}
                               >
                                 <child.icon size={14} strokeWidth={location.pathname === child.path ? 2.5 : 2} className="sidebar-subitem-icon" />
                                 {child.label}
-                              </Link>
+                  </Link>
                             ))}
-                        </div>
-                      )}
-                    </div>
+                </div>
+              )}
+            </div>
                   );
                 }
 
@@ -263,7 +263,7 @@ export default function Layout() {
                   </Link>
                 );
               })}
-            </div>
+                </div>
           ))}
         </nav>
 
@@ -312,11 +312,11 @@ export default function Layout() {
                   </select>
                 </div>
               )}
-            </div>
-            <button
+              </div>
+              <button
               type="button"
               className="sidebar-action-btn sidebar-action-btn--logout tooltip"
-              onClick={handleLogout}
+                onClick={handleLogout}
               title="Sair"
               data-tooltip="Sair"
               style={{ color: 'var(--red)' }}
@@ -330,10 +330,10 @@ export default function Layout() {
 
       <main
         style={{
-          flex: 1,
-          padding: 'var(--spacing-2xl)',
-          overflow: 'auto',
-          backgroundColor: 'var(--bg-primary)',
+        flex: 1, 
+        padding: 'var(--spacing-2xl)', 
+        overflow: 'auto',
+        backgroundColor: 'var(--bg-primary)',
           minWidth: 0,
         }}
       >

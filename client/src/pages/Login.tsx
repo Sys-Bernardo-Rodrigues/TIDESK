@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { Sun, Moon, Monitor } from 'lucide-react';
+import { Loader2, AlertCircle } from 'lucide-react';
 import axios from 'axios';
 
 export default function Login() {
@@ -21,13 +21,11 @@ export default function Login() {
 
     try {
       await login(email, password);
-      
-      // Buscar páginas permitidas do usuário
+
       try {
         const response = await axios.get('/api/access-profiles/me/permissions');
         const allowedPages = response.data.pages || [];
-        
-        // Ordem de prioridade das páginas
+
         const pagePriority = [
           '/',
           '/tickets',
@@ -40,31 +38,28 @@ export default function Login() {
           '/historico',
           '/relatorios',
           '/agenda/calendario-de-servico',
-          '/agenda/calendario-de-plantoes'
+          '/agenda/calendario-de-plantoes',
         ];
-        
-        // Se admin, tem acesso a todas as páginas
+
         const user = JSON.parse(localStorage.getItem('user') || '{}');
         if (user.role === 'admin') {
           navigate('/');
           return;
         }
-        
-        // Encontrar a primeira página permitida na ordem de prioridade
-        const firstAllowedPage = pagePriority.find(page => allowedPages.includes(page));
-        
+
+        const firstAllowedPage = pagePriority.find((page) =>
+          allowedPages.includes(page)
+        );
+
         if (firstAllowedPage) {
           navigate(firstAllowedPage);
         } else if (allowedPages.length > 0) {
-          // Se não encontrou na ordem de prioridade, usar a primeira disponível
           navigate(allowedPages[0]);
         } else {
-          // Se não tem nenhuma página permitida, ir para dashboard (será bloqueado pelo ProtectedRoute)
           navigate('/');
         }
       } catch (permError) {
         console.error('Erro ao buscar páginas permitidas:', permError);
-        // Em caso de erro, tentar ir para dashboard
         navigate('/');
       }
     } catch (err: any) {
@@ -75,150 +70,95 @@ export default function Login() {
   };
 
   return (
-    <div style={{
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      minHeight: '100vh',
-      background: 'linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 100%)',
-      padding: 'var(--spacing-lg)',
-      position: 'relative',
-      overflow: 'hidden'
-    }}>
-      <div style={{
-        position: 'absolute',
-        top: 'var(--spacing-lg)',
-        right: 'var(--spacing-lg)',
-        display: 'flex',
-        gap: 'var(--spacing-xs)',
-        zIndex: 10,
-        padding: 'var(--spacing-xs)',
-        background: 'var(--bg-tertiary)',
-        borderRadius: 'var(--radius-md)',
-        border: '1px solid var(--border-primary)'
-      }}>
-        <button type="button" onClick={() => setTheme('light')} title="Tema claro" style={{ padding: 'var(--spacing-sm)', border: 'none', borderRadius: 'var(--radius-sm)', background: theme === 'light' ? 'var(--purple-light)' : 'transparent', color: theme === 'light' ? 'var(--purple)' : 'var(--text-tertiary)', cursor: 'pointer' }}><Sun size={18} /></button>
-        <button type="button" onClick={() => setTheme('dark')} title="Tema escuro" style={{ padding: 'var(--spacing-sm)', border: 'none', borderRadius: 'var(--radius-sm)', background: theme === 'dark' ? 'var(--purple-light)' : 'transparent', color: theme === 'dark' ? 'var(--purple)' : 'var(--text-tertiary)', cursor: 'pointer' }}><Moon size={18} /></button>
-        <button type="button" onClick={() => setTheme('system')} title="Padrão do sistema" style={{ padding: 'var(--spacing-sm)', border: 'none', borderRadius: 'var(--radius-sm)', background: theme === 'system' ? 'var(--purple-light)' : 'transparent', color: theme === 'system' ? 'var(--purple)' : 'var(--text-tertiary)', cursor: 'pointer' }}><Monitor size={18} /></button>
+    <div className="login-page">
+      {/* Background effects */}
+      <div className="login-page__bg">
+        <div className="login-page__gradient" />
+        <div className="login-page__orb login-page__orb--1" aria-hidden />
+        <div className="login-page__orb login-page__orb--2" aria-hidden />
+        <div className="login-page__orb login-page__orb--3" aria-hidden />
+        <div className="login-page__grid" aria-hidden />
+        <div className="login-page__accent" aria-hidden />
       </div>
-      <div style={{
-        position: 'absolute',
-        top: '-50%',
-        right: '-50%',
-        width: '800px',
-        height: '800px',
-        background: 'radial-gradient(circle, rgba(145, 71, 255, 0.1) 0%, transparent 70%)',
-        borderRadius: '50%',
-        pointerEvents: 'none'
-      }} />
-      <div style={{
-        position: 'absolute',
-        bottom: '-50%',
-        left: '-50%',
-        width: '600px',
-        height: '600px',
-        background: 'radial-gradient(circle, rgba(59, 130, 246, 0.1) 0%, transparent 70%)',
-        borderRadius: '50%',
-        pointerEvents: 'none'
-      }} />
-      
-      <div className="card glass fade-in" style={{ 
-        width: '100%', 
-        maxWidth: '440px',
-        border: '1px solid var(--border-primary)',
-        position: 'relative',
-        zIndex: 1,
-        boxShadow: 'var(--shadow-xl)'
-      }}>
-        <div style={{ textAlign: 'center', marginBottom: 'var(--spacing-2xl)' }}>
-          <h1 style={{ 
-            fontSize: '2.5rem', 
-            fontWeight: '800', 
-            marginBottom: 'var(--spacing-sm)', 
-            background: 'linear-gradient(135deg, var(--purple) 0%, var(--blue) 100%)',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-            backgroundClip: 'text',
-            letterSpacing: '-0.03em'
-          }}>
-            TIDESK
-          </h1>
-          <p style={{ 
-            color: 'var(--text-secondary)', 
-            fontSize: '1rem',
-            fontWeight: '400'
-          }}>
-            Sistema de Helpdesk Profissional
+
+      {/* Theme selector */}
+      <div className="login-theme">
+        <select
+          className="login-theme__select"
+          value={theme}
+          onChange={(e) =>
+            setTheme(e.target.value as 'light' | 'dark' | 'system')
+          }
+          title="Tema"
+        >
+          <option value="light">Claro</option>
+          <option value="dark">Escuro</option>
+          <option value="system">Sistema</option>
+        </select>
+      </div>
+
+      {/* Login card */}
+      <div className="login-card">
+        <div className="login-card__logo">
+          <h1 className="login-card__title">TIDESK</h1>
+          <p className="login-card__subtitle">
+            Sistema de Helpdesk Profissional <span className="login-card__beta">BETA</span>
           </p>
         </div>
 
         {error && (
-          <div style={{
-            padding: 'var(--spacing-md)',
-            backgroundColor: 'var(--red-light)',
-            color: 'var(--red)',
-            borderRadius: 'var(--radius-md)',
-            marginBottom: 'var(--spacing-lg)',
-            fontSize: '0.875rem',
-            border: '1px solid rgba(239, 68, 68, 0.3)',
-            fontWeight: '500',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 'var(--spacing-sm)'
-          }}>
-            <span style={{ fontSize: '1.125rem' }}>⚠️</span>
+          <div className="login-card__error">
+            <AlertCircle size={20} strokeWidth={2} />
             {error}
           </div>
         )}
 
-        <form onSubmit={handleSubmit}>
-          <div style={{ marginBottom: '1.25rem' }}>
-            <label style={{ 
-              display: 'block', 
-              marginBottom: '0.5rem', 
-              fontSize: '0.875rem', 
-              fontWeight: '500',
-              color: 'var(--text-secondary)'
-            }}>
+        <form onSubmit={handleSubmit} className="login-card__form">
+          <div className="login-card__field">
+            <label htmlFor="email" className="login-card__label">
               Email
             </label>
             <input
+              id="email"
               type="email"
-              className="input"
+              className="login-card__input"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
               placeholder="seu@email.com"
+              autoComplete="email"
             />
           </div>
 
-          <div style={{ marginBottom: '1.5rem' }}>
-            <label style={{ 
-              display: 'block', 
-              marginBottom: '0.5rem', 
-              fontSize: '0.875rem', 
-              fontWeight: '500',
-              color: 'var(--text-secondary)'
-            }}>
+          <div className="login-card__field">
+            <label htmlFor="password" className="login-card__label">
               Senha
             </label>
             <input
+              id="password"
               type="password"
-              className="input"
+              className="login-card__input"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
               placeholder="••••••••"
+              autoComplete="current-password"
             />
           </div>
 
           <button
             type="submit"
-            className="btn btn-primary"
-            style={{ width: '100%' }}
+            className="login-card__submit"
             disabled={loading}
           >
-            {loading ? 'Entrando...' : 'Entrar'}
+            {loading ? (
+              <>
+                <Loader2 size={20} className="animate-spin" strokeWidth={2.5} />
+                Entrando...
+              </>
+            ) : (
+              'Entrar'
+            )}
           </button>
         </form>
       </div>
