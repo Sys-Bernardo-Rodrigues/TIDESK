@@ -104,8 +104,16 @@ interface MessageAttachment {
   mime_type: string;
 }
 
-export default function TicketDetail() {
-  const { id } = useParams<{ id: string }>();
+interface TicketDetailProps {
+  /** Quando informado, usa este ID em vez da rota (modo modal) */
+  ticketId?: string;
+  /** Callback para fechar o modal; quando definido, o botão Voltar fecha em vez de navegar */
+  onClose?: () => void;
+}
+
+export default function TicketDetail({ ticketId: ticketIdProp, onClose }: TicketDetailProps = {}) {
+  const { id: idFromRoute } = useParams<{ id: string }>();
+  const id = ticketIdProp ?? idFromRoute ?? undefined;
   const navigate = useNavigate();
   const { user } = useAuth();
   const { hasPermission } = usePermissions();
@@ -143,6 +151,8 @@ export default function TicketDetail() {
     if (id) {
       fetchTicket();
       if (canEditTicket) fetchAgents();
+    } else {
+      setLoading(false);
     }
   }, [id, canEditTicket]);
 
@@ -715,13 +725,17 @@ export default function TicketDetail() {
     );
   }
 
+  if (!id) {
+    return null;
+  }
+
   if (!ticket) {
     return (
       <div style={{ padding: 'var(--spacing-xl)', textAlign: 'center' }}>
         <p style={{ color: 'var(--text-secondary)', marginBottom: 'var(--spacing-lg)' }}>
           Ticket não encontrado
         </p>
-        <button className="btn btn-secondary" onClick={() => navigate('/tickets')}>
+        <button className="btn btn-secondary" onClick={() => (onClose ? onClose() : navigate('/tickets'))}>
           <ArrowLeft size={18} />
           Voltar
         </button>
@@ -729,75 +743,97 @@ export default function TicketDetail() {
     );
   }
 
+  const STATUS_LABELS: Record<string, string> = {
+    open: 'Aberto',
+    in_progress: 'Em Progresso',
+    resolved: 'Resolvido',
+    closed: 'Fechado',
+    scheduled: 'Agendado',
+    pending_approval: 'Pendente Aprovação',
+    rejected: 'Rejeitado'
+  };
+  const PRIORITY_LABELS: Record<string, string> = {
+    low: 'Baixa',
+    medium: 'Média',
+    high: 'Alta',
+    urgent: 'Urgente'
+  };
+
   return (
-    <div style={{
-      display: 'flex',
-      flexDirection: 'column',
-      height: 'calc(100vh - 80px)',
-      backgroundColor: 'var(--bg-primary)'
-    }}>
+    <div className="ticket-detail">
       {/* Header */}
-      <div style={{
-        padding: 'var(--spacing-lg) var(--spacing-xl)',
-        borderBottom: '1px solid var(--border-primary)',
-        backgroundColor: 'var(--bg-secondary)',
-        flexShrink: 0
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 'var(--spacing-md)' }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-md)', marginBottom: 'var(--spacing-xs)' }}>
+      <header className="ticket-detail__header">
+        <div className="ticket-detail__header-top">
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="ticket-detail__title-row">
               <button
                 className="btn btn-secondary btn-sm"
-                onClick={() => navigate(getBackPath())}
-                style={{ padding: 'var(--spacing-xs) var(--spacing-sm)' }}
+                onClick={() => (onClose ? onClose() : navigate(getBackPath()))}
+                style={{ padding: 'var(--spacing-xs) var(--spacing-sm)', flexShrink: 0 }}
               >
                 <ArrowLeft size={18} />
               </button>
-              <h1 style={{
-                fontSize: '1.5rem',
-                fontWeight: '700',
-                color: 'var(--text-primary)',
-                margin: 0
-              }}>
-                {formatTicketTitle(ticket.title)}
-              </h1>
+              <h1 className="ticket-detail__title">{formatTicketTitle(ticket.title)}</h1>
             </div>
-            <div style={{
-              display: 'flex',
-              gap: 'var(--spacing-md)',
-              fontSize: '0.8125rem',
-              color: 'var(--text-secondary)',
-              marginLeft: '2.5rem',
-              flexWrap: 'wrap',
-              alignItems: 'center'
-            }}>
-              <span><strong>ID:</strong> {formatTicketId(ticket)}</span>
-              {ticket.assigned_name && <span><strong>Atribuído a:</strong> {ticket.assigned_name}</span>}
-              {ticket.form_name && (
-                <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                  <FileText size={12} />
-                  <strong>Formulário:</strong> {ticket.form_name}
+            <div className="ticket-detail__info">
+              <div className="ticket-detail__info-item">
+                <span className="ticket-detail__info-label">ID</span>
+                <span className="ticket-detail__info-value">{formatTicketId(ticket)}</span>
+              </div>
+              <div className="ticket-detail__info-item">
+                <span className="ticket-detail__info-label">Status</span>
+                <span className={`ticket-detail__badge ticket-detail__badge--status-${ticket.status}`}>
+                  {STATUS_LABELS[ticket.status] || ticket.status}
                 </span>
+              </div>
+              <div className="ticket-detail__info-item">
+                <span className="ticket-detail__info-label">Prioridade</span>
+                <span className={`ticket-detail__badge ticket-detail__badge--priority-${ticket.priority}`}>
+                  {PRIORITY_LABELS[ticket.priority] || ticket.priority}
+                </span>
+              </div>
+              {ticket.category_name && (
+                <div className="ticket-detail__info-item">
+                  <span className="ticket-detail__info-label">Categoria</span>
+                  <span className="ticket-detail__info-value">{ticket.category_name}</span>
+                </div>
+              )}
+              <div className="ticket-detail__info-item">
+                <span className="ticket-detail__info-label">Atribuído a</span>
+                <span className="ticket-detail__info-value">{ticket.assigned_name || '—'}</span>
+              </div>
+              <div className="ticket-detail__info-item">
+                <span className="ticket-detail__info-label">Formulário</span>
+                <span className="ticket-detail__info-value">{ticket.form_name || '—'}</span>
+              </div>
+              <div className="ticket-detail__info-item">
+                <span className="ticket-detail__info-label">Criado em</span>
+                <span className="ticket-detail__info-value">{formatDate(ticket.created_at)}</span>
+              </div>
+              <div className="ticket-detail__info-item">
+                <span className="ticket-detail__info-label">Atualizado em</span>
+                <span className="ticket-detail__info-value">{formatDate(ticket.updated_at)}</span>
+              </div>
+              {ticket.scheduled_at && (
+                <div className="ticket-detail__info-item">
+                  <span className="ticket-detail__info-label">Agendado para</span>
+                  <span className="ticket-detail__info-value">
+                    {new Date(ticket.scheduled_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
+                  </span>
+                </div>
               )}
               {ticket.status === 'in_progress' && ticket.is_paused && (
-                <span style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.25rem',
-                  padding: '0.2rem 0.5rem',
-                  borderRadius: 'var(--radius-sm)',
-                  background: 'var(--warning)',
-                  color: 'var(--bg-primary)',
-                  fontWeight: '600',
-                  fontSize: '0.75rem'
-                }}>
-                  <Pause size={12} />
-                  Em pausa
-                </span>
+                <div className="ticket-detail__info-item">
+                  <span className="ticket-detail__info-label">Tempo</span>
+                  <span className="ticket-detail__badge ticket-detail__badge--paused">
+                    <Pause size={12} />
+                    Em pausa
+                  </span>
+                </div>
               )}
             </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)', flexShrink: 0 }}>
             {canEditTicket && ticket.status === 'in_progress' && (
               <button
                 className="btn btn-secondary btn-sm"
@@ -819,10 +855,21 @@ export default function TicketDetail() {
                 <Settings size={18} />
               </button>
             )}
+            {onClose && (
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={onClose}
+                style={{ padding: 'var(--spacing-xs) var(--spacing-sm)' }}
+                title="Fechar"
+              >
+                <X size={18} />
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Painel de Configurações - Não mostrar se ticket estiver pendente de aprovação */}
+        {/* Painel de Configurações */}
         {showSettings && canEditTicket && ticket.status !== 'pending_approval' && (
           <div style={{
             marginTop: 'var(--spacing-md)',
@@ -961,20 +1008,10 @@ export default function TicketDetail() {
             </div>
           </div>
         )}
-      </div>
+      </header>
 
-      {/* Chat Messages - Estilo WhatsApp */}
-      <div style={{
-        flex: 1,
-        overflowY: 'auto',
-        background: 'linear-gradient(180deg, var(--bg-primary) 0%, #0F0F11 100%)',
-        backgroundImage: 'radial-gradient(circle at 20% 50%, rgba(145, 71, 255, 0.03) 0%, transparent 50%), radial-gradient(circle at 80% 80%, rgba(145, 71, 255, 0.03) 0%, transparent 50%)',
-        padding: 'var(--spacing-md)',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 'var(--spacing-sm)',
-        position: 'relative'
-      }}>
+      {/* Área do chat */}
+      <div className="ticket-chat">
         {/* Mensagem inicial (descrição do ticket) - Estilo WhatsApp */}
         {ticket.form_name || attachments.length > 0 ? (
           (() => {
@@ -982,41 +1019,13 @@ export default function TicketDetail() {
             return (
               <>
                 {/* Mensagem de boas-vindas do formulário */}
-        <div style={{
-          display: 'flex',
-                  justifyContent: 'flex-start',
-          marginBottom: 'var(--spacing-sm)'
-        }}>
-          <div style={{
-                    maxWidth: '75%',
-                    display: 'flex',
-                    gap: 'var(--spacing-xs)',
-                    alignItems: 'flex-end'
-                  }}>
-                    <div style={{
-                      width: '32px',
-                      height: '32px',
-            borderRadius: '50%',
-                      backgroundColor: 'var(--purple)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-                      flexShrink: 0,
-                      marginBottom: '2px'
-          }}>
-                      <User size={16} color="#FFFFFF" />
-          </div>
-                    <div>
-                      <div style={{
-                        backgroundColor: '#1E1E22',
-                        padding: '0.5rem 0.75rem',
-                        borderRadius: '0.5rem 0.5rem 0.5rem 0.125rem',
-                        color: 'var(--text-primary)',
-                        fontSize: '0.875rem',
-                        lineHeight: '1.4',
-                        boxShadow: '0 1px 2px rgba(0, 0, 0, 0.3)',
-                        marginBottom: '0.25rem'
-                      }}>
+        <div className="ticket-chat__row">
+          <div className="ticket-chat__row-inner">
+            <div className="ticket-chat__avatar">
+              <User size={18} color="#FFFFFF" />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div className="ticket-chat__bubble ticket-chat__bubble--other">
                         {ticket.form_name && (
             <div style={{
               display: 'flex',
@@ -1032,18 +1041,13 @@ export default function TicketDetail() {
                             </strong>
                           </div>
                         )}
-                        <div style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
-                          Olá! Recebi sua solicitação. Aqui estão os dados informados:
-                        </div>
-            </div>
-            <div style={{
-                        fontSize: '0.6875rem',
-                        color: 'var(--text-tertiary)',
-                        paddingLeft: '0.5rem',
-                        marginBottom: 'var(--spacing-xs)'
-                      }}>
-                        {formatDate(ticket.created_at)}
-                      </div>
+                <div style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
+                  Olá! Recebi sua solicitação. Aqui estão os dados informados:
+                </div>
+              </div>
+              <div className="ticket-chat__time" style={{ paddingLeft: '0.5rem', marginBottom: 'var(--spacing-xs)' }}>
+                {formatDate(ticket.created_at)}
+              </div>
             </div>
           </div>
         </div>
@@ -1077,12 +1081,12 @@ export default function TicketDetail() {
             <div style={{ flex: 1 }}>
                           {attachment ? (
                             <div style={{
-                              backgroundColor: '#1E1E22',
+                              backgroundColor: 'var(--bg-card)',
                               padding: attachment && isImage(attachment.mime_type) ? '0' : '0.5rem 0.75rem',
                               borderRadius: '0.5rem 0.5rem 0.5rem 0.125rem',
                               color: 'var(--text-primary)',
                               fontSize: '0.875rem',
-                              boxShadow: '0 1px 2px rgba(0, 0, 0, 0.3)',
+                              boxShadow: '0 1px 2px rgba(0, 0, 0, 0.08)',
                               overflow: 'hidden'
                             }}>
                               {isImage(attachment.mime_type) ? (
@@ -1102,7 +1106,7 @@ export default function TicketDetail() {
                                   />
                                   <div style={{
                                     padding: '0.5rem 0.75rem',
-                                    backgroundColor: '#1E1E22'
+                                    backgroundColor: 'var(--bg-card)'
                                   }}>
                                     <div style={{
                                       fontSize: '0.8125rem',
@@ -1216,12 +1220,12 @@ export default function TicketDetail() {
               </div>
                           ) : (
                             <div style={{
-                              backgroundColor: '#1E1E22',
+                              backgroundColor: 'var(--bg-card)',
                               padding: '0.5rem 0.75rem',
                               borderRadius: '0.5rem 0.5rem 0.5rem 0.125rem',
                               color: 'var(--text-primary)',
                               fontSize: '0.875rem',
-                              boxShadow: '0 1px 2px rgba(0, 0, 0, 0.3)'
+                              boxShadow: '0 1px 2px rgba(0, 0, 0, 0.08)'
                             }}>
                               <div style={{
                                 fontSize: '0.8125rem',
@@ -1258,40 +1262,13 @@ export default function TicketDetail() {
           return (
             <>
               {/* Mensagem inicial: webhook (JSON formatado) ou texto normal */}
-              <div style={{
-                display: 'flex',
-                justifyContent: 'flex-start',
-                marginBottom: 'var(--spacing-sm)'
-              }}>
-                <div style={{
-                  maxWidth: '75%',
-                  display: 'flex',
-                  gap: 'var(--spacing-xs)',
-                  alignItems: 'flex-end'
-                }}>
-                  <div style={{
-                    width: '32px',
-                    height: '32px',
-                    borderRadius: '50%',
-                    backgroundColor: 'var(--purple)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                    marginBottom: '2px'
-                  }}>
-                    <User size={16} color="#FFFFFF" />
+              <div className="ticket-chat__row">
+                <div className="ticket-chat__row-inner">
+                  <div className="ticket-chat__avatar">
+                    <User size={18} color="#FFFFFF" />
                   </div>
                   <div style={{ flex: 1 }}>
-                    <div style={{
-                      backgroundColor: '#1E1E22',
-                      padding: '0.75rem 1rem',
-                      borderRadius: '0.5rem 0.5rem 0.5rem 0.125rem',
-                      color: 'var(--text-primary)',
-                      fontSize: '0.875rem',
-                      lineHeight: '1.4',
-                      boxShadow: '0 1px 2px rgba(0, 0, 0, 0.3)'
-                    }}>
+                    <div className="ticket-chat__bubble ticket-chat__bubble--other" style={{ padding: '0.75rem 1rem' }}>
                       {isWebhookJson ? (
                         <>
                           <div style={{
@@ -1375,12 +1352,7 @@ export default function TicketDetail() {
                         </span>
                       )}
                     </div>
-                    <div style={{
-                      fontSize: '0.6875rem',
-                      color: 'var(--text-tertiary)',
-                      paddingLeft: '0.5rem',
-                      marginTop: '0.25rem'
-                    }}>
+                    <div className="ticket-chat__time" style={{ paddingLeft: '0.5rem', marginTop: '0.25rem' }}>
                       {formatDate(ticket.created_at)}
                     </div>
                   </div>
@@ -1393,43 +1365,17 @@ export default function TicketDetail() {
         {/* Mensagens do chat - Estilo WhatsApp */}
         {messages.map((message) => {
           const isOwnMessage = message.user_id === user?.id;
-          
           return (
-            <div key={message.id} style={{
-              display: 'flex',
-              justifyContent: isOwnMessage ? 'flex-end' : 'flex-start',
-              marginBottom: 'var(--spacing-xs)'
-            }}>
-              <div style={{
-                maxWidth: '75%',
-                display: 'flex',
-                gap: 'var(--spacing-xs)',
-                alignItems: 'flex-end',
-                flexDirection: isOwnMessage ? 'row-reverse' : 'row'
-              }}>
+            <div key={message.id} className={`ticket-chat__row${isOwnMessage ? ' ticket-chat__row--own' : ''}`}>
+              <div className="ticket-chat__row-inner">
                 {!isOwnMessage && (
-                  <div style={{
-                    width: '32px',
-                    height: '32px',
-                    borderRadius: '50%',
-                    backgroundColor: 'var(--purple)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                    marginBottom: '2px'
-                  }}>
-                    <User size={16} color="#FFFFFF" />
+                  <div className="ticket-chat__avatar">
+                    <User size={18} color="#FFFFFF" />
                   </div>
                 )}
                 <div style={{ flex: 1 }}>
               {editingMessageId === message.id ? (
-                <div style={{
-                      backgroundColor: isOwnMessage ? 'var(--purple)' : '#1E1E22',
-                      padding: '0.75rem',
-                      borderRadius: isOwnMessage ? '0.5rem 0.5rem 0.125rem 0.5rem' : '0.5rem 0.5rem 0.5rem 0.125rem',
-                      boxShadow: '0 1px 2px rgba(0, 0, 0, 0.3)'
-                }}>
+                <div className={`ticket-chat__bubble ticket-chat__bubble--${isOwnMessage ? 'own' : 'other'}`} style={{ padding: '0.75rem' }}>
                   <textarea
                     className="textarea"
                     value={editText}
@@ -1484,23 +1430,9 @@ export default function TicketDetail() {
                 </div>
               ) : (
                     <>
-                <div style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 'var(--spacing-xs)',
-                        marginBottom: '0.25rem',
-                        justifyContent: isOwnMessage ? 'flex-end' : 'flex-start',
-                        paddingLeft: isOwnMessage ? '0' : '0.5rem',
-                        paddingRight: isOwnMessage ? '0.5rem' : '0'
-                      }}>
+                <div className="ticket-chat__meta">
                         {!isOwnMessage && (
-                          <strong style={{ 
-                            color: 'var(--text-primary)', 
-                            fontSize: '0.8125rem',
-                            fontWeight: '600'
-                          }}>
-                            {message.user_name}
-                          </strong>
+                          <strong className="ticket-chat__sender">{message.user_name}</strong>
                         )}
                         {canEditMessage(message) && !editingMessageId && (
                           <div style={{ display: 'flex', gap: '0.25rem' }}>
@@ -1558,19 +1490,12 @@ export default function TicketDetail() {
                           </div>
                         )}
                       </div>
-                      <div style={{
-                        backgroundColor: isOwnMessage ? 'var(--purple)' : '#1E1E22',
-                        padding: message.attachments && message.attachments.length > 0 && message.attachments.some(a => isImage(a.mime_type)) ? '0' : '0.5rem 0.75rem',
-                        borderRadius: isOwnMessage ? '0.5rem 0.5rem 0.125rem 0.5rem' : '0.5rem 0.5rem 0.5rem 0.125rem',
-                        color: isOwnMessage ? '#FFFFFF' : 'var(--text-primary)',
-                        fontSize: '0.875rem',
-                        lineHeight: '1.4',
-                        boxShadow: '0 1px 2px rgba(0, 0, 0, 0.3)',
-                  whiteSpace: 'pre-wrap',
-                        wordBreak: 'break-word',
-                        position: 'relative',
-                        overflow: 'hidden'
-                      }}>
+                      <div
+                        className={`ticket-chat__bubble ticket-chat__bubble--${isOwnMessage ? 'own' : 'other'}`}
+                        style={{
+                          padding: message.attachments && message.attachments.length > 0 && message.attachments.some(a => isImage(a.mime_type)) ? 0 : undefined
+                        }}
+                      >
                         {/* Preview de imagens anexadas */}
                         {message.attachments && message.attachments.length > 0 && (
                           <div style={{
@@ -1613,7 +1538,7 @@ export default function TicketDetail() {
                                     />
                                     <div style={{
                                       padding: '0.5rem 0.75rem',
-                                      backgroundColor: isOwnMessage ? 'var(--purple)' : '#1E1E22',
+                                      backgroundColor: isOwnMessage ? 'var(--purple)' : 'var(--bg-card)',
                                       display: 'flex',
                                       alignItems: 'center',
                                       justifyContent: 'space-between',
@@ -1659,7 +1584,7 @@ export default function TicketDetail() {
                                 ) : (
                                   <div style={{
                                     padding: '0.5rem 0.75rem',
-                                    backgroundColor: isOwnMessage ? 'var(--purple)' : '#1E1E22',
+                                    backgroundColor: isOwnMessage ? 'var(--purple)' : 'var(--bg-card)',
                                     display: 'flex',
                                     alignItems: 'center',
                                     gap: '0.5rem',
@@ -1733,32 +1658,23 @@ export default function TicketDetail() {
                 </div>
               )}
             </div>
-                      <div style={{
-                        fontSize: '0.6875rem',
-                        color: 'var(--text-tertiary)',
-                        paddingLeft: isOwnMessage ? '0' : '0.5rem',
-                        paddingRight: isOwnMessage ? '0.5rem' : '0',
-                        marginTop: '0.25rem',
-                        textAlign: isOwnMessage ? 'right' : 'left'
-                      }}>
+                      <div
+                        className="ticket-chat__time"
+                        style={{
+                          paddingLeft: isOwnMessage ? 0 : '0.5rem',
+                          paddingRight: isOwnMessage ? '0.5rem' : 0,
+                          marginTop: '0.25rem',
+                          textAlign: isOwnMessage ? 'right' : 'left'
+                        }}
+                      >
                         {formatDate(message.created_at)}
-          </div>
+                      </div>
                     </>
                   )}
                 </div>
                 {isOwnMessage && (
-                  <div style={{
-                    width: '32px',
-                    height: '32px',
-                    borderRadius: '50%',
-                    backgroundColor: 'var(--green)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                    marginBottom: '2px'
-                  }}>
-                    <User size={16} color="#FFFFFF" />
+                  <div className="ticket-chat__avatar ticket-chat__avatar--own">
+                    <User size={18} color="#FFFFFF" />
                   </div>
                 )}
               </div>
@@ -1769,14 +1685,9 @@ export default function TicketDetail() {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input de mensagem - apenas para quem pode editar ticket */}
+      {/* Input de mensagem */}
       {canEditTicket && (
-      <div style={{
-        padding: 'var(--spacing-md)',
-        borderTop: '1px solid var(--border-primary)',
-        backgroundColor: 'var(--bg-secondary)',
-        flexShrink: 0
-      }}>
+      <div className="ticket-chat__input-bar">
         {/* Preview de arquivos antes de enviar */}
         {messagePreviewUrls.length > 0 && (
           <div style={{
@@ -1860,15 +1771,7 @@ export default function TicketDetail() {
           </div>
         )}
         
-        <div style={{
-          display: 'flex',
-          gap: 'var(--spacing-sm)',
-          alignItems: 'flex-end',
-          backgroundColor: 'var(--bg-tertiary)',
-          borderRadius: '1.5rem',
-          padding: '0.5rem 0.75rem',
-          border: '1px solid var(--border-primary)'
-        }}>
+        <div className="ticket-chat__input-wrap">
           <input
             type="file"
             id="message-file-input"
@@ -1877,34 +1780,11 @@ export default function TicketDetail() {
             onChange={handleFileSelect}
             style={{ display: 'none' }}
           />
-          <label
-            htmlFor="message-file-input"
-            style={{
-              padding: '0.625rem',
-              backgroundColor: 'transparent',
-              border: 'none',
-              borderRadius: '50%',
-              color: 'var(--text-secondary)',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: '40px',
-              height: '40px',
-              transition: 'all 0.2s'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
-              e.currentTarget.style.color = 'var(--purple)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = 'transparent';
-              e.currentTarget.style.color = 'var(--text-secondary)';
-            }}
-          >
+          <label htmlFor="message-file-input" className="ticket-chat__btn-icon">
             <Paperclip size={18} />
           </label>
           <textarea
+            className="ticket-chat__input"
             placeholder="Digite sua mensagem..."
             value={newMessage}
             onChange={(e) => setNewMessage(e.target.value)}
@@ -1915,50 +1795,12 @@ export default function TicketDetail() {
               }
             }}
             rows={1}
-            style={{
-              flex: 1,
-              resize: 'none',
-              fontFamily: 'inherit',
-              backgroundColor: 'transparent',
-              border: 'none',
-              color: 'var(--text-primary)',
-              fontSize: '0.9375rem',
-              padding: '0.5rem',
-              outline: 'none',
-              maxHeight: '120px',
-              overflowY: 'auto'
-            }}
           />
           <button
+            type="button"
             onClick={handleSendMessage}
             disabled={(!newMessage.trim() && messageFiles.length === 0) || sending}
-            style={{
-              padding: '0.625rem',
-              backgroundColor: ((!newMessage.trim() && messageFiles.length === 0) || sending) ? 'var(--bg-hover)' : 'var(--purple)',
-              border: 'none',
-              borderRadius: '50%',
-              color: '#FFFFFF',
-              cursor: ((!newMessage.trim() && messageFiles.length === 0) || sending) ? 'not-allowed' : 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: '40px',
-              height: '40px',
-              transition: 'all 0.2s',
-              opacity: ((!newMessage.trim() && messageFiles.length === 0) || sending) ? 0.5 : 1
-            }}
-            onMouseEnter={(e) => {
-              if (!((!newMessage.trim() && messageFiles.length === 0) || sending)) {
-                e.currentTarget.style.backgroundColor = 'var(--purple-hover)';
-                e.currentTarget.style.transform = 'scale(1.05)';
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (!((!newMessage.trim() && messageFiles.length === 0) || sending)) {
-                e.currentTarget.style.backgroundColor = 'var(--purple)';
-                e.currentTarget.style.transform = 'scale(1)';
-              }
-            }}
+            className="ticket-chat__btn-send"
           >
             <Send size={18} />
           </button>

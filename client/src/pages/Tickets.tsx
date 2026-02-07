@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import TicketDetail from './TicketDetail';
 import { useAuth } from '../contexts/AuthContext';
 import { usePermissions, RESOURCES, ACTIONS } from '../hooks/usePermissions';
 import { formatDateList, formatTicketTitle } from '../utils/dateUtils';
@@ -107,7 +107,6 @@ const PRIORITY_LABELS: Record<Ticket['priority'], string> = {
 };
 
 export default function Tickets() {
-  const navigate = useNavigate();
   const { user } = useAuth();
   const { hasPermission } = usePermissions();
   const canEditTickets = hasPermission(RESOURCES.TICKETS, ACTIONS.EDIT);
@@ -118,6 +117,7 @@ export default function Tickets() {
   const [onlyMyTickets, setOnlyMyTickets] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState<string>('0');
   const [draggedTicket, setDraggedTicket] = useState<Ticket | null>(null);
+  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
   const [draggedOverColumn, setDraggedOverColumn] = useState<string | null>(null);
   const [, setViewedTickets] = useState<Set<number>>(new Set());
 
@@ -244,8 +244,7 @@ export default function Tickets() {
       return next;
     });
     const t = tickets.find((x) => x.id === id);
-    if (t) navigate(`/tickets/${getTicketFullId(t)}`);
-    else navigate(`/tickets/${id}`);
+    setSelectedTicketId(t ? getTicketFullId(t) : String(id));
   };
 
   const formatDate = formatDateList;
@@ -440,6 +439,28 @@ export default function Tickets() {
           );
         })}
       </div>
+
+      {selectedTicketId && (
+        <div
+          className="tickets-modal-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setSelectedTicketId(null);
+              fetchTickets();
+            }
+          }}
+        >
+          <div className="tickets-modal-content">
+            <TicketDetail
+              ticketId={selectedTicketId}
+              onClose={() => {
+                setSelectedTicketId(null);
+                fetchTickets();
+              }}
+            />
+          </div>
+        </div>
+      )}
 
       <style>{`
         .tickets-loading {
@@ -763,6 +784,46 @@ export default function Tickets() {
           align-items: center;
           gap: 0.25rem;
           flex-shrink: 0;
+        }
+
+        .tickets-modal-overlay {
+          position: fixed;
+          inset: 0;
+          z-index: 1000;
+          background: rgba(0, 0, 0, 0.5);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: var(--spacing-lg);
+          box-sizing: border-box;
+          animation: tickets-modal-fade 0.2s ease;
+        }
+        @keyframes tickets-modal-fade {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        .tickets-modal-content {
+          width: 100%;
+          max-width: 1200px;
+          height: 90vh;
+          max-height: 900px;
+          background: var(--bg-primary);
+          border-radius: var(--radius-lg);
+          border: 1px solid var(--border-primary);
+          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+          overflow: hidden;
+          display: flex;
+          flex-direction: column;
+          animation: tickets-modal-scale 0.2s ease;
+        }
+        @keyframes tickets-modal-scale {
+          from { opacity: 0; transform: scale(0.98); }
+          to { opacity: 1; transform: scale(1); }
+        }
+        .tickets-modal-content .ticket-detail {
+          height: 100%;
+          flex: 1;
+          min-height: 0;
         }
       `}</style>
     </div>
