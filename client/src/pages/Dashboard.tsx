@@ -16,9 +16,20 @@ import {
   Webhook,
   Calendar,
   ChevronRight,
+  FolderKanban,
+  Zap,
+  Database,
 } from 'lucide-react';
 import { usePermissions, RESOURCES, ACTIONS } from '../hooks/usePermissions';
 import { formatDateBR, formatTicketTitle } from '../utils/dateUtils';
+
+interface RecentTicketItem {
+  id: number;
+  ticket_number: string | number;
+  title: string | null;
+  updated_at: string;
+  status: string;
+}
 
 interface DashboardStats {
   tickets: {
@@ -37,9 +48,12 @@ interface DashboardStats {
   forms: { total: number; active: number };
   pages: { total: number };
   groups: { total: number };
+  projects?: { total: number; tasksTotal: number; tasksOpen: number };
   topForms: Array<{ name: string; ticket_count: number }>;
   timeline: Array<{ date: string; count: number }>;
   webhooks?: { total: number; active: number; callsToday: number; callsLast7Days: number; successRate: number };
+  recentTickets?: RecentTicketItem[];
+  lastBackup?: string | null;
 }
 
 interface AgendaItem {
@@ -58,6 +72,69 @@ function formatTime(iso: string): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return '--:--';
   return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', hour12: false });
+}
+
+const PRIORITY_LABELS: Record<string, string> = { urgent: 'Urgente', high: 'Alta', medium: 'Média', low: 'Baixa' };
+const PRIORITY_COLORS: Record<string, string> = { urgent: 'var(--red)', high: 'var(--red)', medium: 'var(--orange)', low: 'var(--blue)' };
+const STATUS_LABELS: Record<string, string> = {
+  open: 'Aberto',
+  in_progress: 'Em progresso',
+  resolved: 'Resolvido',
+  closed: 'Fechado',
+  pending_approval: 'Pend. aprovação',
+};
+const TYPE_LABELS: Record<string, string> = { event: 'Evento', work: 'Trabalho', ticket: 'Ticket', shift: 'Plantão' };
+const TYPE_COLORS: Record<string, string> = {
+  event: 'var(--purple)',
+  work: 'var(--blue)',
+  ticket: 'var(--orange)',
+  shift: 'var(--green)',
+};
+
+// ——— Loading skeleton ———
+function DashboardSkeleton() {
+  return (
+    <div className="dashboard" data-dashboard>
+      <header className="dashboard__header">
+        <div className="dashboard__skeleton dashboard__skeleton--title" style={{ width: 200, height: 28 }} />
+        <div className="dashboard__skeleton dashboard__skeleton--subtitle" style={{ width: 280, height: 18 }} />
+      </header>
+      <div className="dashboard__kpis">
+        {[1, 2, 3, 4].map((i) => (
+          <div key={i} className="dashboard__card dashboard__kpi">
+            <div className="dashboard__skeleton" style={{ width: 40, height: 40, borderRadius: 10 }} />
+            <div className="dashboard__kpi-content">
+              <div className="dashboard__skeleton" style={{ width: 80, height: 12, marginBottom: 8 }} />
+              <div className="dashboard__skeleton" style={{ width: 48, height: 28 }} />
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="dashboard__grid dashboard__grid--main">
+        <div className="dashboard__card dashboard__skeleton" style={{ minHeight: 240 }} />
+        <div className="dashboard__card dashboard__skeleton" style={{ minHeight: 240 }} />
+      </div>
+      <div className="dashboard__skeleton dashboard__skeleton--chart" style={{ height: 160, borderRadius: 12 }} />
+    </div>
+  );
+}
+
+// ——— Error state ———
+function DashboardError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className="dashboard dashboard--error" data-dashboard>
+      <div className="dashboard__error-content">
+        <div className="dashboard__error-icon">
+          <AlertCircle size={48} strokeWidth={1.5} />
+        </div>
+        <h2 className="dashboard__error-title">Não foi possível carregar o dashboard</h2>
+        <p className="dashboard__error-message">{message}</p>
+        <button type="button" className="btn btn-primary" onClick={onRetry}>
+          Tentar novamente
+        </button>
+      </div>
+    </div>
+  );
 }
 
 export default function Dashboard() {
@@ -88,8 +165,7 @@ export default function Dashboard() {
       setStats(res.data);
       setError(null);
     } catch (err: any) {
-      console.error('Erro ao buscar estatísticas:', err);
-      setError(err.response?.data?.error || 'Erro ao carregar dashboard');
+      setError(err.response?.data?.error || 'Erro ao carregar dados');
     } finally {
       setLoading(false);
     }
@@ -99,19 +175,13 @@ export default function Dashboard() {
     try {
       setAgendaLoading(true);
       const today = new Date();
-      const start = new Date(today);
-      start.setHours(0, 0, 0, 0);
-      const end = new Date(today);
-      end.setHours(23, 59, 59, 999);
-      const startStr = start.toISOString();
-      const endStr = end.toISOString();
-
+      const start = new Date(today); start.setHours(0, 0, 0, 0);
+      const end = new Date(today); end.setHours(23, 59, 59, 999);
       const [eventsRes, ticketsRes, shiftsRes] = await Promise.all([
-        axios.get(`/api/calendar?start=${startStr}&end=${endStr}`),
-        axios.get(`/api/calendar/tickets?start=${startStr}&end=${endStr}`),
-        axios.get(`/api/shifts?start=${startStr}&end=${endStr}`),
+        axios.get(`/api/calendar?start=${start.toISOString()}&end=${end.toISOString()}`),
+        axios.get(`/api/calendar/tickets?start=${start.toISOString()}&end=${end.toISOString()}`),
+        axios.get(`/api/shifts?start=${start.toISOString()}&end=${end.toISOString()}`),
       ]);
-
       const events: AgendaItem[] = (eventsRes.data || []).map((e: any) => ({
         id: `ev-${e.id}`,
         start_time: e.start_time,
@@ -122,7 +192,6 @@ export default function Dashboard() {
         color: e.color || null,
         user_names: e.user_names,
       }));
-
       const tickets: AgendaItem[] = (ticketsRes.data || []).map((t: any) => ({
         id: `tk-${t.id}`,
         start_time: t.start_time,
@@ -133,7 +202,6 @@ export default function Dashboard() {
         color: t.color || null,
         priority: t.priority,
       }));
-
       const shifts: AgendaItem[] = (shiftsRes.data || []).map((s: any) => ({
         id: `sh-${s.id}`,
         start_time: s.start_time,
@@ -144,446 +212,349 @@ export default function Dashboard() {
         color: s.color || null,
         user_names: s.user_names,
       }));
-
       const merged = [...events, ...tickets, ...shifts].sort(
         (a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
       );
       setAgendaToday(merged);
-    } catch (err) {
-      console.error('Erro ao buscar agenda do dia:', err);
+    } catch {
       setAgendaToday([]);
     } finally {
       setAgendaLoading(false);
     }
   };
 
-  if (loading) {
-    return (
-      <div className="loading" style={{ minHeight: '50vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{
-            width: '40px',
-            height: '40px',
-            border: '3px solid var(--border-primary)',
-            borderTopColor: 'var(--purple)',
-            borderRadius: '50%',
-            animation: 'spin 0.8s linear infinite',
-            margin: '0 auto 1rem',
-          }} />
-          <p style={{ color: 'var(--text-secondary)' }}>Carregando dashboard…</p>
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <DashboardSkeleton />;
+  if (error || !stats) return <DashboardError message={error || 'Dados não disponíveis'} onRetry={fetchStats} />;
 
-  if (error || !stats) {
-    return (
-      <div style={{ padding: 'var(--spacing-2xl)', textAlign: 'center', color: 'var(--text-secondary)' }}>
-        <AlertCircle size={48} style={{ marginBottom: 'var(--spacing-md)', opacity: 0.5 }} />
-        <p style={{ marginBottom: 'var(--spacing-lg)' }}>{error || 'Erro ao carregar dados do dashboard'}</p>
-        <button className="btn btn-primary" onClick={fetchStats}>
-          Tentar novamente
-        </button>
-      </div>
-    );
-  }
-
-  const resolutionRate = stats.tickets.total > 0
-    ? Math.round((stats.tickets.resolved / stats.tickets.total) * 100)
-    : 0;
-  const openRate = stats.tickets.total > 0
-    ? Math.round((stats.tickets.open / stats.tickets.total) * 100)
-    : 0;
+  const resolutionRate = stats.tickets.total > 0 ? Math.round((stats.tickets.resolved / stats.tickets.total) * 100) : 0;
   const maxTimeline = Math.max(...stats.timeline.map((t) => t.count), 1);
   const todayStr = formatDateBR(new Date().toISOString().split('T')[0]);
+  const lastBackupStr = stats.lastBackup && stats.lastBackup.length >= 16
+    ? formatDateBR(stats.lastBackup.slice(0, 10)) + ' ' + stats.lastBackup.slice(11, 16)
+    : stats.lastBackup || null;
 
-  const metricCard = (
-    label: string,
-    value: string | number,
-    sub: string,
-    icon: React.ReactNode,
-    iconBg: string,
-    to?: string,
-    opts?: { highlight?: boolean; badge?: string }
-  ) => {
-    const canNavigate = to && hasPageAccess(to);
-    const { highlight, badge } = opts || {};
-    const cardContent = (
-      <div
-        className="card"
-        style={{
-          border: '1px solid var(--border-primary)',
-          padding: 'var(--spacing-lg)',
-          cursor: canNavigate ? 'pointer' : 'default',
-          transition: 'all var(--transition-base)',
-          height: '100%',
-          ...(highlight ? { background: 'linear-gradient(135deg, rgba(245,158,11,0.08) 0%, rgba(245,158,11,0.03) 100%)', borderColor: 'rgba(245,158,11,0.3)' } : {}),
-        }}
-        onMouseEnter={(e) => {
-          if (canNavigate) {
-            e.currentTarget.style.transform = 'translateY(-2px)';
-            e.currentTarget.style.boxShadow = 'var(--shadow-lg)';
-          }
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.transform = 'translateY(0)';
-          e.currentTarget.style.boxShadow = 'none';
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 'var(--spacing-sm)' }}>
-          <div style={{ padding: 'var(--spacing-sm)', background: iconBg, borderRadius: 'var(--radius-md)' }}>
-            {icon}
-          </div>
-          {badge && (
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', fontWeight: '600' }}>{badge}</span>
-          )}
-        </div>
-        <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>
-          {label}
-        </div>
-        <div style={{ fontSize: '1.75rem', fontWeight: '800', color: 'var(--text-primary)', lineHeight: 1.2 }}>
-          {value}
-        </div>
-        {sub && (
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginTop: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-            <Activity size={12} />
-            {sub}
-          </div>
-        )}
-      </div>
-    );
-    
-    if (canNavigate && to) {
-      return (
-        <Link to={to} style={{ textDecoration: 'none' }}>
-          {cardContent}
-        </Link>
-      );
-    }
-    
-    return cardContent;
-  };
-
-  const sysCard = (label: string, value: number, sub: string, icon: React.ReactNode, to: string) => {
-    if (!hasPageAccess(to)) return null;
-    return (
-      <Link key={label} to={to} style={{ textDecoration: 'none' }}>
-        <div
-          className="card"
-          style={{
-            border: '1px solid var(--border-primary)',
-            padding: 'var(--spacing-md)',
-            cursor: 'pointer',
-            transition: 'all var(--transition-base)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 'var(--spacing-md)',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.transform = 'translateY(-2px)';
-            e.currentTarget.style.boxShadow = 'var(--shadow)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.transform = 'translateY(0)';
-            e.currentTarget.style.boxShadow = 'none';
-          }}
-        >
-          <div style={{ color: 'var(--purple)' }}>{icon}</div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', fontWeight: '500' }}>{label}</div>
-            <div style={{ fontSize: '1.25rem', fontWeight: '700', color: 'var(--text-primary)' }}>{value}</div>
-            <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>{sub}</div>
-          </div>
-          <ChevronRight size={16} color="var(--text-tertiary)" />
-        </div>
-      </Link>
-    );
-  };
-
-  const typeLabel: Record<string, string> = { event: 'Evento', work: 'Trabalho', ticket: 'Ticket', shift: 'Plantão' };
-  const typeColor: Record<string, string> = {
-    event: 'var(--purple)',
-    work: 'var(--blue)',
-    ticket: 'var(--orange)',
-    shift: 'var(--green)',
-  };
+  const resourceLinks = [
+    { to: '/projetos', label: 'Projetos', value: stats.projects?.total ?? 0, sub: `${stats.projects?.tasksOpen ?? 0} tarefas abertas`, icon: FolderKanban, show: hasPageAccess('/projetos') },
+    { to: '/config/usuarios', label: 'Usuários', value: stats.users.total, sub: `${stats.users.active} ativos`, icon: Users, show: canViewUsers },
+    { to: '/create/forms', label: 'Formulários', value: stats.forms.total, sub: `${stats.forms.active} ativos`, icon: FileText, show: hasPageAccess('/create/forms') },
+    { to: '/create/pages', label: 'Páginas', value: stats.pages.total, sub: 'Páginas públicas', icon: Layers, show: hasPageAccess('/create/pages') },
+    { to: '/config/grupos', label: 'Grupos', value: stats.groups.total, sub: 'Grupos', icon: UserCheck, show: hasPageAccess('/config/grupos') },
+    { to: '/create/webhooks', label: 'Webhooks', value: stats.webhooks?.total ?? 0, sub: `${stats.webhooks?.active ?? 0} ativos`, icon: Webhook, show: hasPageAccess('/create/webhooks') },
+  ].filter((r) => r.show);
 
   return (
-    <div style={{ paddingBottom: 'var(--spacing-2xl)' }}>
-      <header style={{ marginBottom: 'var(--spacing-xl)' }}>
-        <h1 style={{
-          fontSize: '1.75rem',
-          fontWeight: '800',
-          color: 'var(--text-primary)',
-          letterSpacing: '-0.02em',
-          marginBottom: '0.25rem',
-        }}>
-          Dashboard
-        </h1>
-        <p style={{ fontSize: '0.9375rem', color: 'var(--text-secondary)' }}>
-          {todayStr} · Visão geral do TIDESK
-        </p>
+    <div className="dashboard" data-dashboard>
+      {/* Header */}
+      <header className="dashboard__header">
+        <div className="dashboard__header-top">
+          <h1 className="dashboard__title">Visão geral</h1>
+          <div className="dashboard__meta">
+            <time className="dashboard__date">{todayStr}</time>
+            {hasPageAccess('/config/backup') && lastBackupStr && (
+              <span className="dashboard__backup" title="Último backup">
+                <Database size={14} /> {lastBackupStr}
+              </span>
+            )}
+          </div>
+        </div>
+        <p className="dashboard__subtitle">Resumo do sistema TIDESK</p>
       </header>
 
-      {/* Métricas principais – Tickets */}
-      <section style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-        gap: 'var(--spacing-md)',
-        marginBottom: 'var(--spacing-xl)',
-      }}>
-        {hasPageAccess('/tickets') && metricCard(
-          'Total de tickets',
-          stats.tickets.total,
-          `${stats.tickets.recent} nos últimos 7 dias`,
-          <Ticket size={20} color="var(--purple)" strokeWidth={2} />,
-          'var(--purple-light)',
-          '/tickets',
-          { badge: `${openRate}% abertos` }
+      {/* KPIs */}
+      <section className="dashboard__kpis" aria-label="Indicadores principais">
+        {hasPageAccess('/tickets') && (
+          <>
+            <Link to="/tickets" className="dashboard__card dashboard__kpi dashboard__kpi--link">
+              <div className="dashboard__kpi-icon dashboard__kpi-icon--purple">
+                <Ticket size={22} strokeWidth={2} />
+              </div>
+              <div className="dashboard__kpi-content">
+                <span className="dashboard__kpi-label">Total de tickets</span>
+                <span className="dashboard__kpi-value">{stats.tickets.total}</span>
+                <span className="dashboard__kpi-sub">{stats.tickets.recent} nos últimos 7 dias</span>
+              </div>
+              <ChevronRight className="dashboard__kpi-arrow" size={18} />
+            </Link>
+            <Link to="/tickets" className="dashboard__card dashboard__kpi dashboard__kpi--link">
+              <div className="dashboard__kpi-icon dashboard__kpi-icon--red">
+                <AlertCircle size={22} strokeWidth={2} />
+              </div>
+              <div className="dashboard__kpi-content">
+                <span className="dashboard__kpi-label">Abertos</span>
+                <span className="dashboard__kpi-value">{stats.tickets.open}</span>
+                <span className="dashboard__kpi-sub">{stats.tickets.inProgress} em progresso</span>
+              </div>
+              <ChevronRight className="dashboard__kpi-arrow" size={18} />
+            </Link>
+          </>
         )}
-        {hasPageAccess('/tickets') && metricCard(
-          'Abertos',
-          stats.tickets.open,
-          `${stats.tickets.inProgress} em progresso`,
-          <AlertCircle size={20} color="var(--red)" strokeWidth={2} />,
-          'var(--red-light)',
-          '/tickets'
-        )}
-        {metricCard(
-          'Taxa de resolução',
-          `${resolutionRate}%`,
-          `${stats.tickets.resolvedToday} resolvidos hoje`,
-          <CheckCircle size={20} color="var(--green)" strokeWidth={2} />,
-          'var(--green-light)'
-        )}
-        {metricCard(
-          'Tempo médio',
-          `${stats.tickets.avgResolutionHours.toFixed(1)}h`,
-          'Resolução (30 dias)',
-          <Clock size={20} color="var(--blue)" strokeWidth={2} />,
-          'var(--blue-light)'
-        )}
-        {stats.tickets.pendingApproval > 0 && hasPageAccess('/acompanhar/aprovar') && metricCard(
-          'Pendentes aprovação',
-          stats.tickets.pendingApproval,
-          'Requerem atenção',
-          <AlertCircle size={20} color="var(--orange)" strokeWidth={2} />,
-          'var(--orange-light)',
-          '/acompanhar/aprovar',
-          { highlight: true }
-        )}
-      </section>
-
-      {/* Métricas do sistema */}
-      <section style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-        gap: 'var(--spacing-sm)',
-        marginBottom: 'var(--spacing-xl)',
-      }}>
-        {canViewUsers && sysCard('Usuários', stats.users.total, `${stats.users.active} ativos`, <Users size={20} />, '/config/usuarios')}
-        {hasPageAccess('/create/forms') && sysCard('Formulários', stats.forms.total, `${stats.forms.active} ativos`, <FileText size={20} />, '/create/forms')}
-        {hasPageAccess('/create/pages') && sysCard('Páginas', stats.pages.total, 'Páginas públicas', <Layers size={20} />, '/create/pages')}
-        {hasPageAccess('/config/grupos') && sysCard('Grupos', stats.groups.total, 'Grupos', <UserCheck size={20} />, '/config/grupos')}
-        {hasPageAccess('/create/webhooks') && sysCard(
-          'Webhooks',
-          stats.webhooks?.total ?? 0,
-          `${stats.webhooks?.active ?? 0} ativos · ${stats.webhooks?.callsToday ?? 0} hoje`,
-          <Webhook size={20} />,
-          '/create/webhooks'
-        )}
-      </section>
-
-      {/* Grid: Prioridade + Top Forms + Agenda do dia */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: canViewAgenda ? '1fr 1fr' : '1fr',
-        gap: 'var(--spacing-lg)',
-        marginBottom: 'var(--spacing-xl)',
-      }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--spacing-lg)', gridColumn: canViewAgenda ? 'span 1' : 'span 2' }}>
-          {/* Prioridade */}
-          <div className="card" style={{ border: '1px solid var(--border-primary)', padding: 'var(--spacing-lg)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)', marginBottom: 'var(--spacing-md)' }}>
-              <PieChart size={20} color="var(--purple)" />
-              <h3 style={{ fontSize: '1rem', fontWeight: '600', color: 'var(--text-primary)' }}>Tickets por prioridade</h3>
+        <div className="dashboard__card dashboard__kpi">
+          <div className="dashboard__kpi-icon dashboard__kpi-icon--green">
+            <CheckCircle size={22} strokeWidth={2} />
+          </div>
+          <div className="dashboard__kpi-content">
+            <span className="dashboard__kpi-label">Taxa de resolução</span>
+            <span className="dashboard__kpi-value">{resolutionRate}%</span>
+            <span className="dashboard__kpi-sub">{stats.tickets.resolvedToday} resolvidos hoje</span>
+          </div>
+        </div>
+        <div className="dashboard__card dashboard__kpi">
+          <div className="dashboard__kpi-icon dashboard__kpi-icon--blue">
+            <Clock size={22} strokeWidth={2} />
+          </div>
+          <div className="dashboard__kpi-content">
+            <span className="dashboard__kpi-label">Tempo médio</span>
+            <span className="dashboard__kpi-value">{stats.tickets.avgResolutionHours.toFixed(1)}h</span>
+            <span className="dashboard__kpi-sub">Resolução (30 dias)</span>
+          </div>
+        </div>
+        {stats.tickets.pendingApproval > 0 && hasPageAccess('/acompanhar/aprovar') && (
+          <Link to="/acompanhar/aprovar" className="dashboard__card dashboard__kpi dashboard__kpi--link dashboard__kpi--alert">
+            <div className="dashboard__kpi-icon dashboard__kpi-icon--orange">
+              <Zap size={22} strokeWidth={2} />
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-sm)' }}>
-              {stats.tickets.byPriority.length === 0 ? (
-                <p style={{ color: 'var(--text-tertiary)', fontSize: '0.875rem', fontStyle: 'italic' }}>Nenhum ticket com prioridade</p>
+            <div className="dashboard__kpi-content">
+              <span className="dashboard__kpi-label">Pendentes aprovação</span>
+              <span className="dashboard__kpi-value">{stats.tickets.pendingApproval}</span>
+              <span className="dashboard__kpi-sub">Requerem atenção</span>
+            </div>
+            <ChevronRight className="dashboard__kpi-arrow" size={18} />
+          </Link>
+        )}
+      </section>
+
+      {/* Main grid: Left column + Agenda */}
+      <div className="dashboard__grid dashboard__grid--main">
+        <div className="dashboard__col">
+          {/* Prioridade */}
+          <div className="dashboard__card dashboard__block">
+            <div className="dashboard__block-head">
+              <PieChart size={20} className="dashboard__block-icon" />
+              <h3 className="dashboard__block-title">Tickets por prioridade</h3>
+            </div>
+            <div className="dashboard__block-body">
+              {!stats.tickets.byPriority.length ? (
+                <p className="dashboard__empty">Nenhum ticket com prioridade</p>
               ) : (
-                stats.tickets.byPriority.map((item, i) => {
-                  const total = stats.tickets.byPriority.reduce((s, p) => s + p.count, 0);
-                  const pct = total > 0 ? (item.count / total) * 100 : 0;
-                  const colors: Record<string, string> = { urgent: 'var(--red)', high: 'var(--red)', medium: 'var(--orange)', low: 'var(--blue)' };
-                  const labels: Record<string, string> = { urgent: 'Urgente', high: 'Alta', medium: 'Média', low: 'Baixa' };
-                  return (
-                    <div key={i}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
-                        <span style={{ fontSize: '0.8125rem', color: 'var(--text-primary)', fontWeight: '500' }}>{labels[item.priority] || item.priority}</span>
-                        <span style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', fontWeight: '600' }}>{item.count} ({pct.toFixed(1)}%)</span>
+                <div className="dashboard__bars">
+                  {stats.tickets.byPriority.map((item, i) => {
+                    const total = stats.tickets.byPriority.reduce((s, p) => s + p.count, 0);
+                    const pct = total > 0 ? (item.count / total) * 100 : 0;
+                    return (
+                      <div key={i} className="dashboard__bar-row">
+                        <div className="dashboard__bar-labels">
+                          <span>{PRIORITY_LABELS[item.priority] || item.priority}</span>
+                          <span>{item.count} ({pct.toFixed(0)}%)</span>
+                        </div>
+                        <div className="dashboard__bar-track">
+                          <div
+                            className="dashboard__bar-fill"
+                            style={{ width: `${pct}%`, backgroundColor: PRIORITY_COLORS[item.priority] || 'var(--purple)' }}
+                          />
+                        </div>
                       </div>
-                      <div style={{ height: 6, background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-full)', overflow: 'hidden' }}>
-                        <div style={{ width: `${pct}%`, height: '100%', background: colors[item.priority] || 'var(--purple)', borderRadius: 'inherit', transition: 'width 0.2s ease' }} />
-                      </div>
-                    </div>
-                  );
-                })
+                    );
+                  })}
+                </div>
               )}
             </div>
           </div>
 
           {/* Top formulários */}
-          <div className="card" style={{ border: '1px solid var(--border-primary)', padding: 'var(--spacing-lg)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)', marginBottom: 'var(--spacing-md)' }}>
-              <FileText size={20} color="var(--blue)" />
-              <h3 style={{ fontSize: '1rem', fontWeight: '600', color: 'var(--text-primary)' }}>Top formulários</h3>
+          <div className="dashboard__card dashboard__block">
+            <div className="dashboard__block-head">
+              <FileText size={20} className="dashboard__block-icon" />
+              <h3 className="dashboard__block-title">Top formulários</h3>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-sm)' }}>
-              {(!stats.topForms || stats.topForms.length === 0) ? (
-                <p style={{ color: 'var(--text-tertiary)', fontSize: '0.875rem', fontStyle: 'italic' }}>Nenhum formulário com tickets</p>
+            <div className="dashboard__block-body">
+              {(!stats.topForms || !stats.topForms.length) ? (
+                <p className="dashboard__empty">Nenhum formulário com tickets</p>
               ) : (
-                stats.topForms.map((f, i) => {
-                  const max = Math.max(...stats.topForms!.map((x) => x.ticket_count), 1);
-                  const pct = (f.ticket_count / max) * 100;
-                  return (
-                    <div key={i}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
-                        <span style={{ fontSize: '0.8125rem', color: 'var(--text-primary)', fontWeight: '500', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
-                        <span style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', fontWeight: '600', flexShrink: 0 }}>{f.ticket_count}</span>
+                <div className="dashboard__bars">
+                  {stats.topForms.map((f, i) => {
+                    const max = Math.max(...stats.topForms!.map((x) => x.ticket_count), 1);
+                    const pct = (f.ticket_count / max) * 100;
+                    return (
+                      <div key={i} className="dashboard__bar-row">
+                        <div className="dashboard__bar-labels">
+                          <span className="dashboard__bar-label-truncate" title={f.name}>{f.name}</span>
+                          <span>{f.ticket_count}</span>
+                        </div>
+                        <div className="dashboard__bar-track">
+                          <div className="dashboard__bar-fill dashboard__bar-fill--blue" style={{ width: `${pct}%` }} />
+                        </div>
                       </div>
-                      <div style={{ height: 6, background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-full)', overflow: 'hidden' }}>
-                        <div style={{ width: `${pct}%`, height: '100%', background: 'linear-gradient(90deg, var(--blue), var(--blue-hover))', borderRadius: 'inherit', transition: 'width 0.2s ease' }} />
-                      </div>
-                    </div>
-                  );
-                })
+                    );
+                  })}
+                </div>
               )}
             </div>
           </div>
+
+          {/* Hoje (Agenda do dia) */}
+          {canViewAgenda && (
+            <div className="dashboard__card dashboard__block dashboard__block--agenda">
+              <div className="dashboard__block-head dashboard__block-head--action">
+                <div className="dashboard__block-head-inner">
+                  <Calendar size={20} className="dashboard__block-icon" />
+                  <h3 className="dashboard__block-title">Hoje</h3>
+                </div>
+                {hasPageAccess('/agenda/calendario-de-servico') && (
+                  <Link to="/agenda/calendario-de-servico" className="dashboard__block-link">
+                    Calendário <ChevronRight size={14} />
+                  </Link>
+                )}
+              </div>
+              <div className="dashboard__block-body dashboard__block-body--scroll">
+                {agendaLoading ? (
+                  <div className="dashboard__agenda-loading">
+                    <div className="dashboard__spinner" />
+                    <span>Carregando agenda…</span>
+                  </div>
+                ) : agendaToday.length === 0 ? (
+                  <p className="dashboard__empty">Nenhum evento ou plantão hoje.</p>
+                ) : (
+                  <ul className="dashboard__agenda-list">
+                    {agendaToday.map((item) => {
+                      const timeStr = formatTime(item.start_time);
+                      const endStr = item.end_time && item.end_time !== item.start_time ? ` – ${formatTime(item.end_time)}` : '';
+                      const typeColorVal = TYPE_COLORS[item.type] || 'var(--purple)';
+                      const inner = (
+                        <>
+                          <span className="dashboard__agenda-time">{timeStr}{endStr}</span>
+                          <div className="dashboard__agenda-info">
+                            <span className="dashboard__agenda-title">{item.title}</span>
+                            <span className="dashboard__agenda-type" style={{ color: typeColorVal }}>
+                              {TYPE_LABELS[item.type]}
+                              {item.user_names?.length ? ` · ${item.user_names.slice(0, 2).join(', ')}${item.user_names.length > 2 ? ` +${item.user_names.length - 2}` : ''}` : ''}
+                            </span>
+                          </div>
+                          {item.link && <ChevronRight size={16} className="dashboard__agenda-go" />}
+                        </>
+                      );
+                      return (
+                        <li key={item.id} className="dashboard__agenda-item" style={{ borderLeftColor: typeColorVal }}>
+                          {item.link ? (
+                            <Link to={item.link} className="dashboard__agenda-item-link">
+                              {inner}
+                            </Link>
+                          ) : (
+                            <div className="dashboard__agenda-item-inner">{inner}</div>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Agenda do dia */}
-        {canViewAgenda && (
-          <div className="card" style={{ border: '1px solid var(--border-primary)', padding: 'var(--spacing-lg)', gridRow: 'span 2' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--spacing-md)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)' }}>
-                <Calendar size={20} color="var(--purple)" />
-                <h3 style={{ fontSize: '1rem', fontWeight: '600', color: 'var(--text-primary)' }}>Agenda do dia</h3>
+        {/* Atividade recente */}
+        {stats.recentTickets && stats.recentTickets.length > 0 && hasPageAccess('/tickets') && (
+          <div className="dashboard__card dashboard__block">
+            <div className="dashboard__block-head dashboard__block-head--action">
+              <div className="dashboard__block-head-inner">
+                <Activity size={20} className="dashboard__block-icon" />
+                <h3 className="dashboard__block-title">Atividade recente</h3>
               </div>
-              {hasPageAccess('/agenda/calendario-de-servico') && (
-                <Link
-                  to="/agenda/calendario-de-servico"
-                  style={{ fontSize: '0.8125rem', color: 'var(--purple)', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
-                >
-                  Calendário <ChevronRight size={14} />
-                </Link>
-              )}
+              <Link to="/tickets" className="dashboard__block-link">
+                Ver todos <ChevronRight size={14} />
+              </Link>
             </div>
-            {agendaLoading ? (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 120, color: 'var(--text-tertiary)' }}>
-                <div style={{ width: 24, height: 24, border: '2px solid var(--border-primary)', borderTopColor: 'var(--purple)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-              </div>
-            ) : agendaToday.length === 0 ? (
-              <p style={{ color: 'var(--text-tertiary)', fontSize: '0.875rem', fontStyle: 'italic', margin: 0 }}>Nenhum evento, ticket agendado ou plantão hoje.</p>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-sm)', maxHeight: 320, overflowY: 'auto' }}>
-                {agendaToday.map((item) => {
-                  const timeStr = formatTime(item.start_time);
-                  const endStr = item.end_time && item.end_time !== item.start_time ? ` – ${formatTime(item.end_time)}` : '';
-                  const typeColorVal = typeColor[item.type] || 'var(--purple)';
-                  const content = (
-                    <div
-                      key={item.id}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'flex-start',
-                        gap: 'var(--spacing-sm)',
-                        padding: 'var(--spacing-sm)',
-                        borderRadius: 'var(--radius-md)',
-                        background: 'var(--bg-tertiary)',
-                        borderLeft: `3px solid ${typeColorVal}`,
-                      }}
-                    >
-                      <div style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-tertiary)', flexShrink: 0, minWidth: 36 }}>
-                        {timeStr}{endStr}
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: '0.875rem', fontWeight: '600', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.title}</div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.25rem' }}>
-                          <span style={{ fontSize: '0.7rem', color: typeColorVal, fontWeight: '600', textTransform: 'uppercase' }}>{typeLabel[item.type]}</span>
-                          {item.user_names && item.user_names.length > 0 && (
-                            <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>{item.user_names.slice(0, 2).join(', ')}{item.user_names.length > 2 ? ` +${item.user_names.length - 2}` : ''}</span>
-                          )}
-                        </div>
-                      </div>
-                      {item.link && (
-                        <Link
-                          to={item.link}
-                          style={{ flexShrink: 0, padding: '0.25rem', color: 'var(--purple)', display: 'flex', alignItems: 'center' }}
-                          title="Ver"
-                        >
-                          <ChevronRight size={16} />
-                        </Link>
-                      )}
-                    </div>
-                  );
-                  return content;
-                })}
-              </div>
-            )}
+            <div className="dashboard__block-body dashboard__block-body--list">
+              {stats.recentTickets.map((t) => (
+                <Link key={t.id} to={`/tickets/${t.id}`} className="dashboard__activity-item">
+                  <div className="dashboard__activity-content">
+                    <span className="dashboard__activity-title">
+                      #{t.ticket_number} · {formatTicketTitle(t.title) || 'Sem título'}
+                    </span>
+                    <span className="dashboard__activity-meta">
+                      {STATUS_LABELS[t.status] || t.status} · {formatDateBR(t.updated_at.split('T')[0])}
+                    </span>
+                  </div>
+                  <ChevronRight size={16} className="dashboard__activity-arrow" />
+                </Link>
+              ))}
+            </div>
           </div>
         )}
       </div>
 
-      {/* Timeline 30 dias */}
+      {/* Evolução 30 dias */}
       {stats.timeline && stats.timeline.length > 0 && (
-        <div className="card" style={{ border: '1px solid var(--border-primary)', padding: 'var(--spacing-lg)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--spacing-md)', flexWrap: 'wrap', gap: 'var(--spacing-sm)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)' }}>
-              <Activity size={20} color="var(--green)" />
-              <h3 style={{ fontSize: '1rem', fontWeight: '600', color: 'var(--text-primary)' }}>Evolução (últimos 30 dias)</h3>
+        <section className="dashboard__card dashboard__chart">
+          <div className="dashboard__chart-head">
+            <div className="dashboard__chart-title-wrap">
+              <TrendingUp size={20} className="dashboard__block-icon" />
+              <h3 className="dashboard__block-title">Evolução · últimos 30 dias</h3>
             </div>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-              <TrendingUp size={14} /> Total: {stats.timeline.reduce((s, t) => s + t.count, 0)} tickets
+            <span className="dashboard__chart-total">
+              Total: {stats.timeline.reduce((s, t) => s + t.count, 0)} tickets
             </span>
           </div>
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 140, padding: 'var(--spacing-sm)', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-primary)' }}>
-            {stats.timeline.map((t, i) => {
-              const h = maxTimeline > 0 ? (t.count / maxTimeline) * 100 : 0;
-              const isToday = i === stats.timeline.length - 1;
-              return (
-                <div
-                  key={i}
-                  title={`${t.count} tickets · ${formatDateBR(t.date)}`}
-                  style={{
-                    flex: 1,
-                    minWidth: 4,
-                    height: `${h}%`,
-                    minHeight: t.count > 0 ? 4 : 0,
-                    background: isToday ? 'var(--green)' : 'var(--purple)',
-                    borderRadius: '4px 4px 0 0',
-                    transition: 'height 0.2s ease',
-                    border: isToday ? '2px solid var(--green)' : 'none',
-                    opacity: isToday ? 1 : 0.85,
-                  }}
-                />
-              );
-            })}
+          <div className="dashboard__chart-bars">
+            <div className="dashboard__chart-bars-inner">
+              {stats.timeline.map((t, i) => {
+                const pct = maxTimeline > 0 ? (t.count / maxTimeline) * 100 : 0;
+                const isToday = i === stats.timeline.length - 1;
+                return (
+                  <div
+                    key={i}
+                    className={`dashboard__chart-bar ${isToday ? 'dashboard__chart-bar--today' : ''}`}
+                    style={{ height: `${Math.max(pct, t.count > 0 ? 6 : 0)}%` }}
+                    title={`${t.count} tickets · ${formatDateBR(t.date)}`}
+                  >
+                    {t.count > 0 && (
+                      <span className={`dashboard__chart-bar-label ${isToday ? 'dashboard__chart-bar-label--today' : ''}`}>{t.count}</span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
-          <div style={{ marginTop: 'var(--spacing-sm)', display: 'flex', justifyContent: 'center', gap: 'var(--spacing-lg)', fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-              <div style={{ width: 10, height: 10, background: 'var(--purple)', borderRadius: 2 }} /> Histórico
-            </span>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-              <div style={{ width: 10, height: 10, background: 'var(--green)', borderRadius: 2, border: '2px solid var(--green)' }} /> Hoje
-            </span>
+          <div className="dashboard__chart-axis">
+            <span>{formatDateBR(stats.timeline[0].date)}</span>
+            <span>Hoje</span>
           </div>
-        </div>
+        </section>
+      )}
+
+      {/* Recursos do sistema */}
+      {resourceLinks.length > 0 && (
+        <section className="dashboard__resources" aria-label="Recursos do sistema">
+          <h3 className="dashboard__resources-title">Recursos</h3>
+          <div className="dashboard__resources-grid">
+            {resourceLinks.map(({ to, label, value, sub, icon: Icon }) => (
+              <Link key={to} to={to} className="dashboard__card dashboard__resource">
+                <Icon size={20} className="dashboard__resource-icon" />
+                <div className="dashboard__resource-content">
+                  <span className="dashboard__resource-label">{label}</span>
+                  <span className="dashboard__resource-value">{value}</span>
+                  <span className="dashboard__resource-sub">{sub}</span>
+                </div>
+                <ChevronRight size={16} className="dashboard__resource-arrow" />
+              </Link>
+            ))}
+          </div>
+        </section>
       )}
 
       <style>{`
-        @keyframes spin { to { transform: rotate(360deg); } }
+        .dashboard__skeleton { background: var(--bg-tertiary); border-radius: var(--radius-md); animation: dashboard-pulse 1.5s ease-in-out infinite; }
+        .dashboard__skeleton--title { border-radius: var(--radius-sm); }
+        .dashboard__skeleton--subtitle { margin-top: 0.5rem; border-radius: var(--radius-sm); }
+        .dashboard__skeleton--chart { margin-top: var(--spacing-lg); }
+        @keyframes dashboard-pulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
+        @keyframes dashboard-spin { to { transform: rotate(360deg); } }
+        .dashboard__spinner {
+          width: 24px; height: 24px;
+          border: 2px solid var(--border-primary);
+          border-top-color: var(--purple);
+          border-radius: 50%;
+          animation: dashboard-spin 0.7s linear infinite;
+        }
       `}</style>
     </div>
   );

@@ -1,9 +1,47 @@
 import express from 'express';
+import fs from 'fs';
+import path from 'path';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { requirePermission, RESOURCES, ACTIONS } from '../middleware/permissions';
 import { dbGet, dbAll } from '../database';
+import { BACKUP_DIR } from '../services/backup-service';
 
 const DB_TYPE = process.env.DB_TYPE || 'sqlite';
+
+/** Extrai valor numérico de count de uma linha retornada por dbGet (SQLite/PostgreSQL). */
+function rowCount(row: any, key = 'count'): number {
+  if (row == null) return 0;
+  const v = row[key] ?? row['COUNT'] ?? row['count'];
+  if (v === undefined || v === null) return 0;
+  const n = Number(v);
+  return isNaN(n) ? 0 : Math.max(0, Math.floor(n));
+}
+
+function getLastBackupDate(): string | null {
+  try {
+    if (!fs.existsSync(BACKUP_DIR)) return null;
+    const files = fs.readdirSync(BACKUP_DIR)
+      .filter((f) => f.endsWith('.db') || f.endsWith('.sql'))
+      .map((f) => {
+        const fp = path.join(BACKUP_DIR, f);
+        const stat = fs.statSync(fp);
+        const match = f.match(/backup-(\d{4}-\d{2}-\d{2})-(\d{6})\.(db|sql)/);
+        let date = '';
+        if (match) {
+          const [, datePart, timePart] = match;
+          date = `${datePart} ${timePart!.slice(0, 2)}:${timePart!.slice(2, 4)}:${timePart!.slice(4, 6)}`;
+        } else {
+          date = new Date(stat.mtime).toISOString().slice(0, 19).replace('T', ' ');
+        }
+        return { date, mtime: stat.mtime.getTime() };
+      });
+    if (files.length === 0) return null;
+    files.sort((a, b) => b.mtime - a.mtime);
+    return files[0].date;
+  } catch {
+    return null;
+  }
+}
 
 const router = express.Router();
 
@@ -45,6 +83,22 @@ router.get(
 
       // Grupos
       const totalGroups = await dbGet('SELECT COUNT(*) as count FROM groups');
+
+      // Projetos (total e tarefas)
+      const totalProjects = await dbGet('SELECT COUNT(*) as count FROM projects');
+      const totalProjectTasks = await dbGet('SELECT COUNT(*) as count FROM project_tasks');
+      const projectTasksOpen = await dbGet('SELECT COUNT(*) as count FROM project_tasks WHERE completed_at IS NULL');
+
+      // Últimos tickets atualizados (atividade recente)
+      const recentTicketsList = await dbAll(`
+        SELECT id, ticket_number, title, updated_at, status
+        FROM tickets
+        ORDER BY updated_at DESC
+        LIMIT 5
+      `);
+
+      // Último backup (para quem tem acesso a config)
+      const lastBackup = getLastBackupDate();
 
       // Calcular datas para filtros
       const now = new Date();
@@ -175,7 +229,14 @@ router.get(
           successRate: Math.round(((webhookSuccessRate as any)?.rate || 0) * 100) / 100
         },
         topForms: topForms || [],
-        timeline: ticketsLast30Days || []
+        timeline: ticketsLast30Days || [],
+        projects: {
+          total: rowCount(totalProjects),
+          tasksTotal: rowCount(totalProjectTasks),
+          tasksOpen: rowCount(projectTasksOpen)
+        },
+        recentTickets: recentTicketsList || [],
+        lastBackup
       });
     } catch (error) {
       console.error('Erro ao buscar estatísticas do dashboard:', error);

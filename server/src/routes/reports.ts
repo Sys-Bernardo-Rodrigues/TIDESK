@@ -345,11 +345,51 @@ router.get('/response-time-by-priority', requirePermission(RESOURCES.REPORTS, AC
   }
 });
 
+// Métricas gerais do sistema (contagens atuais, não filtradas por período)
+router.get('/system', requirePermission(RESOURCES.REPORTS, ACTIONS.VIEW), async (_req: AuthRequest, res) => {
+  try {
+    const [users, forms, pages, groups, projects, projectTasks, projectTasksOpen, pendingApproval] = await Promise.all([
+      dbGet('SELECT COUNT(*) as count FROM users'),
+      dbGet('SELECT COUNT(*) as count FROM forms'),
+      dbGet('SELECT COUNT(*) as count FROM pages'),
+      dbGet('SELECT COUNT(*) as count FROM groups'),
+      dbGet('SELECT COUNT(*) as count FROM projects'),
+      dbGet('SELECT COUNT(*) as count FROM project_tasks'),
+      dbGet('SELECT COUNT(*) as count FROM project_tasks WHERE completed_at IS NULL'),
+      dbGet("SELECT COUNT(*) as count FROM tickets WHERE status = 'pending_approval'")
+    ]);
+
+    const rowCount = (row: any) => (row && typeof row.count !== 'undefined' ? Number(row.count) : 0);
+
+    res.json({
+      users: rowCount(users),
+      forms: rowCount(forms),
+      pages: rowCount(pages),
+      groups: rowCount(groups),
+      projects: rowCount(projects),
+      projectTasks: rowCount(projectTasks),
+      projectTasksOpen: rowCount(projectTasksOpen),
+      ticketsPendingApproval: rowCount(pendingApproval)
+    });
+  } catch (error) {
+    console.error('Erro ao buscar métricas do sistema:', error);
+    res.status(500).json({ error: 'Erro ao buscar métricas do sistema' });
+  }
+});
+
 // Categorias mais utilizadas
 router.get('/by-category', requirePermission(RESOURCES.REPORTS, ACTIONS.VIEW), async (req: AuthRequest, res) => {
   try {
-    const { period = 'month' } = req.query;
-    const { start, end } = getDateRange(period as string);
+    const { period = 'month', start: customStart, end: customEnd } = req.query;
+    let start: string, end: string;
+    if (period === 'custom' && customStart && customEnd) {
+      start = `${customStart} 00:00:00`;
+      end = `${customEnd} 23:59:59`;
+    } else {
+      const dateRange = getDateRange(period as string);
+      start = dateRange.start;
+      end = dateRange.end;
+    }
 
     const byCategory = await dbAll(`
       SELECT 
