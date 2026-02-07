@@ -15,7 +15,8 @@ export const RESOURCES = {
   TRACK: 'track',
   CONFIG: 'config',
   AGENDA: 'agenda',
-  WEBHOOKS: 'webhooks'
+  WEBHOOKS: 'webhooks',
+  PROJECTS: 'projects'
 } as const;
 
 export const ACTIONS = {

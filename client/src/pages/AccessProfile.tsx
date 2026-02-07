@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Shield, Plus, Search, Edit, Trash2, Users, X, Save, CheckSquare, Square, Home, Ticket, FileEdit, FileText, User, Database, RefreshCw, CheckCircle, Eye, History, FileBarChart, Calendar, CalendarDays, Webhook } from 'lucide-react';
+import { Shield, Plus, Search, Edit, Trash2, Users, X, Save, CheckSquare, Square, Home, Ticket, FileEdit, FileText, User, Database, RefreshCw, CheckCircle, Eye, History, FileBarChart, Calendar, CalendarDays, Webhook, FolderKanban } from 'lucide-react';
 import { RESOURCES, ACTIONS } from '../hooks/usePermissions';
 import { formatDateBR } from '../utils/dateUtils';
 
@@ -31,7 +31,8 @@ const RESOURCE_LABELS: Record<string, string> = {
   track: 'Acompanhar Tratativa',
   config: 'Configurações',
   agenda: 'Agenda',
-  webhooks: 'Webhooks'
+  webhooks: 'Webhooks',
+  projects: 'Projetos'
 };
 
 const ACTION_LABELS: Record<string, string> = {
@@ -47,6 +48,7 @@ const ACTION_LABELS: Record<string, string> = {
 const SYSTEM_PAGES = [
   { path: '/', label: 'Dashboard', Icon: Home },
   { path: '/tickets', label: 'Tickets', Icon: Ticket },
+  { path: '/projetos', label: 'Projetos', Icon: FolderKanban },
   { path: '/create/forms', label: 'Formulários', Icon: FileEdit },
   { path: '/create/pages', label: 'Páginas', Icon: FileText },
   { path: '/create/webhooks', label: 'Webhooks', Icon: Webhook },
@@ -478,10 +480,15 @@ export default function AccessProfile() {
                         fontSize: '1rem',
                         fontWeight: '600',
                         color: 'var(--text-primary)',
-                        marginBottom: 'var(--spacing-md)'
+                        marginBottom: 'var(--spacing-sm)'
                       }}>
                         {RESOURCE_LABELS[resource] || resource}
                       </h3>
+                      {resource === 'projects' && (
+                        <p style={{ fontSize: '0.8125rem', color: 'var(--text-tertiary)', marginBottom: 'var(--spacing-sm)' }}>
+                          Para stakeholders (apenas leitura), marque apenas Visualizar.
+                        </p>
+                      )}
                       <div style={{
                         display: 'grid',
                         gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',

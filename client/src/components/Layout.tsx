@@ -1,1342 +1,342 @@
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { usePermissions } from '../hooks/usePermissions';
-import { LogOut, Ticket, Home, Plus, FileText, FileEdit, ChevronDown, ChevronRight, Settings, Shield, User, FileBarChart, Menu, X, LayoutDashboard, Calendar, CalendarDays, Database, RefreshCw, Eye, CheckCircle, Users, History, Webhook } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import {
+  LogOut, Ticket, Home, Plus, FileText, FileEdit, ChevronDown, ChevronRight,
+  Settings, Shield, User, FileBarChart, PanelLeftClose, PanelLeft,
+  Calendar, CalendarDays, Eye, CheckCircle, Users, History, Webhook, FolderKanban,
+  Palette, LayoutDashboard, Database, RefreshCw
+} from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import type { LucideIcon } from 'lucide-react';
+
+type NavItem = {
+  path: string;
+  label: string;
+  icon: LucideIcon;
+  permission?: string;
+  children?: { path: string; label: string; icon: LucideIcon; permission?: string }[];
+};
+
+const MENU_STRUCTURE: { label: string; items: NavItem[] }[] = [
+  {
+    label: 'Principal',
+    items: [
+      { path: '/', label: 'Dashboard', icon: Home, permission: '/' },
+      { path: '/tickets', label: 'Tickets', icon: Ticket, permission: '/tickets' },
+      { path: '/projetos', label: 'Projetos', icon: FolderKanban, permission: '/projetos' },
+    ],
+  },
+  {
+    label: 'Criar',
+    items: [{
+      path: '/create',
+      label: 'Criar',
+      icon: Plus,
+      children: [
+        { path: '/create/pages', label: 'Páginas', icon: FileText, permission: '/create/pages' },
+        { path: '/create/forms', label: 'Formulários', icon: FileEdit, permission: '/create/forms' },
+        { path: '/create/webhooks', label: 'Webhooks', icon: Webhook, permission: '/create/webhooks' },
+      ],
+    }],
+  },
+  {
+    label: 'Operacional',
+    items: [
+      {
+        path: '/agenda',
+        label: 'Agenda',
+        icon: Calendar,
+        children: [
+          { path: '/agenda/calendario-de-servico', label: 'Cal. Serviço', icon: Calendar, permission: '/agenda/calendario-de-servico' },
+          { path: '/agenda/calendario-de-plantoes', label: 'Cal. Plantões', icon: CalendarDays, permission: '/agenda/calendario-de-plantoes' },
+        ],
+      },
+      {
+        path: '/acompanhar',
+        label: 'Acompanhar',
+        icon: Eye,
+        children: [
+          { path: '/acompanhar/aprovar', label: 'Aprovar', icon: CheckCircle, permission: '/acompanhar/aprovar' },
+          { path: '/acompanhar/acompanhar-tratativa', label: 'Tratativa', icon: Eye, permission: '/acompanhar/acompanhar-tratativa' },
+        ],
+      },
+      { path: '/historico', label: 'Histórico', icon: History, permission: '/historico' },
+      { path: '/relatorios', label: 'Relatórios', icon: FileBarChart, permission: '/relatorios' },
+    ],
+  },
+  {
+    label: 'Sistema',
+    items: [{
+      path: '/config',
+      label: 'Configurações',
+      icon: Settings,
+      children: [
+        { path: '/config/perfil-de-acesso', label: 'Perfil de Acesso', icon: Shield, permission: '/config/perfil-de-acesso' },
+        { path: '/config/usuarios', label: 'Usuários', icon: User, permission: '/config/usuarios' },
+        { path: '/config/grupos', label: 'Grupos', icon: Users, permission: '/config/grupos' },
+        { path: '/config/backup', label: 'Backup', icon: Database, permission: '/config/backup' },
+        { path: '/config/atualizar', label: 'Atualizar', icon: RefreshCw, permission: '/config/atualizar' },
+      ],
+    }],
+  },
+];
 
 export default function Layout() {
   const { user, logout } = useAuth();
+  const { theme, setTheme } = useTheme();
   const { hasPageAccess } = usePermissions();
   const navigate = useNavigate();
   const location = useLocation();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [createMenuOpen, setCreateMenuOpen] = useState(
-    location.pathname.startsWith('/create')
-  );
+  const [themeMenuOpen, setThemeMenuOpen] = useState(false);
+  const themeMenuRef = useRef<HTMLDivElement>(null);
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
+    create: location.pathname.startsWith('/create'),
+    agenda: location.pathname.startsWith('/agenda'),
+    acompanhar: location.pathname.startsWith('/acompanhar'),
+    config: location.pathname.startsWith('/config'),
+  });
 
   const handleLogout = () => {
     logout();
     navigate('/login');
   };
 
-  const isCreateActive = location.pathname.startsWith('/create');
-  const isPagesActive = location.pathname === '/create/pages';
-  const isFormsActive = location.pathname === '/create/forms';
-  const isWebhooksActive = location.pathname === '/create/webhooks';
-  
-  const [configMenuOpen, setConfigMenuOpen] = useState(
-    location.pathname.startsWith('/config')
-  );
-  
-  const isConfigActive = location.pathname.startsWith('/config');
-  const isAccessProfileActive = location.pathname === '/config/perfil-de-acesso';
-  const isUsersActive = location.pathname === '/config/usuarios';
-  const isBackupActive = location.pathname === '/config/backup';
-  const isAtualizarActive = location.pathname === '/config/atualizar';
-  const isGruposActive = location.pathname === '/config/grupos';
+  const toggleGroup = (key: string) => {
+    setOpenGroups((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
 
-  const [agendaMenuOpen, setAgendaMenuOpen] = useState(
-    location.pathname.startsWith('/agenda')
-  );
-  
-  const isAgendaActive = location.pathname.startsWith('/agenda');
-  const isServiceCalendarActive = location.pathname === '/agenda/calendario-de-servico';
-  const isShiftCalendarActive = location.pathname === '/agenda/calendario-de-plantoes';
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (themeMenuRef.current && !themeMenuRef.current.contains(e.target as Node)) {
+        setThemeMenuOpen(false);
+      }
+    };
+    if (themeMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [themeMenuOpen]);
 
-  const [acompanharMenuOpen, setAcompanharMenuOpen] = useState(
-    location.pathname.startsWith('/acompanhar')
-  );
-  
-  const isAcompanharActive = location.pathname.startsWith('/acompanhar');
-  const isAprovarActive = location.pathname === '/acompanhar/aprovar';
-  const isAcompanharTratativaActive = location.pathname === '/acompanhar/acompanhar-tratativa';
-
-  // Auto-colapsar submenus quando sidebar é colapsado
   useEffect(() => {
     if (sidebarCollapsed) {
-      setCreateMenuOpen(false);
-      setConfigMenuOpen(false);
-      setAgendaMenuOpen(false);
-      setAcompanharMenuOpen(false);
+      setThemeMenuOpen(false);
+      setOpenGroups({ create: false, agenda: false, acompanhar: false, config: false });
     } else {
-      setCreateMenuOpen(location.pathname.startsWith('/create'));
-      setConfigMenuOpen(location.pathname.startsWith('/config'));
-      setAgendaMenuOpen(location.pathname.startsWith('/agenda'));
-      setAcompanharMenuOpen(location.pathname.startsWith('/acompanhar'));
+      setOpenGroups({
+        create: location.pathname.startsWith('/create'),
+        agenda: location.pathname.startsWith('/agenda'),
+        acompanhar: location.pathname.startsWith('/acompanhar'),
+        config: location.pathname.startsWith('/config'),
+      });
     }
   }, [sidebarCollapsed, location.pathname]);
 
+  const hasAnyAccess = (permission?: string, children?: { permission?: string }[]) => {
+    if (permission && hasPageAccess(permission)) return true;
+    return children?.some((c) => c.permission && hasPageAccess(c.permission)) ?? false;
+  };
+
+  const getInitials = (name?: string) => {
+    if (!name) return '?';
+    return name.split(' ').map((n) => n[0]).slice(0, 2).join('').toUpperCase();
+  };
+
   return (
     <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: 'var(--bg-primary)' }}>
-      {/* Sidebar */}
-      <aside className="glass" style={{
-        width: sidebarCollapsed ? '80px' : '240px',
-        backgroundColor: 'var(--bg-secondary)',
-        borderRight: '1px solid var(--border-primary)',
-        padding: sidebarCollapsed ? 'var(--spacing-md)' : 'var(--spacing-lg)',
-        display: 'flex',
-        flexDirection: 'column',
-        position: 'sticky',
-        top: 0,
-        height: '100vh',
-        overflowY: 'auto',
-        overflowX: 'hidden',
-        boxShadow: 'var(--shadow-lg)',
-        transition: 'width var(--transition-slow), padding var(--transition-slow)'
-      }}>
-         {/* Header com Logo Icon e Hamburger */}
-         <div style={{ 
-           marginBottom: 'var(--spacing-2xl)',
-           display: 'flex',
-           alignItems: 'center',
-           justifyContent: sidebarCollapsed ? 'center' : 'space-between',
-           gap: 'var(--spacing-md)'
-         }}>
-           {!sidebarCollapsed && (
-             <div style={{
-               display: 'flex',
-               alignItems: 'center',
-               gap: 'var(--spacing-md)',
-               flex: 1
-             }}>
-               <div style={{
-                 padding: 'var(--spacing-sm)',
-                 background: 'linear-gradient(135deg, var(--purple) 0%, var(--blue) 100%)',
-                 borderRadius: 'var(--radius-md)',
-                 display: 'flex',
-                 alignItems: 'center',
-                 justifyContent: 'center',
-                 minWidth: '40px',
-                 minHeight: '40px',
-                 boxShadow: 'var(--shadow-purple)'
-               }}>
-                 <LayoutDashboard size={24} color="#FFFFFF" strokeWidth={2.5} />
-               </div>
-               <div>
-                 <div style={{ 
-                   fontSize: '0.9375rem', 
-                   fontWeight: '700', 
-                   color: 'var(--text-primary)',
-                   letterSpacing: '-0.02em',
-                   lineHeight: '1.2'
-                 }}>
-                   TIDESK
-                 </div>
-                 <div style={{
-                   fontSize: '0.625rem',
-                   color: 'var(--text-tertiary)',
-                   fontWeight: '500',
-                   letterSpacing: '0.05em',
-                   textTransform: 'uppercase'
-                 }}>
-                   BETA
-                 </div>
-               </div>
-             </div>
-           )}
-           <button
-             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-             style={{
-               padding: 'var(--spacing-sm)',
-               borderRadius: 'var(--radius-md)',
-               border: 'none',
-               background: 'var(--bg-tertiary)',
-               color: 'var(--text-primary)',
-               cursor: 'pointer',
-               display: 'flex',
-               alignItems: 'center',
-               justifyContent: 'center',
-               transition: 'all var(--transition-base)',
-               minWidth: '36px',
-               minHeight: '36px'
-             }}
-             onMouseEnter={(e) => {
-               e.currentTarget.style.background = 'var(--bg-hover)';
-               e.currentTarget.style.transform = 'scale(1.05)';
-             }}
-             onMouseLeave={(e) => {
-               e.currentTarget.style.background = 'var(--bg-tertiary)';
-               e.currentTarget.style.transform = 'scale(1)';
-             }}
-             title={sidebarCollapsed ? 'Expandir menu' : 'Colapsar menu'}
-           >
-             {sidebarCollapsed ? <Menu size={20} /> : <X size={20} />}
-           </button>
-         </div>
-
-        <nav style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 'var(--spacing-xs)' }}>
-          {hasPageAccess('/') && (
-          <Link
-            to="/"
-            className={`nav-link ${location.pathname === '/' ? 'active' : ''} ${sidebarCollapsed ? 'tooltip' : ''}`}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: sidebarCollapsed ? '0' : 'var(--spacing-sm)',
-              padding: sidebarCollapsed ? 'var(--spacing-sm)' : 'var(--spacing-sm) var(--spacing-md)',
-              borderRadius: 'var(--radius-md)',
-              textDecoration: 'none',
-              color: location.pathname === '/' ? 'var(--purple)' : 'var(--text-secondary)',
-              backgroundColor: location.pathname === '/' ? 'var(--purple-light)' : 'transparent',
-              transition: 'all var(--transition-base)',
-              fontWeight: location.pathname === '/' ? '600' : '500',
-              fontSize: '0.875rem',
-              justifyContent: sidebarCollapsed ? 'center' : 'flex-start'
-            }}
-            onMouseEnter={(e) => {
-              if (location.pathname !== '/') {
-                e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
-                e.currentTarget.style.color = 'var(--text-primary)';
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (location.pathname !== '/') {
-                e.currentTarget.style.backgroundColor = 'transparent';
-                e.currentTarget.style.color = 'var(--text-secondary)';
-              }
-            }}
-            title={sidebarCollapsed ? 'Dashboard' : ''}
-            data-tooltip={sidebarCollapsed ? 'Dashboard' : ''}
-          >
-            <Home size={sidebarCollapsed ? 28 : 20} strokeWidth={location.pathname === '/' ? 2.5 : 2} />
-            {!sidebarCollapsed && <span>Dashboard</span>}
-          </Link>
-          )}
-          {hasPageAccess('/tickets') && (
-          <Link
-            to="/tickets"
-            className={`nav-link ${location.pathname.startsWith('/tickets') ? 'active' : ''} ${sidebarCollapsed ? 'tooltip' : ''}`}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: sidebarCollapsed ? '0' : 'var(--spacing-sm)',
-              padding: sidebarCollapsed ? 'var(--spacing-sm)' : 'var(--spacing-sm) var(--spacing-md)',
-              borderRadius: 'var(--radius-md)',
-              textDecoration: 'none',
-              color: location.pathname.startsWith('/tickets') ? 'var(--purple)' : 'var(--text-secondary)',
-              backgroundColor: location.pathname.startsWith('/tickets') ? 'var(--purple-light)' : 'transparent',
-              transition: 'all var(--transition-base)',
-              fontWeight: location.pathname.startsWith('/tickets') ? '600' : '500',
-              fontSize: '0.875rem',
-              justifyContent: sidebarCollapsed ? 'center' : 'flex-start'
-            }}
-            onMouseEnter={(e) => {
-              if (!location.pathname.startsWith('/tickets')) {
-                e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
-                e.currentTarget.style.color = 'var(--text-primary)';
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (!location.pathname.startsWith('/tickets')) {
-                e.currentTarget.style.backgroundColor = 'transparent';
-                e.currentTarget.style.color = 'var(--text-secondary)';
-              }
-            }}
-            title={sidebarCollapsed ? 'Tickets' : ''}
-            data-tooltip={sidebarCollapsed ? 'Tickets' : ''}
-          >
-            <Ticket size={sidebarCollapsed ? 28 : 20} strokeWidth={location.pathname.startsWith('/tickets') ? 2.5 : 2} />
-            {!sidebarCollapsed && <span>Tickets</span>}
-          </Link>
-          )}
-
-          {/* Create Menu */}
-          {(hasPageAccess('/create/pages') || hasPageAccess('/create/forms') || hasPageAccess('/create/webhooks')) && !sidebarCollapsed && (
-            <div style={{ marginTop: 'var(--spacing-xs)' }}>
-              <button
-                onClick={() => setCreateMenuOpen(!createMenuOpen)}
-                style={{
-                  width: '100%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: 'var(--spacing-sm)',
-                  padding: 'var(--spacing-sm) var(--spacing-md)',
-                  borderRadius: 'var(--radius-md)',
-                  border: 'none',
-                  background: isCreateActive ? 'var(--purple-light)' : 'transparent',
-                  color: isCreateActive ? 'var(--purple)' : 'var(--text-secondary)',
-                  transition: 'all var(--transition-base)',
-                  fontWeight: isCreateActive ? '600' : '500',
-                  fontSize: '0.875rem',
-                  cursor: 'pointer',
-                  textAlign: 'left'
-                }}
-                onMouseEnter={(e) => {
-                  if (!isCreateActive) {
-                    e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
-                    e.currentTarget.style.color = 'var(--text-primary)';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!isCreateActive) {
-                    e.currentTarget.style.backgroundColor = 'transparent';
-                    e.currentTarget.style.color = 'var(--text-secondary)';
-                  }
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)' }}>
-                  <Plus size={20} strokeWidth={isCreateActive ? 2.5 : 2} />
-                  <span>Criar</span>
-                </div>
-                {createMenuOpen ? (
-                  <ChevronDown size={18} />
-                ) : (
-                  <ChevronRight size={18} />
-                )}
-              </button>
-
-              {createMenuOpen && (
-                <div className="submenu" style={{
-                  marginTop: 'var(--spacing-xs)',
-                  marginLeft: 'var(--spacing-lg)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 'var(--spacing-xs)'
-                }}>
-                  {hasPageAccess('/create/pages') && (
-                    <Link
-                      to="/create/pages"
-                      className={`nav-link ${isPagesActive ? 'active' : ''}`}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 'var(--spacing-md)',
-                        padding: 'var(--spacing-sm)',
-                        borderRadius: 'var(--radius-md)',
-                        textDecoration: 'none',
-                        color: isPagesActive ? 'var(--purple)' : 'var(--text-secondary)',
-                        backgroundColor: isPagesActive ? 'var(--purple-light)' : 'transparent',
-                        transition: 'all var(--transition-base)',
-                        fontWeight: isPagesActive ? '600' : '500',
-                        fontSize: '0.875rem'
-                      }}
-                      onMouseEnter={(e) => {
-                        if (!isPagesActive) {
-                          e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
-                          e.currentTarget.style.color = 'var(--text-primary)';
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (!isPagesActive) {
-                          e.currentTarget.style.backgroundColor = 'transparent';
-                          e.currentTarget.style.color = 'var(--text-secondary)';
-                        }
-                      }}
-                    >
-                      <FileText size={16} strokeWidth={isPagesActive ? 2.5 : 2} />
-                      Páginas
-                    </Link>
-                  )}
-                  {hasPageAccess('/create/forms') && (
-                    <Link
-                      to="/create/forms"
-                      className={`nav-link ${isFormsActive ? 'active' : ''}`}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 'var(--spacing-sm)',
-                      padding: 'var(--spacing-sm) var(--spacing-md)',
-                      borderRadius: 'var(--radius-md)',
-                      textDecoration: 'none',
-                      color: isFormsActive ? 'var(--purple)' : 'var(--text-secondary)',
-                      backgroundColor: isFormsActive ? 'var(--purple-light)' : 'transparent',
-                      transition: 'all var(--transition-base)',
-                      fontWeight: isFormsActive ? '600' : '500',
-                      fontSize: '0.8125rem'
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!isFormsActive) {
-                        e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
-                        e.currentTarget.style.color = 'var(--text-primary)';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!isFormsActive) {
-                        e.currentTarget.style.backgroundColor = 'transparent';
-                        e.currentTarget.style.color = 'var(--text-secondary)';
-                      }
-                    }}
-                  >
-                      <FileEdit size={16} strokeWidth={isFormsActive ? 2.5 : 2} />
-                      Formulários
-                    </Link>
-                  )}
-                  {hasPageAccess('/create/webhooks') && (
-                    <Link
-                      to="/create/webhooks"
-                      className={`nav-link ${isWebhooksActive ? 'active' : ''}`}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 'var(--spacing-sm)',
-                        padding: 'var(--spacing-sm) var(--spacing-md)',
-                        borderRadius: 'var(--radius-md)',
-                        textDecoration: 'none',
-                        color: isWebhooksActive ? 'var(--purple)' : 'var(--text-secondary)',
-                        backgroundColor: isWebhooksActive ? 'var(--purple-light)' : 'transparent',
-                        transition: 'all var(--transition-base)',
-                        fontWeight: isWebhooksActive ? '600' : '500',
-                        fontSize: '0.8125rem'
-                      }}
-                      onMouseEnter={(e) => {
-                        if (!isWebhooksActive) {
-                          e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
-                          e.currentTarget.style.color = 'var(--text-primary)';
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (!isWebhooksActive) {
-                          e.currentTarget.style.backgroundColor = 'transparent';
-                          e.currentTarget.style.color = 'var(--text-secondary)';
-                        }
-                      }}
-                    >
-                      <Webhook size={16} strokeWidth={isWebhooksActive ? 2.5 : 2} />
-                      Webhooks
-                    </Link>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Create Menu - Colapsado (apenas ícones) */}
-          {(hasPageAccess('/create/pages') || hasPageAccess('/create/forms') || hasPageAccess('/create/webhooks')) && sidebarCollapsed && (
-            <div style={{ marginTop: 'var(--spacing-xs)', display: 'flex', flexDirection: 'column', gap: 'var(--spacing-xs)' }}>
-              {hasPageAccess('/create/pages') && (
-                <Link
-                  to="/create/pages"
-                  className={`nav-link ${isPagesActive ? 'active' : ''} tooltip`}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    padding: 'var(--spacing-sm)',
-                    borderRadius: 'var(--radius-md)',
-                    textDecoration: 'none',
-                    color: isPagesActive ? 'var(--purple)' : 'var(--text-secondary)',
-                    backgroundColor: isPagesActive ? 'var(--purple-light)' : 'transparent',
-                    transition: 'all var(--transition-base)',
-                    fontWeight: isPagesActive ? '600' : '500'
-                  }}
-                  title="Páginas"
-                  data-tooltip="Páginas"
-                >
-                  <FileText size={28} strokeWidth={isPagesActive ? 2.5 : 2} />
-                </Link>
-              )}
-              {hasPageAccess('/create/forms') && (
-                <Link
-                  to="/create/forms"
-                  className={`nav-link ${isFormsActive ? 'active' : ''} tooltip`}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    padding: 'var(--spacing-sm)',
-                    borderRadius: 'var(--radius-md)',
-                    textDecoration: 'none',
-                    color: isFormsActive ? 'var(--purple)' : 'var(--text-secondary)',
-                    backgroundColor: isFormsActive ? 'var(--purple-light)' : 'transparent',
-                    transition: 'all var(--transition-base)',
-                    fontWeight: isFormsActive ? '600' : '500'
-                  }}
-                  title="Formulários"
-                  data-tooltip="Formulários"
-                >
-                  <FileEdit size={28} strokeWidth={isFormsActive ? 2.5 : 2} />
-                </Link>
-              )}
-              {hasPageAccess('/create/webhooks') && (
-                <Link
-                  to="/create/webhooks"
-                  className={`nav-link ${isWebhooksActive ? 'active' : ''} tooltip`}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    padding: 'var(--spacing-sm)',
-                    borderRadius: 'var(--radius-md)',
-                    textDecoration: 'none',
-                    color: isWebhooksActive ? 'var(--purple)' : 'var(--text-secondary)',
-                    backgroundColor: isWebhooksActive ? 'var(--purple-light)' : 'transparent',
-                    transition: 'all var(--transition-base)',
-                    fontWeight: isWebhooksActive ? '600' : '500'
-                  }}
-                  title="Webhooks"
-                  data-tooltip="Webhooks"
-                >
-                  <Webhook size={28} strokeWidth={isWebhooksActive ? 2.5 : 2} />
-                </Link>
-              )}
-            </div>
-          )}
-
-          {/* Config Menu */}
-          {(hasPageAccess('/config/perfil-de-acesso') || hasPageAccess('/config/usuarios') || hasPageAccess('/config/backup') || hasPageAccess('/config/atualizar') || hasPageAccess('/config/grupos')) && !sidebarCollapsed && (
-            <div style={{ marginTop: 'var(--spacing-xs)' }}>
-              <button
-                onClick={() => setConfigMenuOpen(!configMenuOpen)}
-                style={{
-                  width: '100%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: 'var(--spacing-sm)',
-                  padding: 'var(--spacing-sm) var(--spacing-md)',
-                  borderRadius: 'var(--radius-md)',
-                  border: 'none',
-                  background: isConfigActive ? 'var(--purple-light)' : 'transparent',
-                  color: isConfigActive ? 'var(--purple)' : 'var(--text-secondary)',
-                  transition: 'all var(--transition-base)',
-                  fontWeight: isConfigActive ? '600' : '500',
-                  fontSize: '0.875rem',
-                  cursor: 'pointer',
-                  textAlign: 'left'
-                }}
-                onMouseEnter={(e) => {
-                  if (!isConfigActive) {
-                    e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
-                    e.currentTarget.style.color = 'var(--text-primary)';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!isConfigActive) {
-                    e.currentTarget.style.backgroundColor = 'transparent';
-                    e.currentTarget.style.color = 'var(--text-secondary)';
-                  }
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)' }}>
-                  <Settings size={20} strokeWidth={isConfigActive ? 2.5 : 2} />
-                  <span>Configurações</span>
-                </div>
-                {configMenuOpen ? (
-                  <ChevronDown size={18} />
-                ) : (
-                  <ChevronRight size={18} />
-                )}
-              </button>
-
-              {configMenuOpen && (
-                <div className="submenu" style={{
-                  marginTop: 'var(--spacing-xs)',
-                  marginLeft: 'var(--spacing-lg)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 'var(--spacing-xs)'
-                }}>
-                  {hasPageAccess('/config/perfil-de-acesso') && (
-                  <Link
-                    to="/config/perfil-de-acesso"
-                    className={`nav-link ${isAccessProfileActive ? 'active' : ''}`}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 'var(--spacing-md)',
-                      padding: 'var(--spacing-sm)',
-                      borderRadius: 'var(--radius-md)',
-                      textDecoration: 'none',
-                      color: isAccessProfileActive ? 'var(--purple)' : 'var(--text-secondary)',
-                      backgroundColor: isAccessProfileActive ? 'var(--purple-light)' : 'transparent',
-                      transition: 'all var(--transition-base)',
-                      fontWeight: isAccessProfileActive ? '600' : '500',
-                      fontSize: '0.875rem'
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!isAccessProfileActive) {
-                        e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
-                        e.currentTarget.style.color = 'var(--text-primary)';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!isAccessProfileActive) {
-                        e.currentTarget.style.backgroundColor = 'transparent';
-                        e.currentTarget.style.color = 'var(--text-secondary)';
-                      }
-                    }}
-                  >
-                    <Shield size={16} strokeWidth={isAccessProfileActive ? 2.5 : 2} />
-                    Perfil de Acesso
-                  </Link>
-                  )}
-                  {hasPageAccess('/config/usuarios') && (
-                  <Link
-                    to="/config/usuarios"
-                    className={`nav-link ${isUsersActive ? 'active' : ''}`}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 'var(--spacing-sm)',
-                      padding: 'var(--spacing-sm) var(--spacing-md)',
-                      borderRadius: 'var(--radius-md)',
-                      textDecoration: 'none',
-                      color: isUsersActive ? 'var(--purple)' : 'var(--text-secondary)',
-                      backgroundColor: isUsersActive ? 'var(--purple-light)' : 'transparent',
-                      transition: 'all var(--transition-base)',
-                      fontWeight: isUsersActive ? '600' : '500',
-                      fontSize: '0.8125rem'
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!isUsersActive) {
-                        e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
-                        e.currentTarget.style.color = 'var(--text-primary)';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!isUsersActive) {
-                        e.currentTarget.style.backgroundColor = 'transparent';
-                        e.currentTarget.style.color = 'var(--text-secondary)';
-                      }
-                    }}
-                  >
-                    <User size={16} strokeWidth={isUsersActive ? 2.5 : 2} />
-                    Usuários
-                  </Link>
-                  )}
-                  {hasPageAccess('/config/backup') && (
-                  <Link
-                    to="/config/backup"
-                    className={`nav-link ${isBackupActive ? 'active' : ''}`}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 'var(--spacing-sm)',
-                      padding: 'var(--spacing-sm) var(--spacing-md)',
-                      borderRadius: 'var(--radius-md)',
-                      textDecoration: 'none',
-                      color: isBackupActive ? 'var(--purple)' : 'var(--text-secondary)',
-                      backgroundColor: isBackupActive ? 'var(--purple-light)' : 'transparent',
-                      transition: 'all var(--transition-base)',
-                      fontWeight: isBackupActive ? '600' : '500',
-                      fontSize: '0.8125rem'
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!isBackupActive) {
-                        e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
-                        e.currentTarget.style.color = 'var(--text-primary)';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!isBackupActive) {
-                        e.currentTarget.style.backgroundColor = 'transparent';
-                        e.currentTarget.style.color = 'var(--text-secondary)';
-                      }
-                    }}
-                  >
-                    <Database size={16} strokeWidth={isBackupActive ? 2.5 : 2} />
-                    Backup
-                  </Link>
-                  )}
-                  {hasPageAccess('/config/atualizar') && (
-                  <Link
-                    to="/config/atualizar"
-                    className={`nav-link ${isAtualizarActive ? 'active' : ''}`}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 'var(--spacing-sm)',
-                      padding: 'var(--spacing-sm) var(--spacing-md)',
-                      borderRadius: 'var(--radius-md)',
-                      textDecoration: 'none',
-                      color: isAtualizarActive ? 'var(--purple)' : 'var(--text-secondary)',
-                      backgroundColor: isAtualizarActive ? 'var(--purple-light)' : 'transparent',
-                      transition: 'all var(--transition-base)',
-                      fontWeight: isAtualizarActive ? '600' : '500',
-                      fontSize: '0.8125rem'
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!isAtualizarActive) {
-                        e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
-                        e.currentTarget.style.color = 'var(--text-primary)';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!isAtualizarActive) {
-                        e.currentTarget.style.backgroundColor = 'transparent';
-                        e.currentTarget.style.color = 'var(--text-secondary)';
-                      }
-                    }}
-                  >
-                    <RefreshCw size={16} strokeWidth={isAtualizarActive ? 2.5 : 2} />
-                    Atualizar
-                  </Link>
-                  )}
-                  {hasPageAccess('/config/grupos') && (
-                  <Link
-                    to="/config/grupos"
-                    className={`nav-link ${isGruposActive ? 'active' : ''}`}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 'var(--spacing-sm)',
-                      padding: 'var(--spacing-sm) var(--spacing-md)',
-                      borderRadius: 'var(--radius-md)',
-                      textDecoration: 'none',
-                      color: isGruposActive ? 'var(--purple)' : 'var(--text-secondary)',
-                      backgroundColor: isGruposActive ? 'var(--purple-light)' : 'transparent',
-                      transition: 'all var(--transition-base)',
-                      fontWeight: isGruposActive ? '600' : '500',
-                      fontSize: '0.8125rem'
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!isGruposActive) {
-                        e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
-                        e.currentTarget.style.color = 'var(--text-primary)';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!isGruposActive) {
-                        e.currentTarget.style.backgroundColor = 'transparent';
-                        e.currentTarget.style.color = 'var(--text-secondary)';
-                      }
-                    }}
-                  >
-                    <Users size={16} strokeWidth={isGruposActive ? 2.5 : 2} />
-                    Grupos
-                  </Link>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Config Menu - Colapsado (apenas ícones) */}
-          {(hasPageAccess('/config/perfil-de-acesso') || hasPageAccess('/config/usuarios') || hasPageAccess('/config/backup') || hasPageAccess('/config/atualizar') || hasPageAccess('/config/grupos')) && sidebarCollapsed && (
-            <div style={{ marginTop: 'var(--spacing-xs)', display: 'flex', flexDirection: 'column', gap: 'var(--spacing-xs)' }}>
-              {hasPageAccess('/config/perfil-de-acesso') && (
-              <Link
-                to="/config/perfil-de-acesso"
-                className={`nav-link ${isAccessProfileActive ? 'active' : ''} tooltip`}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: 'var(--spacing-sm)',
-                  borderRadius: 'var(--radius-md)',
-                  textDecoration: 'none',
-                  color: isAccessProfileActive ? 'var(--purple)' : 'var(--text-secondary)',
-                  backgroundColor: isAccessProfileActive ? 'var(--purple-light)' : 'transparent',
-                  transition: 'all var(--transition-base)',
-                  fontWeight: isAccessProfileActive ? '600' : '500'
-                }}
-                title="Perfil de Acesso"
-                data-tooltip="Perfil de Acesso"
-              >
-                <Shield size={28} strokeWidth={isAccessProfileActive ? 2.5 : 2} />
-              </Link>
-              )}
-              {hasPageAccess('/config/usuarios') && (
-              <Link
-                to="/config/usuarios"
-                className={`nav-link ${isUsersActive ? 'active' : ''} tooltip`}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: 'var(--spacing-sm)',
-                  borderRadius: 'var(--radius-md)',
-                  textDecoration: 'none',
-                  color: isUsersActive ? 'var(--purple)' : 'var(--text-secondary)',
-                  backgroundColor: isUsersActive ? 'var(--purple-light)' : 'transparent',
-                  transition: 'all var(--transition-base)',
-                  fontWeight: isUsersActive ? '600' : '500'
-                }}
-                title="Usuários"
-                data-tooltip="Usuários"
-              >
-                <User size={28} strokeWidth={isUsersActive ? 2.5 : 2} />
-              </Link>
-              )}
-              {hasPageAccess('/config/backup') && (
-              <Link
-                to="/config/backup"
-                className={`nav-link ${isBackupActive ? 'active' : ''} tooltip`}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: 'var(--spacing-sm)',
-                  borderRadius: 'var(--radius-md)',
-                  textDecoration: 'none',
-                  color: isBackupActive ? 'var(--purple)' : 'var(--text-secondary)',
-                  backgroundColor: isBackupActive ? 'var(--purple-light)' : 'transparent',
-                  transition: 'all var(--transition-base)',
-                  fontWeight: isBackupActive ? '600' : '500'
-                }}
-                title="Backup"
-                data-tooltip="Backup"
-              >
-                <Database size={28} strokeWidth={isBackupActive ? 2.5 : 2} />
-              </Link>
-              )}
-              {hasPageAccess('/config/atualizar') && (
-              <Link
-                to="/config/atualizar"
-                className={`nav-link ${isAtualizarActive ? 'active' : ''} tooltip`}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: 'var(--spacing-sm)',
-                  borderRadius: 'var(--radius-md)',
-                  textDecoration: 'none',
-                  color: isAtualizarActive ? 'var(--purple)' : 'var(--text-secondary)',
-                  backgroundColor: isAtualizarActive ? 'var(--purple-light)' : 'transparent',
-                  transition: 'all var(--transition-base)',
-                  fontWeight: isAtualizarActive ? '600' : '500'
-                }}
-                title="Atualizar"
-                data-tooltip="Atualizar"
-              >
-                <RefreshCw size={28} strokeWidth={isAtualizarActive ? 2.5 : 2} />
-              </Link>
-              )}
-              {hasPageAccess('/config/grupos') && (
-              <Link
-                to="/config/grupos"
-                className={`nav-link ${isGruposActive ? 'active' : ''} tooltip`}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: 'var(--spacing-sm)',
-                  borderRadius: 'var(--radius-md)',
-                  textDecoration: 'none',
-                  color: isGruposActive ? 'var(--purple)' : 'var(--text-secondary)',
-                  backgroundColor: isGruposActive ? 'var(--purple-light)' : 'transparent',
-                  transition: 'all var(--transition-base)',
-                  fontWeight: isGruposActive ? '600' : '500'
-                }}
-                title="Grupos"
-                data-tooltip="Grupos"
-              >
-                <Users size={28} strokeWidth={isGruposActive ? 2.5 : 2} />
-              </Link>
-              )}
-            </div>
-          )}
-
-          {/* Agenda Menu */}
-          {(hasPageAccess('/agenda/calendario-de-servico') || hasPageAccess('/agenda/calendario-de-plantoes')) && !sidebarCollapsed && (
-            <div style={{ marginTop: 'var(--spacing-xs)' }}>
-              <button
-                onClick={() => setAgendaMenuOpen(!agendaMenuOpen)}
-                style={{
-                  width: '100%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: 'var(--spacing-sm)',
-                  padding: 'var(--spacing-sm) var(--spacing-md)',
-                  borderRadius: 'var(--radius-md)',
-                  border: 'none',
-                  background: isAgendaActive ? 'var(--purple-light)' : 'transparent',
-                  color: isAgendaActive ? 'var(--purple)' : 'var(--text-secondary)',
-                  transition: 'all var(--transition-base)',
-                  fontWeight: isAgendaActive ? '600' : '500',
-                  fontSize: '0.875rem',
-                  cursor: 'pointer',
-                  textAlign: 'left'
-                }}
-                onMouseEnter={(e) => {
-                  if (!isAgendaActive) {
-                    e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
-                    e.currentTarget.style.color = 'var(--text-primary)';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!isAgendaActive) {
-                    e.currentTarget.style.backgroundColor = 'transparent';
-                    e.currentTarget.style.color = 'var(--text-secondary)';
-                  }
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)' }}>
-                  <Calendar size={20} strokeWidth={isAgendaActive ? 2.5 : 2} />
-                  <span>Agenda</span>
-                </div>
-                {agendaMenuOpen ? (
-                  <ChevronDown size={18} />
-                ) : (
-                  <ChevronRight size={18} />
-                )}
-              </button>
-
-              {agendaMenuOpen && (
-                <div className="submenu" style={{
-                  marginTop: 'var(--spacing-xs)',
-                  marginLeft: 'var(--spacing-lg)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 'var(--spacing-xs)'
-                }}>
-                  {hasPageAccess('/agenda/calendario-de-servico') && (
-                  <Link
-                    to="/agenda/calendario-de-servico"
-                    className={`nav-link ${isServiceCalendarActive ? 'active' : ''}`}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 'var(--spacing-md)',
-                      padding: 'var(--spacing-sm)',
-                      borderRadius: 'var(--radius-md)',
-                      textDecoration: 'none',
-                      color: isServiceCalendarActive ? 'var(--purple)' : 'var(--text-secondary)',
-                      backgroundColor: isServiceCalendarActive ? 'var(--purple-light)' : 'transparent',
-                      transition: 'all var(--transition-base)',
-                      fontWeight: isServiceCalendarActive ? '600' : '500',
-                      fontSize: '0.875rem'
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!isServiceCalendarActive) {
-                        e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
-                        e.currentTarget.style.color = 'var(--text-primary)';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!isServiceCalendarActive) {
-                        e.currentTarget.style.backgroundColor = 'transparent';
-                        e.currentTarget.style.color = 'var(--text-secondary)';
-                      }
-                    }}
-                  >
-                    <Calendar size={16} strokeWidth={isServiceCalendarActive ? 2.5 : 2} />
-                    Calendário de Serviço
-                  </Link>
-                  )}
-                  {hasPageAccess('/agenda/calendario-de-plantoes') && (
-                  <Link
-                    to="/agenda/calendario-de-plantoes"
-                    className={`nav-link ${isShiftCalendarActive ? 'active' : ''}`}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 'var(--spacing-sm)',
-                      padding: 'var(--spacing-sm) var(--spacing-md)',
-                      borderRadius: 'var(--radius-md)',
-                      textDecoration: 'none',
-                      color: isShiftCalendarActive ? 'var(--purple)' : 'var(--text-secondary)',
-                      backgroundColor: isShiftCalendarActive ? 'var(--purple-light)' : 'transparent',
-                      transition: 'all var(--transition-base)',
-                      fontWeight: isShiftCalendarActive ? '600' : '500',
-                      fontSize: '0.8125rem'
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!isShiftCalendarActive) {
-                        e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
-                        e.currentTarget.style.color = 'var(--text-primary)';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!isShiftCalendarActive) {
-                        e.currentTarget.style.backgroundColor = 'transparent';
-                        e.currentTarget.style.color = 'var(--text-secondary)';
-                      }
-                    }}
-                  >
-                    <CalendarDays size={16} strokeWidth={isShiftCalendarActive ? 2.5 : 2} />
-                    Calendário de Plantões
-                  </Link>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Agenda Menu - Colapsado (apenas ícones) */}
-          {(hasPageAccess('/agenda/calendario-de-servico') || hasPageAccess('/agenda/calendario-de-plantoes')) && sidebarCollapsed && (
-            <div style={{ marginTop: 'var(--spacing-xs)', display: 'flex', flexDirection: 'column', gap: 'var(--spacing-xs)' }}>
-              {hasPageAccess('/agenda/calendario-de-servico') && (
-              <Link
-                to="/agenda/calendario-de-servico"
-                className={`nav-link ${isServiceCalendarActive ? 'active' : ''} tooltip`}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: 'var(--spacing-sm)',
-                  borderRadius: 'var(--radius-md)',
-                  textDecoration: 'none',
-                  color: isServiceCalendarActive ? 'var(--purple)' : 'var(--text-secondary)',
-                  backgroundColor: isServiceCalendarActive ? 'var(--purple-light)' : 'transparent',
-                  transition: 'all var(--transition-base)',
-                  fontWeight: isServiceCalendarActive ? '600' : '500'
-                }}
-                title="Calendário de Serviço"
-                data-tooltip="Calendário de Serviço"
-              >
-                <Calendar size={28} strokeWidth={isServiceCalendarActive ? 2.5 : 2} />
-              </Link>
-              )}
-              {hasPageAccess('/agenda/calendario-de-plantoes') && (
-              <Link
-                to="/agenda/calendario-de-plantoes"
-                className={`nav-link ${isShiftCalendarActive ? 'active' : ''} tooltip`}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: 'var(--spacing-sm)',
-                  borderRadius: 'var(--radius-md)',
-                  textDecoration: 'none',
-                  color: isShiftCalendarActive ? 'var(--purple)' : 'var(--text-secondary)',
-                  backgroundColor: isShiftCalendarActive ? 'var(--purple-light)' : 'transparent',
-                  transition: 'all var(--transition-base)',
-                  fontWeight: isShiftCalendarActive ? '600' : '500'
-                }}
-                title="Calendário de Plantões"
-                data-tooltip="Calendário de Plantões"
-              >
-                <CalendarDays size={28} strokeWidth={isShiftCalendarActive ? 2.5 : 2} />
-              </Link>
-              )}
-            </div>
-          )}
-
-          {/* Acompanhar Menu */}
-          {(hasPageAccess('/acompanhar/aprovar') || hasPageAccess('/acompanhar/acompanhar-tratativa')) && !sidebarCollapsed && (
-            <div style={{ marginTop: 'var(--spacing-xs)' }}>
-              <button
-                onClick={() => setAcompanharMenuOpen(!acompanharMenuOpen)}
-                style={{
-                  width: '100%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: 'var(--spacing-sm)',
-                  padding: 'var(--spacing-sm) var(--spacing-md)',
-                  borderRadius: 'var(--radius-md)',
-                  border: 'none',
-                  background: isAcompanharActive ? 'var(--purple-light)' : 'transparent',
-                  color: isAcompanharActive ? 'var(--purple)' : 'var(--text-secondary)',
-                  transition: 'all var(--transition-base)',
-                  fontWeight: isAcompanharActive ? '600' : '500',
-                  fontSize: '0.875rem',
-                  cursor: 'pointer',
-                  textAlign: 'left'
-                }}
-                onMouseEnter={(e) => {
-                  if (!isAcompanharActive) {
-                    e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
-                    e.currentTarget.style.color = 'var(--text-primary)';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!isAcompanharActive) {
-                    e.currentTarget.style.backgroundColor = 'transparent';
-                    e.currentTarget.style.color = 'var(--text-secondary)';
-                  }
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)' }}>
-                  <Eye size={20} strokeWidth={isAcompanharActive ? 2.5 : 2} />
-                  <span>Acompanhar</span>
-                </div>
-                {acompanharMenuOpen ? (
-                  <ChevronDown size={18} />
-                ) : (
-                  <ChevronRight size={18} />
-                )}
-              </button>
-
-              {acompanharMenuOpen && (
-                <div className="submenu" style={{
-                  marginTop: 'var(--spacing-xs)',
-                  marginLeft: 'var(--spacing-lg)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 'var(--spacing-xs)'
-                }}>
-                  {hasPageAccess('/acompanhar/aprovar') && (
-                    <Link
-                      to="/acompanhar/aprovar"
-                      className={`nav-link ${isAprovarActive ? 'active' : ''}`}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 'var(--spacing-md)',
-                        padding: 'var(--spacing-sm)',
-                        borderRadius: 'var(--radius-md)',
-                        textDecoration: 'none',
-                        color: isAprovarActive ? 'var(--purple)' : 'var(--text-secondary)',
-                        backgroundColor: isAprovarActive ? 'var(--purple-light)' : 'transparent',
-                        transition: 'all var(--transition-base)',
-                        fontWeight: isAprovarActive ? '600' : '500',
-                        fontSize: '0.875rem'
-                      }}
-                      onMouseEnter={(e) => {
-                        if (!isAprovarActive) {
-                          e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
-                          e.currentTarget.style.color = 'var(--text-primary)';
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (!isAprovarActive) {
-                          e.currentTarget.style.backgroundColor = 'transparent';
-                          e.currentTarget.style.color = 'var(--text-secondary)';
-                        }
-                      }}
-                    >
-                      <CheckCircle size={16} strokeWidth={isAprovarActive ? 2.5 : 2} />
-                      Aprovar
-                    </Link>
-                  )}
-                  {hasPageAccess('/acompanhar/acompanhar-tratativa') && (
-                    <Link
-                      to="/acompanhar/acompanhar-tratativa"
-                      className={`nav-link ${isAcompanharTratativaActive ? 'active' : ''}`}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 'var(--spacing-sm)',
-                      padding: 'var(--spacing-sm) var(--spacing-md)',
-                      borderRadius: 'var(--radius-md)',
-                      textDecoration: 'none',
-                      color: isAcompanharTratativaActive ? 'var(--purple)' : 'var(--text-secondary)',
-                      backgroundColor: isAcompanharTratativaActive ? 'var(--purple-light)' : 'transparent',
-                      transition: 'all var(--transition-base)',
-                      fontWeight: isAcompanharTratativaActive ? '600' : '500',
-                      fontSize: '0.8125rem'
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!isAcompanharTratativaActive) {
-                        e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
-                        e.currentTarget.style.color = 'var(--text-primary)';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!isAcompanharTratativaActive) {
-                        e.currentTarget.style.backgroundColor = 'transparent';
-                        e.currentTarget.style.color = 'var(--text-secondary)';
-                      }
-                    }}
-                  >
-                      <Eye size={16} strokeWidth={isAcompanharTratativaActive ? 2.5 : 2} />
-                      Acompanhar Tratativa
-                    </Link>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Acompanhar Menu - Colapsado (apenas ícones) */}
-          {(hasPageAccess('/acompanhar/aprovar') || hasPageAccess('/acompanhar/acompanhar-tratativa')) && sidebarCollapsed && (
-            <div style={{ marginTop: 'var(--spacing-xs)', display: 'flex', flexDirection: 'column', gap: 'var(--spacing-xs)' }}>
-              {hasPageAccess('/acompanhar/aprovar') && (
-                <Link
-                  to="/acompanhar/aprovar"
-                  className={`nav-link ${isAprovarActive ? 'active' : ''} tooltip`}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: 'var(--spacing-sm)',
-                  borderRadius: 'var(--radius-md)',
-                  textDecoration: 'none',
-                  color: isAprovarActive ? 'var(--purple)' : 'var(--text-secondary)',
-                  backgroundColor: isAprovarActive ? 'var(--purple-light)' : 'transparent',
-                  transition: 'all var(--transition-base)',
-                  fontWeight: isAprovarActive ? '600' : '500'
-                }}
-                title="Aprovar"
-                data-tooltip="Aprovar"
-              >
-                  <CheckCircle size={28} strokeWidth={isAprovarActive ? 2.5 : 2} />
-                </Link>
-              )}
-              {hasPageAccess('/acompanhar/acompanhar-tratativa') && (
-                <Link
-                  to="/acompanhar/acompanhar-tratativa"
-                  className={`nav-link ${isAcompanharTratativaActive ? 'active' : ''} tooltip`}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: 'var(--spacing-sm)',
-                  borderRadius: 'var(--radius-md)',
-                  textDecoration: 'none',
-                  color: isAcompanharTratativaActive ? 'var(--purple)' : 'var(--text-secondary)',
-                  backgroundColor: isAcompanharTratativaActive ? 'var(--purple-light)' : 'transparent',
-                  transition: 'all var(--transition-base)',
-                  fontWeight: isAcompanharTratativaActive ? '600' : '500'
-                }}
-                title="Acompanhar Tratativa"
-                data-tooltip="Acompanhar Tratativa"
-              >
-                <Eye size={28} strokeWidth={isAcompanharTratativaActive ? 2.5 : 2} />
-              </Link>
-              )}
-            </div>
-          )}
-
-          {/* Histórico Link */}
-          {hasPageAccess('/historico') && (
-            <Link
-              to="/historico"
-              className={`nav-link ${location.pathname === '/historico' ? 'active' : ''} ${sidebarCollapsed ? 'tooltip' : ''}`}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: sidebarCollapsed ? '0' : 'var(--spacing-sm)',
-                padding: sidebarCollapsed ? 'var(--spacing-sm)' : 'var(--spacing-sm) var(--spacing-md)',
-                borderRadius: 'var(--radius-md)',
-                textDecoration: 'none',
-                color: location.pathname === '/historico' ? 'var(--purple)' : 'var(--text-secondary)',
-                backgroundColor: location.pathname === '/historico' ? 'var(--purple-light)' : 'transparent',
-                transition: 'all var(--transition-base)',
-                fontWeight: location.pathname === '/historico' ? '600' : '500',
-                fontSize: '0.875rem',
-                justifyContent: sidebarCollapsed ? 'center' : 'flex-start'
-              }}
-              onMouseEnter={(e) => {
-                if (location.pathname !== '/historico') {
-                  e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
-                  e.currentTarget.style.color = 'var(--text-primary)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (location.pathname !== '/historico') {
-                  e.currentTarget.style.backgroundColor = 'transparent';
-                  e.currentTarget.style.color = 'var(--text-secondary)';
-                }
-              }}
-              title={sidebarCollapsed ? 'Histórico' : ''}
-              data-tooltip={sidebarCollapsed ? 'Histórico' : ''}
+      <aside
+        className={`sidebar ${sidebarCollapsed ? 'sidebar--collapsed' : 'sidebar--expanded'}`}
+      >
+        {/* Header */}
+        <div className={`sidebar-header ${sidebarCollapsed ? 'sidebar-header--collapsed' : ''}`}>
+          {sidebarCollapsed ? (
+            <button
+              className="sidebar-toggle sidebar-toggle--expand"
+              onClick={() => setSidebarCollapsed(false)}
+              title="Expandir menu"
             >
-              <History size={sidebarCollapsed ? 28 : 20} strokeWidth={location.pathname === '/historico' ? 2.5 : 2} />
-              {!sidebarCollapsed && <span>Histórico</span>}
-            </Link>
-          )}
-
-          {/* Relatórios Link */}
-          {hasPageAccess('/relatorios') && (
-            <Link
-              to="/relatorios"
-              className={`nav-link ${location.pathname === '/relatorios' ? 'active' : ''} ${sidebarCollapsed ? 'tooltip' : ''}`}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: sidebarCollapsed ? '0' : 'var(--spacing-sm)',
-                padding: sidebarCollapsed ? 'var(--spacing-sm)' : 'var(--spacing-sm) var(--spacing-md)',
-                borderRadius: 'var(--radius-md)',
-                textDecoration: 'none',
-                color: location.pathname === '/relatorios' ? 'var(--purple)' : 'var(--text-secondary)',
-                backgroundColor: location.pathname === '/relatorios' ? 'var(--purple-light)' : 'transparent',
-                transition: 'all var(--transition-base)',
-                fontWeight: location.pathname === '/relatorios' ? '600' : '500',
-                fontSize: '0.875rem',
-                justifyContent: sidebarCollapsed ? 'center' : 'flex-start'
-              }}
-              onMouseEnter={(e) => {
-                if (location.pathname !== '/relatorios') {
-                  e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
-                  e.currentTarget.style.color = 'var(--text-primary)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (location.pathname !== '/relatorios') {
-                  e.currentTarget.style.backgroundColor = 'transparent';
-                  e.currentTarget.style.color = 'var(--text-secondary)';
-                }
-              }}
-              title={sidebarCollapsed ? 'Relatórios' : ''}
-              data-tooltip={sidebarCollapsed ? 'Relatórios' : ''}
-            >
-              <FileBarChart size={sidebarCollapsed ? 28 : 20} strokeWidth={location.pathname === '/relatorios' ? 2.5 : 2} />
-              {!sidebarCollapsed && <span>Relatórios</span>}
-            </Link>
-          )}
-        </nav>
-
-        <div style={{
-          paddingTop: 'var(--spacing-lg)',
-          borderTop: '1px solid var(--border-primary)',
-          marginTop: 'auto'
-        }}>
-          {!sidebarCollapsed ? (
+              <PanelLeft size={20} />
+            </button>
+          ) : (
             <>
-              <div className="card" style={{ 
-                marginBottom: 'var(--spacing-md)',
-                padding: 'var(--spacing-md)',
-                background: 'var(--bg-tertiary)',
-                border: '1px solid var(--border-primary)'
-              }}>
-                <div style={{ 
-                  fontSize: '0.875rem', 
-                  fontWeight: '600',
-                  color: 'var(--text-primary)',
-                  marginBottom: 'var(--spacing-xs)'
-                }}>
-                  {user?.name}
-                </div>
-                <div style={{ 
-                  fontSize: '0.75rem', 
-                  color: 'var(--text-tertiary)',
-                  marginBottom: 'var(--spacing-xs)',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap'
-                }}>
-                  {user?.email}
-                </div>
-                <div style={{
-                  display: 'inline-block',
-                  fontSize: '0.6875rem',
-                  color: 'var(--purple)',
-                  marginTop: 'var(--spacing-xs)',
-                  textTransform: 'uppercase',
-                  fontWeight: '700',
-                  letterSpacing: '0.05em',
-                  padding: '0.25rem 0.5rem',
-                  background: 'var(--purple-light)',
-                  borderRadius: 'var(--radius-full)',
-                  border: '1px solid rgba(145, 71, 255, 0.2)'
-                }}>
-                  {user?.role}
-                </div>
+              <div className="sidebar-logo">
+                <LayoutDashboard size={18} color="#FFF" strokeWidth={2.5} />
+              </div>
+              <div className="sidebar-logo-text">
+                TIDESK<span className="sidebar-logo-badge">BETA</span>
               </div>
               <button
-                onClick={handleLogout}
-                className="btn btn-secondary"
-                style={{
-                  width: '100%',
-                  justifyContent: 'flex-start',
-                  fontSize: '0.875rem'
-                }}
+                className="sidebar-toggle"
+                onClick={() => setSidebarCollapsed(true)}
+                title="Recolher menu"
               >
-                <LogOut size={18} />
-                Sair
+                <PanelLeftClose size={18} />
               </button>
             </>
-          ) : (
-            <button
-              onClick={handleLogout}
-              className="btn btn-secondary"
-              style={{
-                width: '100%',
-                justifyContent: 'center',
-                fontSize: '0.875rem',
-                padding: 'var(--spacing-md)'
-              }}
-              title="Sair"
-            >
-              <LogOut size={28} />
-            </button>
           )}
+        </div>
+
+        {/* Navigation */}
+        <nav className="sidebar-nav">
+          {MENU_STRUCTURE.map((section) => (
+            <div key={section.label} className="sidebar-section">
+              <div className="sidebar-section-label">{section.label}</div>
+              {section.items.map((item) => {
+                if (item.children) {
+                  const groupKey = item.path.replace('/', '');
+                  const hasAccess = hasAnyAccess(item.permission, item.children);
+                  if (!hasAccess) return null;
+
+                  const isOpen = openGroups[groupKey];
+                  const isActive = item.children.some((c) => location.pathname === c.path || location.pathname.startsWith(c.path + '/'));
+
+                  if (sidebarCollapsed) {
+                    return (
+                      <div key={item.path} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        {item.children
+                          .filter((c) => c.permission && hasPageAccess(c.permission))
+                          .map((child) => (
+                            <Link
+                              key={child.path}
+                              to={child.path}
+                              className={`sidebar-item tooltip ${location.pathname === child.path ? 'sidebar-item--active' : ''}`}
+                              data-tooltip={child.label}
+                              title={child.label}
+                            >
+                              <child.icon size={18} strokeWidth={location.pathname === child.path ? 2.5 : 2} className="sidebar-item-icon" />
+                              <span className="sidebar-item-text">{child.label}</span>
+                            </Link>
+                          ))}
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div key={item.path}>
+                      <button
+                        type="button"
+                        className={`sidebar-group-btn ${isActive ? 'sidebar-group-btn--active' : ''}`}
+                        onClick={() => toggleGroup(groupKey)}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <item.icon size={18} strokeWidth={isActive ? 2.5 : 2} className="sidebar-item-icon" />
+                          <span className="sidebar-item-text">{item.label}</span>
+                        </div>
+                        {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                      </button>
+                      {isOpen && (
+                        <div className="sidebar-submenu">
+                          {item.children
+                            .filter((c) => c.permission && hasPageAccess(c.permission))
+                            .map((child) => (
+                              <Link
+                                key={child.path}
+                                to={child.path}
+                                className={`sidebar-subitem ${location.pathname === child.path ? 'sidebar-subitem--active' : ''}`}
+                              >
+                                <child.icon size={14} strokeWidth={location.pathname === child.path ? 2.5 : 2} className="sidebar-subitem-icon" />
+                                {child.label}
+                              </Link>
+                            ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+
+                if (!item.permission || !hasPageAccess(item.permission)) return null;
+
+                const isActive = location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(item.path));
+
+                return (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    className={`sidebar-item tooltip ${isActive ? 'sidebar-item--active' : ''}`}
+                    data-tooltip={sidebarCollapsed ? item.label : ''}
+                    title={sidebarCollapsed ? item.label : ''}
+                  >
+                    <item.icon size={18} strokeWidth={isActive ? 2.5 : 2} className="sidebar-item-icon" />
+                    <span className="sidebar-item-text">{item.label}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
+        </nav>
+
+        {/* Footer */}
+        <div className="sidebar-footer">
+          <div className="sidebar-user">
+            <div className="sidebar-user-avatar">{getInitials(user?.name)}</div>
+            <div className="sidebar-user-info">
+              <div className="sidebar-user-name">{user?.name}</div>
+              <div className="sidebar-user-role">{user?.role}</div>
+            </div>
+          </div>
+          <div className="sidebar-actions">
+            <div className="sidebar-theme-select-wrapper" ref={themeMenuRef}>
+              <button
+                type="button"
+                className="sidebar-action-btn sidebar-theme-trigger tooltip"
+                onClick={() => setThemeMenuOpen(!themeMenuOpen)}
+                title="Tema"
+                data-tooltip="Tema"
+              >
+                <Palette size={16} />
+                {!sidebarCollapsed && (
+                  <>
+                    <span className="sidebar-theme-label">
+                      {theme === 'light' ? 'Claro' : theme === 'dark' ? 'Escuro' : 'Sistema'}
+                    </span>
+                    <ChevronDown size={14} style={{ marginLeft: 'auto' }} />
+                  </>
+                )}
+              </button>
+              {themeMenuOpen && (
+                <div className="sidebar-theme-dropdown">
+                  <select
+                    className="sidebar-theme-select"
+                    value={theme}
+                    onChange={(e) => {
+                      setTheme(e.target.value as 'light' | 'dark' | 'system');
+                      setThemeMenuOpen(false);
+                    }}
+                    autoFocus
+                  >
+                    <option value="light">Claro</option>
+                    <option value="dark">Escuro</option>
+                    <option value="system">Padrão do sistema</option>
+                  </select>
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              className="sidebar-action-btn sidebar-action-btn--logout tooltip"
+              onClick={handleLogout}
+              title="Sair"
+              data-tooltip="Sair"
+              style={{ color: 'var(--red)' }}
+            >
+              <LogOut size={16} />
+              {!sidebarCollapsed && <span>Sair</span>}
+            </button>
+          </div>
         </div>
       </aside>
 
-      {/* Main Content */}
-      <main style={{ 
-        flex: 1, 
-        padding: 'var(--spacing-2xl)', 
-        overflow: 'auto',
-        backgroundColor: 'var(--bg-primary)',
-        minWidth: 0
-      }}>
+      <main
+        style={{
+          flex: 1,
+          padding: 'var(--spacing-2xl)',
+          overflow: 'auto',
+          backgroundColor: 'var(--bg-primary)',
+          minWidth: 0,
+        }}
+      >
         <div className="fade-in">
           <Outlet />
         </div>

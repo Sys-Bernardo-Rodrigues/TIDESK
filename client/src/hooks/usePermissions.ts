@@ -14,7 +14,8 @@ export const RESOURCES = {
   TRACK: 'track',
   CONFIG: 'config',
   AGENDA: 'agenda',
-  WEBHOOKS: 'webhooks'
+  WEBHOOKS: 'webhooks',
+  PROJECTS: 'projects'
 } as const;
 
 export const ACTIONS = {
@@ -54,7 +55,7 @@ export const usePermissions = () => {
 
       if (userIsAdmin) {
         const allPages = new Set<string>([
-          '/', '/tickets', '/create/forms', '/create/pages', '/create/webhooks',
+          '/', '/tickets', '/projetos', '/create/forms', '/create/pages', '/create/webhooks',
           '/create/forms/builder', '/create/pages/builder',
           '/config/perfil-de-acesso', '/config/usuarios', '/config/backup',
           '/config/atualizar', '/config/grupos',
@@ -80,7 +81,7 @@ export const usePermissions = () => {
         });
         setPermissions(allPerms);
         setAllowedPages(new Set([
-          '/', '/tickets', '/create/forms', '/create/pages', '/create/webhooks',
+          '/', '/tickets', '/projetos', '/create/forms', '/create/pages', '/create/webhooks',
           '/create/forms/builder', '/create/pages/builder',
           '/config/perfil-de-acesso', '/config/usuarios', '/config/backup',
           '/config/atualizar', '/config/grupos',
@@ -128,6 +129,7 @@ export const usePermissions = () => {
     if (pagePath === '/tickets' || (pagePath.startsWith('/tickets/') && pagePath !== '/tickets')) {
       return permissions.has('tickets:view') || permissions.has('approve:view') || permissions.has('track:view');
     }
+    if (pagePath === '/projetos') return permissions.has('projects:view');
     if (pagePath === '/historico') return permissions.has('history:view');
     if (pagePath === '/relatorios') return permissions.has('reports:view');
     if (pagePath.startsWith('/agenda/')) return permissions.has('agenda:view');

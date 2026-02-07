@@ -1,9 +1,12 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
+import { Sun, Moon, Monitor } from 'lucide-react';
 import axios from 'axios';
 
 export default function Login() {
+  const { theme, setTheme } = useTheme();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -82,6 +85,22 @@ export default function Login() {
       position: 'relative',
       overflow: 'hidden'
     }}>
+      <div style={{
+        position: 'absolute',
+        top: 'var(--spacing-lg)',
+        right: 'var(--spacing-lg)',
+        display: 'flex',
+        gap: 'var(--spacing-xs)',
+        zIndex: 10,
+        padding: 'var(--spacing-xs)',
+        background: 'var(--bg-tertiary)',
+        borderRadius: 'var(--radius-md)',
+        border: '1px solid var(--border-primary)'
+      }}>
+        <button type="button" onClick={() => setTheme('light')} title="Tema claro" style={{ padding: 'var(--spacing-sm)', border: 'none', borderRadius: 'var(--radius-sm)', background: theme === 'light' ? 'var(--purple-light)' : 'transparent', color: theme === 'light' ? 'var(--purple)' : 'var(--text-tertiary)', cursor: 'pointer' }}><Sun size={18} /></button>
+        <button type="button" onClick={() => setTheme('dark')} title="Tema escuro" style={{ padding: 'var(--spacing-sm)', border: 'none', borderRadius: 'var(--radius-sm)', background: theme === 'dark' ? 'var(--purple-light)' : 'transparent', color: theme === 'dark' ? 'var(--purple)' : 'var(--text-tertiary)', cursor: 'pointer' }}><Moon size={18} /></button>
+        <button type="button" onClick={() => setTheme('system')} title="Padrão do sistema" style={{ padding: 'var(--spacing-sm)', border: 'none', borderRadius: 'var(--radius-sm)', background: theme === 'system' ? 'var(--purple-light)' : 'transparent', color: theme === 'system' ? 'var(--purple)' : 'var(--text-tertiary)', cursor: 'pointer' }}><Monitor size={18} /></button>
+      </div>
       <div style={{
         position: 'absolute',
         top: '-50%',

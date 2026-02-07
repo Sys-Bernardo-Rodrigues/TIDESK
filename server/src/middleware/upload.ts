@@ -99,3 +99,23 @@ export const uploadMessage = multer({
     fileSize: 10 * 1024 * 1024 // 10MB para mensagens
   }
 });
+
+// Diretório de anexos de tarefas de projeto
+const projectTasksUploadsDir = path.join(process.cwd(), 'uploads', 'project-tasks');
+if (!fs.existsSync(projectTasksUploadsDir)) {
+  fs.mkdirSync(projectTasksUploadsDir, { recursive: true });
+}
+
+const projectTasksStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, projectTasksUploadsDir),
+  filename: (_req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const ext = path.extname(file.originalname) || '';
+    cb(null, `${uniqueSuffix}${ext}`);
+  },
+});
+
+export const uploadProjectTaskAttachment = multer({
+  storage: projectTasksStorage,
+  limits: { fileSize: 25 * 1024 * 1024 }, // 25MB
+});

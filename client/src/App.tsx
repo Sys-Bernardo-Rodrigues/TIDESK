@@ -1,4 +1,5 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { ThemeProvider } from './contexts/ThemeContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -22,6 +23,8 @@ import Historico from './pages/Historico';
 import PageBuilder from './pages/PageBuilder';
 import PublicPage from './pages/PublicPage';
 import Webhooks from './pages/Webhooks';
+import Projetos from './pages/Projetos';
+import ProjetoDetail from './pages/ProjetoDetail';
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
 import { RESOURCES, ACTIONS } from './hooks/usePermissions';
@@ -38,9 +41,10 @@ const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
 
 function App() {
   return (
-    <AuthProvider>
-      <Router>
-        <Routes>
+    <ThemeProvider>
+      <AuthProvider>
+        <Router>
+          <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/form/:formId" element={<PublicForm />} />
           <Route path="/page/:slug" element={<PublicPage />} />
@@ -60,6 +64,16 @@ function App() {
             <Route path="tickets" element={
               <ProtectedRoute resource={RESOURCES.TICKETS} action={ACTIONS.VIEW}>
                 <Tickets />
+              </ProtectedRoute>
+            } />
+            <Route path="projetos" element={
+              <ProtectedRoute resource={RESOURCES.PROJECTS} action={ACTIONS.VIEW}>
+                <Projetos />
+              </ProtectedRoute>
+            } />
+            <Route path="projetos/:id" element={
+              <ProtectedRoute resource={RESOURCES.PROJECTS} action={ACTIONS.VIEW}>
+                <ProjetoDetail />
               </ProtectedRoute>
             } />
             <Route path="tickets/:id" element={
@@ -219,9 +233,10 @@ function App() {
               } 
             />
           </Route>
-        </Routes>
-      </Router>
-    </AuthProvider>
+          </Routes>
+        </Router>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
 
