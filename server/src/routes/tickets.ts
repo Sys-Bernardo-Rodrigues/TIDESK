@@ -124,7 +124,37 @@ router.use(authenticate);
 // Listar tickets pendentes de aprovação (ANTES de /:id)
 router.get('/pending-approval', requirePermission(RESOURCES.APPROVE, ACTIONS.VIEW), async (req: AuthRequest, res) => {
   try {
-    // Buscar grupos do usuário atual
+    const isAdmin = req.userRole === 'admin';
+
+    if (isAdmin) {
+      // Administrador vê TODOS os tickets e webhooks pendentes de aprovação (incluindo os sem formulário)
+      const query = `
+        SELECT t.*,
+               u.name as user_name,
+               u.email as user_email,
+               f.name as form_name,
+               f.public_url as form_url,
+               f.linked_user_id,
+               f.linked_group_id,
+               lu.name as linked_user_name,
+               lg.name as linked_group_name,
+               wh.name as webhook_name
+        FROM tickets t
+        LEFT JOIN users u ON t.user_id = u.id
+        LEFT JOIN forms f ON t.form_id = f.id
+        LEFT JOIN users lu ON f.linked_user_id = lu.id
+        LEFT JOIN groups lg ON f.linked_group_id = lg.id
+        LEFT JOIN webhook_logs wl ON wl.ticket_id = t.id
+        LEFT JOIN webhooks wh ON wh.id = wl.webhook_id
+        WHERE t.status = 'pending_approval'
+        ORDER BY t.created_at DESC
+      `;
+      const tickets = await dbAll(query, []);
+      console.log(`[Pending Approval] Admin ${req.userId} - Encontrados ${tickets.length} tickets pendentes (todos)`);
+      return res.json(tickets);
+    }
+
+    // Usuário não-admin: apenas tickets cujo formulário está vinculado ao usuário ou ao grupo
     let userGroupIds: number[] = [];
     const userGroups = await dbAll(`
       SELECT group_id 
@@ -133,8 +163,6 @@ router.get('/pending-approval', requirePermission(RESOURCES.APPROVE, ACTIONS.VIE
     `, [req.userId]);
     userGroupIds = (userGroups as any[]).map(g => g.group_id);
 
-    // Buscar apenas tickets com status pending_approval
-    // Onde o formulário está vinculado ao usuário atual ou a um grupo do qual ele faz parte
     let query = `
       SELECT t.*, 
              u.name as user_name, 
@@ -144,17 +172,19 @@ router.get('/pending-approval', requirePermission(RESOURCES.APPROVE, ACTIONS.VIE
              f.linked_user_id,
              f.linked_group_id,
              lu.name as linked_user_name,
-             lg.name as linked_group_name
+             lg.name as linked_group_name,
+             wh.name as webhook_name
       FROM tickets t
       LEFT JOIN users u ON t.user_id = u.id
       LEFT JOIN forms f ON t.form_id = f.id
       LEFT JOIN users lu ON f.linked_user_id = lu.id
       LEFT JOIN groups lg ON f.linked_group_id = lg.id
+      LEFT JOIN webhook_logs wl ON wl.ticket_id = t.id
+      LEFT JOIN webhooks wh ON wh.id = wl.webhook_id
       WHERE t.status = 'pending_approval'
-        AND f.id IS NOT NULL
         AND (
-          f.linked_user_id = ?
-          ${userGroupIds.length > 0 ? `OR f.linked_group_id IN (${userGroupIds.map(() => '?').join(',')})` : 'OR 1=0'}
+          (f.id IS NOT NULL AND (f.linked_user_id = ? ${userGroupIds.length > 0 ? `OR f.linked_group_id IN (${userGroupIds.map(() => '?').join(',')})` : 'OR 1=0'}))
+          OR (t.form_id IS NULL AND wl.webhook_id IS NOT NULL AND wh.created_by = ?)
         )
       ORDER BY t.created_at DESC
     `;
@@ -163,14 +193,14 @@ router.get('/pending-approval', requirePermission(RESOURCES.APPROVE, ACTIONS.VIE
     if (userGroupIds.length > 0) {
       params.push(...userGroupIds);
     }
+    params.push(req.userId); // wh.created_by = ? para tickets de webhook criados por ele
 
     const tickets = await dbAll(query, params);
 
     console.log(`[Pending Approval] Usuário ${req.userId} - Encontrados ${tickets.length} tickets pendentes de aprovação vinculados ao usuário/grupo`);
     
-    // Log detalhado para debug
     tickets.forEach((ticket: any) => {
-      console.log(`[Pending Approval] Ticket #${ticket.id}: status=${ticket.status}, form_id=${ticket.form_id}, linked_user_id=${ticket.linked_user_id}, linked_group_id=${ticket.linked_group_id}`);
+      console.log(`[Pending Approval] Ticket #${ticket.id}: status=${ticket.status}, form_id=${ticket.form_id}, webhook_name=${ticket.webhook_name}, linked_user_id=${ticket.linked_user_id}, linked_group_id=${ticket.linked_group_id}`);
     });
 
     res.json(tickets);

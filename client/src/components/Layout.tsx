@@ -26,6 +26,7 @@ const MENU_STRUCTURE: { label: string; items: NavItem[] }[] = [
       { path: '/', label: 'Dashboard', icon: Home, permission: '/' },
       { path: '/tickets', label: 'Tickets', icon: Ticket, permission: '/tickets' },
       { path: '/projetos', label: 'Projetos', icon: FolderKanban, permission: '/projetos' },
+      { path: '/docs', label: 'Docs', icon: FileText, permission: '/docs' },
     ],
   },
   {
@@ -68,18 +69,20 @@ const MENU_STRUCTURE: { label: string; items: NavItem[] }[] = [
   },
   {
     label: 'Sistema',
-    items: [{
-      path: '/config',
-      label: 'Configurações',
-      icon: Settings,
-      children: [
-        { path: '/config/perfil-de-acesso', label: 'Perfil de Acesso', icon: Shield, permission: '/config/perfil-de-acesso' },
-        { path: '/config/usuarios', label: 'Usuários', icon: User, permission: '/config/usuarios' },
-        { path: '/config/grupos', label: 'Grupos', icon: Users, permission: '/config/grupos' },
-        { path: '/config/backup', label: 'Backup', icon: Database, permission: '/config/backup' },
-        { path: '/config/atualizar', label: 'Atualizar', icon: RefreshCw, permission: '/config/atualizar' },
-      ],
-    }],
+    items: [
+      {
+        path: '/config',
+        label: 'Configurações',
+        icon: Settings,
+        children: [
+          { path: '/config/perfil-de-acesso', label: 'Perfil de Acesso', icon: Shield, permission: '/config/perfil-de-acesso' },
+          { path: '/config/usuarios', label: 'Usuários', icon: User, permission: '/config/usuarios' },
+          { path: '/config/grupos', label: 'Grupos', icon: Users, permission: '/config/grupos' },
+          { path: '/config/backup', label: 'Backup', icon: Database, permission: '/config/backup' },
+          { path: '/config/atualizar', label: 'Atualizar', icon: RefreshCw, permission: '/config/atualizar' },
+        ],
+      },
+    ],
   },
 ];
 

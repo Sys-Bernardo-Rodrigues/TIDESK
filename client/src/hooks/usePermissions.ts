@@ -55,7 +55,8 @@ export const usePermissions = () => {
 
       if (userIsAdmin) {
         const allPages = new Set<string>([
-          '/', '/tickets', '/projetos', '/create/forms', '/create/pages', '/create/webhooks',
+          '/', '/tickets', '/projetos', '/docs',
+          '/create/forms', '/create/pages', '/create/webhooks',
           '/create/forms/builder', '/create/pages/builder',
           '/config/perfil-de-acesso', '/config/usuarios', '/config/backup',
           '/config/atualizar', '/config/grupos',
@@ -81,7 +82,8 @@ export const usePermissions = () => {
         });
         setPermissions(allPerms);
         setAllowedPages(new Set([
-          '/', '/tickets', '/projetos', '/create/forms', '/create/pages', '/create/webhooks',
+          '/', '/tickets', '/projetos', '/docs',
+          '/create/forms', '/create/pages', '/create/webhooks',
           '/create/forms/builder', '/create/pages/builder',
           '/config/perfil-de-acesso', '/config/usuarios', '/config/backup',
           '/config/atualizar', '/config/grupos',

@@ -66,12 +66,12 @@ export default function Aprovar() {
           ticketId: ticketIdDisplay,
           fullId: getTicketFullId(ticket),
           title: formatTicketTitle(ticket.title),
-          type: ticket.form_id ? 'Formulário' : 'Ticket',
+          type: ticket.webhook_name ? 'Webhook' : ticket.form_id ? 'Formulário' : 'Ticket',
           requester: ticket.user_name || 'Usuário Anônimo',
           date: ticket.created_at,
           status: ticket.status === 'pending_approval' ? 'Pendente' : 'Aprovado',
           priority: ticket.priority === 'high' || ticket.priority === 'urgent' ? 'Alta' : ticket.priority === 'medium' ? 'Média' : 'Baixa',
-          formName: ticket.form_name,
+          formName: ticket.webhook_name || ticket.form_name,
           linkedTo: linkedTo
         };
       });

@@ -25,6 +25,8 @@ import PublicPage from './pages/PublicPage';
 import Webhooks from './pages/Webhooks';
 import Projetos from './pages/Projetos';
 import ProjetoDetail from './pages/ProjetoDetail';
+import Docs from './pages/Docs';
+import DocsRepo from './pages/DocsRepo';
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
 import { RESOURCES, ACTIONS } from './hooks/usePermissions';
@@ -76,6 +78,22 @@ function App() {
                 <ProjetoDetail />
               </ProtectedRoute>
             } />
+            <Route 
+              path="docs" 
+              element={
+                <ProtectedRoute resource={RESOURCES.PAGES} action={ACTIONS.VIEW}>
+                  <Docs />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="docs/:repoId" 
+              element={
+                <ProtectedRoute resource={RESOURCES.PAGES} action={ACTIONS.VIEW}>
+                  <DocsRepo />
+                </ProtectedRoute>
+              } 
+            />
             <Route path="tickets/:id" element={
               <ProtectedRoute 
                 resource={RESOURCES.TICKETS} 
