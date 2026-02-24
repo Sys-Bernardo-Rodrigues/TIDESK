@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Shield, Plus, Search, Edit, Trash2, Users, X, Save, CheckSquare, Square, Home, Ticket, FileEdit, FileText, User, Database, RefreshCw, CheckCircle, Eye, History, FileBarChart, Calendar, CalendarDays, Webhook, FolderKanban } from 'lucide-react';
+import { Shield, Plus, Search, Edit, Trash2, Users, X, Save, CheckSquare, Square, Home, Ticket, FileEdit, FileText, User, Database, RefreshCw, CheckCircle, Eye, History, FileBarChart, Calendar, CalendarDays, Webhook, FolderKanban, BookOpen } from 'lucide-react';
 import { RESOURCES, ACTIONS } from '../hooks/usePermissions';
 import { formatDateBR } from '../utils/dateUtils';
 
@@ -32,7 +32,8 @@ const RESOURCE_LABELS: Record<string, string> = {
   config: 'Configurações',
   agenda: 'Agenda',
   webhooks: 'Webhooks',
-  projects: 'Projetos'
+  projects: 'Projetos',
+  docs: 'Docs'
 };
 
 const ACTION_LABELS: Record<string, string> = {
@@ -49,6 +50,7 @@ const SYSTEM_PAGES = [
   { path: '/', label: 'Dashboard', Icon: Home },
   { path: '/tickets', label: 'Tickets', Icon: Ticket },
   { path: '/projetos', label: 'Projetos', Icon: FolderKanban },
+  { path: '/docs', label: 'Docs', Icon: BookOpen },
   { path: '/create/forms', label: 'Formulários', Icon: FileEdit },
   { path: '/create/pages', label: 'Páginas', Icon: FileText },
   { path: '/create/webhooks', label: 'Webhooks', Icon: Webhook },

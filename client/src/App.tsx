@@ -81,7 +81,7 @@ function App() {
             <Route 
               path="docs" 
               element={
-                <ProtectedRoute resource={RESOURCES.PAGES} action={ACTIONS.VIEW}>
+                <ProtectedRoute resource={RESOURCES.DOCS} action={ACTIONS.VIEW}>
                   <Docs />
                 </ProtectedRoute>
               } 
@@ -89,7 +89,7 @@ function App() {
             <Route 
               path="docs/:repoId" 
               element={
-                <ProtectedRoute resource={RESOURCES.PAGES} action={ACTIONS.VIEW}>
+                <ProtectedRoute resource={RESOURCES.DOCS} action={ACTIONS.VIEW}>
                   <DocsRepo />
                 </ProtectedRoute>
               } 

@@ -163,6 +163,7 @@ export interface CalendarEvent {
   type: 'event' | 'ticket' | 'work';
   color: string | null;
   created_by: number;
+  project_id: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -180,6 +181,7 @@ export interface Shift {
   start_time: string;
   end_time: string;
   created_by: number;
+  project_id: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -808,6 +810,12 @@ const initSQLite = async () => {
   try {
     await dbRun("ALTER TABLE project_tasks ADD COLUMN task_type TEXT DEFAULT 'feature'");
   } catch (_) {}
+  try {
+    await dbRun('ALTER TABLE calendar_events ADD COLUMN project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL');
+  } catch (_) {}
+  try {
+    await dbRun('ALTER TABLE shifts ADD COLUMN project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL');
+  } catch (_) {}
   await dbRun(`
     CREATE TABLE IF NOT EXISTS project_task_subtasks (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1368,6 +1376,13 @@ const initPostgreSQL = async () => {
       FOREIGN KEY (depends_on_task_id) REFERENCES project_tasks(id) ON DELETE CASCADE
     )
   `);
+
+  try {
+    await dbRun('ALTER TABLE calendar_events ADD COLUMN IF NOT EXISTS project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL');
+  } catch (_) {}
+  try {
+    await dbRun('ALTER TABLE shifts ADD COLUMN IF NOT EXISTS project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL');
+  } catch (_) {}
 
   // Tabela de webhooks
   await dbRun(`

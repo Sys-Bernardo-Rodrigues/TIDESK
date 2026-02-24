@@ -383,24 +383,38 @@ router.delete('/:id/users/:userId', authenticate, requireAdmin, async (req: Auth
   }
 });
 
+// Mapeamento: permissão (resource:action) -> página que deve ser liberada
+const PERMISSION_TO_PAGE: Record<string, string> = {
+  'projects:view': '/projetos',
+  'docs:view': '/docs',
+};
+
 // Obter permissões do usuário atual
 router.get('/me/permissions', authenticate, async (req: AuthRequest, res) => {
   try {
     const { getUserPermissions } = await import('../middleware/permissions');
     const permissions = await getUserPermissions(req.userId!);
-    
-    // Buscar páginas permitidas do usuário
-    const pages = await dbAll(`
+    const permSet = Array.from(permissions);
+
+    // Buscar páginas permitidas do usuário (explícitas no perfil)
+    const pagesFromDb = await dbAll(`
       SELECT DISTINCT app.page_path
       FROM access_profile_pages app
       JOIN user_access_profiles uap ON app.access_profile_id = uap.access_profile_id
       WHERE uap.user_id = ?
       ORDER BY app.page_path
     `, [req.userId]);
-    
+
+    const pagesSet = new Set<string>((pagesFromDb as any[]).map((p: any) => p.page_path));
+
+    // Incluir páginas derivadas das permissões (para Projetos e Docs funcionarem pelo recurso)
+    for (const [perm, pagePath] of Object.entries(PERMISSION_TO_PAGE)) {
+      if (permSet.includes(perm)) pagesSet.add(pagePath);
+    }
+
     res.json({
-      permissions: Array.from(permissions),
-      pages: pages.map((p: any) => p.page_path),
+      permissions: permSet,
+      pages: Array.from(pagesSet).sort(),
       userId: req.userId
     });
   } catch (error) {

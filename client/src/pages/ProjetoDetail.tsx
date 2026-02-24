@@ -29,6 +29,16 @@ import React from 'react';
 import { usePermissions, RESOURCES, ACTIONS } from '../hooks/usePermissions';
 import ReactMarkdown from 'react-markdown';
 
+const parseProjectDate = (dateStr: string) => {
+  if (!dateStr) return new Date(NaN);
+  // Datas de projeto vêm geralmente como 'YYYY-MM-DD' (sem timezone) ou ISO completo
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    // Forçar interpretação como horário local para evitar voltar 1 dia no fuso
+    return new Date(`${dateStr}T00:00:00`);
+  }
+  return new Date(dateStr);
+};
+
 function processMentions(str: string): React.ReactNode {
   const parts = str.split(/(@[\wáéíóúãõâêôç]+)/gi);
   return parts.map((part, i) =>
@@ -747,8 +757,8 @@ export default function ProjetoDetail() {
     if (!project || filterSprintId == null || filterSprintId <= 0 || !sprintProgress) return null;
     const sprint = project.sprints?.find((s) => s.id === filterSprintId);
     if (!sprint?.start_date || !sprint?.end_date) return null;
-    const start = new Date(sprint.start_date);
-    const end = new Date(sprint.end_date);
+    const start = parseProjectDate(sprint.start_date);
+    const end = parseProjectDate(sprint.end_date);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     start.setHours(0, 0, 0, 0);
@@ -828,10 +838,22 @@ export default function ProjetoDetail() {
   return (
     <div className="projeto-detail">
       <header className="projeto-detail__header">
-        <Link to="/projetos" className="projeto-detail__back">
-          <ArrowLeft size={18} aria-hidden />
-          Voltar aos projetos
-        </Link>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-md)', marginBottom: 'var(--spacing-sm)' }}>
+          <Link to="/projetos" className="projeto-detail__back">
+            <ArrowLeft size={18} aria-hidden />
+            Voltar aos projetos
+          </Link>
+          {id && (
+            <Link
+              to={`/agenda/calendario-de-servico?project=${id}`}
+              className="btn btn-secondary"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--spacing-xs)', padding: 'var(--spacing-xs) var(--spacing-sm)' }}
+            >
+              <Calendar size={16} aria-hidden />
+              Ver na Agenda
+            </Link>
+          )}
+        </div>
         <div className="projeto-detail__title-row">
           <div>
             <h1 className="projeto-detail__title">{project.name}</h1>
@@ -1341,7 +1363,8 @@ style={{
         const col = project.columns.find((c) => c.id === task.column_id);
         const formatDate = (s: string | null | undefined) => {
           if (!s) return '—';
-          const d = new Date(s);
+          const d = parseProjectDate(s);
+          if (Number.isNaN(d.getTime())) return '—';
           return d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
         };
         return (
@@ -2226,9 +2249,9 @@ style={{
                         <span style={{ fontWeight: '500', color: 'var(--text-primary)' }}>{s.name}</span>
                         {(s.start_date || s.end_date) && (
                           <span style={{ fontSize: '0.8125rem', color: 'var(--text-tertiary)', marginLeft: 'var(--spacing-sm)' }}>
-                            {s.start_date && new Date(s.start_date).toLocaleDateString('pt-BR')}
+                            {s.start_date && parseProjectDate(s.start_date).toLocaleDateString('pt-BR')}
                             {s.start_date && s.end_date && ' – '}
-                            {s.end_date && new Date(s.end_date).toLocaleDateString('pt-BR')}
+                            {s.end_date && parseProjectDate(s.end_date).toLocaleDateString('pt-BR')}
                           </span>
                         )}
                       </div>

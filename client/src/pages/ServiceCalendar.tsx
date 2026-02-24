@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import { 
   Calendar, 
@@ -11,37 +11,48 @@ import {
   Edit, 
   Trash2,
   X,
-  Ticket
+  Ticket,
+  FolderKanban,
+  ListTodo,
+  Flag
 } from 'lucide-react';
 import { usePermissions, RESOURCES, ACTIONS } from '../hooks/usePermissions';
 import { getHolidayName } from '../utils/brazilianHolidays';
 
 interface CalendarEvent {
-  id: number;
+  id: number | string;
   title: string;
-  description: string | null;
+  description?: string | null;
   start_time: string;
   end_time: string;
-  type: 'event' | 'ticket' | 'work';
+  type: 'event' | 'ticket' | 'work' | 'project_task' | 'project_sprint';
   color: string | null;
-  created_by: number;
-  created_by_name: string;
-  user_ids: number[];
-  user_names: string[];
+  created_by?: number;
+  created_by_name?: string;
+  user_ids?: number[];
+  user_names?: string[];
   ticket_number?: number;
   priority?: string;
   assigned_name?: string;
+  project_id?: number | null;
+  project_name?: string | null;
+  task_id?: number;
+  sprint_id?: number;
 }
 
 type ViewMode = 'month' | 'week' | 'day';
 
 export default function ServiceCalendar() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { hasPermission } = usePermissions();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [viewMode, setViewMode] = useState<ViewMode>('month');
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [tickets, setTickets] = useState<CalendarEvent[]>([]);
+  const [projectItems, setProjectItems] = useState<{ tasks: CalendarEvent[]; sprints: CalendarEvent[] }>({ tasks: [], sprints: [] });
+  const [projects, setProjects] = useState<{ id: number; name: string }[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(() => searchParams.get('project'));
   const [loading, setLoading] = useState(true);
   const [showEventModal, setShowEventModal] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
@@ -52,6 +63,7 @@ export default function ServiceCalendar() {
   const canEdit = hasPermission(RESOURCES.AGENDA, ACTIONS.EDIT);
   const canDelete = hasPermission(RESOURCES.AGENDA, ACTIONS.DELETE);
   const canViewUsers = hasPermission(RESOURCES.USERS, ACTIONS.VIEW);
+  const canViewProjects = hasPermission(RESOURCES.PROJECTS, ACTIONS.VIEW);
 
   // Formulário de evento
   const [eventTitle, setEventTitle] = useState('');
@@ -63,6 +75,7 @@ export default function ServiceCalendar() {
   const [eventType, setEventType] = useState<'event' | 'work'>('event');
   const [eventColor, setEventColor] = useState('#8a2be2');
   const [selectedUserIds, setSelectedUserIds] = useState<number[]>([]);
+  const [eventProjectId, setEventProjectId] = useState<number | ''>('');
 
   // Obter início e fim do período atual
   const getPeriodRange = () => {
@@ -102,29 +115,51 @@ export default function ServiceCalendar() {
     }
   };
 
-  // Buscar eventos e tickets (usuários só se tiver users:view)
+  // Sincronizar filtro de projeto com a URL
+  useEffect(() => {
+    const projectFromUrl = searchParams.get('project');
+    if (projectFromUrl !== selectedProjectId) {
+      setSelectedProjectId(projectFromUrl);
+    }
+  }, [searchParams]);
+
+  // Buscar lista de projetos (para filtro e formulário)
+  useEffect(() => {
+    if (canViewProjects) {
+      axios.get('/api/projects').then(res => setProjects(res.data)).catch(() => setProjects([]));
+    }
+  }, [canViewProjects]);
+
+  // Buscar eventos, tickets e itens de projetos
   const fetchData = async () => {
     try {
       setLoading(true);
       const { start, end } = getPeriodRange();
+      const calendarParams = new URLSearchParams({ start, end });
+      if (selectedProjectId) calendarParams.set('project_id', selectedProjectId);
 
+      const promises: Promise<any>[] = [
+        axios.get(`/api/calendar?${calendarParams.toString()}`),
+        axios.get(`/api/calendar/tickets?start=${start}&end=${end}`)
+      ];
       if (canViewUsers) {
-        const [eventsRes, ticketsRes, usersRes] = await Promise.all([
-          axios.get(`/api/calendar?start=${start}&end=${end}`),
-          axios.get(`/api/calendar/tickets?start=${start}&end=${end}`),
-          axios.get('/api/users')
-        ]);
-        setEvents(eventsRes.data);
-        setTickets(ticketsRes.data);
-        setAllUsers(usersRes.data);
+        promises.push(axios.get('/api/users'));
+      }
+      if (canViewProjects) {
+        const projectItemsParams = new URLSearchParams({ start, end });
+        if (selectedProjectId) projectItemsParams.set('project_id', selectedProjectId);
+        promises.push(axios.get(`/api/calendar/project-items?${projectItemsParams.toString()}`));
+      }
+
+      const results = await Promise.all(promises);
+      setEvents(results[0].data);
+      setTickets(results[1].data);
+      if (canViewUsers) setAllUsers(results[2]?.data || []);
+      if (canViewProjects) {
+        const idx = canViewUsers ? 3 : 2;
+        setProjectItems(results[idx]?.data || { tasks: [], sprints: [] });
       } else {
-        const [eventsRes, ticketsRes] = await Promise.all([
-          axios.get(`/api/calendar?start=${start}&end=${end}`),
-          axios.get(`/api/calendar/tickets?start=${start}&end=${end}`)
-        ]);
-        setEvents(eventsRes.data);
-        setTickets(ticketsRes.data);
-        setAllUsers([]);
+        setProjectItems({ tasks: [], sprints: [] });
       }
     } catch (error) {
       console.error('Erro ao buscar dados:', error);
@@ -135,7 +170,7 @@ export default function ServiceCalendar() {
 
   useEffect(() => {
     fetchData();
-  }, [currentDate, viewMode, canViewUsers]);
+  }, [currentDate, viewMode, canViewUsers, canViewProjects, selectedProjectId]);
 
   // Navegação do calendário
   const goToPrevious = () => {
@@ -183,11 +218,16 @@ export default function ServiceCalendar() {
     setEventType('event');
     setEventColor('#8a2be2');
     setSelectedUserIds([]);
+    setEventProjectId(selectedProjectId ? Number(selectedProjectId) : '');
     setShowEventModal(true);
   };
 
-  // Abrir modal para editar evento
+  // Abrir modal para editar evento (apenas eventos editáveis, não task/sprint)
   const openEditModal = (event: CalendarEvent) => {
+    if (event.type === 'project_task' || event.type === 'project_sprint') {
+      if (event.project_id) navigate(`/projetos/${event.project_id}`);
+      return;
+    }
     setSelectedEvent(event);
     setSelectedDate(null);
     
@@ -203,6 +243,7 @@ export default function ServiceCalendar() {
     setEventType(event.type as 'event' | 'work');
     setEventColor(event.color || '#8a2be2');
     setSelectedUserIds(event.user_ids || []);
+    setEventProjectId(event.project_id ?? '');
     setShowEventModal(true);
   };
 
@@ -219,7 +260,8 @@ export default function ServiceCalendar() {
         end_time: endDateTime,
         type: eventType,
         color: eventColor,
-        user_ids: selectedUserIds
+        user_ids: selectedUserIds,
+        project_id: eventProjectId || undefined
       };
       
       if (selectedEvent) {
@@ -259,7 +301,7 @@ export default function ServiceCalendar() {
     const endOfDay = new Date(date);
     endOfDay.setHours(23, 59, 59, 999);
     
-    const allItems = [...events, ...tickets];
+    const allItems: CalendarEvent[] = [...events, ...tickets, ...projectItems.tasks, ...projectItems.sprints];
     
     return allItems.filter(item => {
       if (!item.start_time) return false;
@@ -469,9 +511,11 @@ export default function ServiceCalendar() {
                       e.currentTarget.style.transform = 'translateX(0)';
                       e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.3)';
                     }}
-                    title={event.title}
+                    title={event.project_name ? `${event.title} · ${event.project_name}` : event.title}
                   >
                     {event.type === 'ticket' && <Ticket size={10} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />}
+                    {event.type === 'project_task' && <ListTodo size={10} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />}
+                    {event.type === 'project_sprint' && <Flag size={10} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />}
                     {event.title}
                   </div>
                 ))}
@@ -757,6 +801,8 @@ export default function ServiceCalendar() {
                     <div style={{ flex: 1 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)', marginBottom: 'var(--spacing-xs)' }}>
                         {event.type === 'ticket' && <Ticket size={18} color={event.color || '#8a2be2'} />}
+                        {event.type === 'project_task' && <ListTodo size={18} color={event.color || '#6366f1'} />}
+                        {event.type === 'project_sprint' && <Flag size={18} color={event.color || '#10b981'} />}
                         <h3 style={{
                           fontSize: '1.125rem',
                           fontWeight: '600',
@@ -774,6 +820,26 @@ export default function ServiceCalendar() {
                             color: 'var(--text-secondary)'
                           }}>
                             Ticket #{event.ticket_number || event.id}
+                          </span>
+                        )}
+                        {(event.type === 'project_task' || event.type === 'project_sprint') && event.project_name && (
+                          <span style={{
+                            fontSize: '0.75rem',
+                            padding: '2px 6px',
+                            borderRadius: 'var(--radius-sm)',
+                            backgroundColor: 'var(--bg-secondary)',
+                            color: 'var(--text-secondary)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                          }}>
+                            <FolderKanban size={12} />
+                            {event.project_name}
+                          </span>
+                        )}
+                        {event.project_name && event.type !== 'ticket' && event.type !== 'project_task' && event.type !== 'project_sprint' && (
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
+                            · {event.project_name}
                           </span>
                         )}
                       </div>
@@ -898,7 +964,25 @@ export default function ServiceCalendar() {
           </h2>
         </div>
         
-        <div style={{ display: 'flex', gap: 'var(--spacing-sm)' }}>
+        <div style={{ display: 'flex', gap: 'var(--spacing-sm)', alignItems: 'center', flexWrap: 'wrap' }}>
+          {canViewProjects && projects.length > 0 && (
+            <select
+              className="input"
+              value={selectedProjectId ?? ''}
+              onChange={(e) => {
+                const v = e.target.value || null;
+                setSelectedProjectId(v);
+                if (v) setSearchParams({ project: v });
+                else setSearchParams({});
+              }}
+              style={{ minWidth: '180px', padding: 'var(--spacing-xs) var(--spacing-sm)' }}
+            >
+              <option value="">Todos os projetos</option>
+              {projects.map(p => (
+                <option key={p.id} value={String(p.id)}>{p.name}</option>
+              ))}
+            </select>
+          )}
           <button
             onClick={() => setViewMode('month')}
             className={viewMode === 'month' ? 'btn btn-primary' : 'btn btn-secondary'}
@@ -1104,7 +1188,25 @@ export default function ServiceCalendar() {
                   onChange={(e) => setEventColor(e.target.value)}
                   style={{ width: '100%', height: '40px', borderRadius: 'var(--radius-md)' }}
                 />
-          </div>
+              </div>
+
+              {canViewProjects && projects.length > 0 && (
+                <div>
+                  <label style={{ display: 'block', marginBottom: 'var(--spacing-xs)', fontWeight: '500' }}>
+                    Projeto
+                  </label>
+                  <select
+                    className="input"
+                    value={eventProjectId === '' ? '' : String(eventProjectId)}
+                    onChange={(e) => setEventProjectId(e.target.value === '' ? '' : Number(e.target.value))}
+                  >
+                    <option value="">Nenhum</option>
+                    {projects.map(p => (
+                      <option key={p.id} value={String(p.id)}>{p.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               
               <div>
                 <label style={{ display: 'block', marginBottom: 'var(--spacing-xs)', fontWeight: '500' }}>

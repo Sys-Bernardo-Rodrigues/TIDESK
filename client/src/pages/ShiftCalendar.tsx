@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import { 
   Calendar, 
@@ -11,7 +12,8 @@ import {
   Trash2,
   X,
   FileBarChart,
-  FileText
+  FileText,
+  FolderKanban
 } from 'lucide-react';
 import { usePermissions, RESOURCES, ACTIONS } from '../hooks/usePermissions';
 import { getHolidayName } from '../utils/brazilianHolidays';
@@ -26,6 +28,8 @@ interface Shift {
   created_by_name: string;
   user_ids: number[];
   user_names: string[];
+  project_id?: number | null;
+  project_name?: string | null;
 }
 
 type ViewMode = 'month' | 'week' | 'day';
@@ -52,11 +56,14 @@ interface ReportData {
 }
 
 export default function ShiftCalendar() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const { hasPermission } = usePermissions();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [viewMode, setViewMode] = useState<ViewMode>('month');
   const [tabMode, setTabMode] = useState<TabMode>('calendar');
   const [shifts, setShifts] = useState<Shift[]>([]);
+  const [projects, setProjects] = useState<{ id: number; name: string }[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(() => searchParams.get('project'));
   const [loading, setLoading] = useState(true);
   const [reportLoading, setReportLoading] = useState(false);
   const [reportData, setReportData] = useState<ReportData | null>(null);
@@ -69,6 +76,7 @@ export default function ShiftCalendar() {
   const canEdit = hasPermission(RESOURCES.AGENDA, ACTIONS.EDIT);
   const canDelete = hasPermission(RESOURCES.AGENDA, ACTIONS.DELETE);
   const canViewUsers = hasPermission(RESOURCES.USERS, ACTIONS.VIEW);
+  const canViewProjects = hasPermission(RESOURCES.PROJECTS, ACTIONS.VIEW);
 
   // Formulário de plantão
   const [shiftTitle, setShiftTitle] = useState('');
@@ -77,6 +85,7 @@ export default function ShiftCalendar() {
   const [shiftEndDate, setShiftEndDate] = useState('');
   const [shiftEndTime, setShiftEndTime] = useState('');
   const [selectedUserIds, setSelectedUserIds] = useState<number[]>([]);
+  const [shiftProjectId, setShiftProjectId] = useState<number | ''>('');
 
   // Paleta de cores para usuários (cores vibrantes e distintas)
   const userColors = [
@@ -163,21 +172,34 @@ export default function ShiftCalendar() {
     }
   };
 
+  useEffect(() => {
+    const projectFromUrl = searchParams.get('project');
+    if (projectFromUrl !== selectedProjectId) setSelectedProjectId(projectFromUrl);
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (canViewProjects) {
+      axios.get('/api/projects').then(res => setProjects(res.data)).catch(() => setProjects([]));
+    }
+  }, [canViewProjects]);
+
   // Buscar plantões (usuários só se tiver users:view)
   const fetchData = async () => {
     try {
       setLoading(true);
       const { start, end } = getPeriodRange();
+      const params = new URLSearchParams({ start, end });
+      if (selectedProjectId) params.set('project_id', selectedProjectId);
 
       if (canViewUsers) {
         const [shiftsRes, usersRes] = await Promise.all([
-          axios.get(`/api/shifts?start=${start}&end=${end}`),
+          axios.get(`/api/shifts?${params.toString()}`),
           axios.get('/api/users')
         ]);
         setShifts(shiftsRes.data);
         setAllUsers(usersRes.data);
       } else {
-        const shiftsRes = await axios.get(`/api/shifts?start=${start}&end=${end}`);
+        const shiftsRes = await axios.get(`/api/shifts?${params.toString()}`);
         setShifts(shiftsRes.data);
         setAllUsers([]);
       }
@@ -194,7 +216,7 @@ export default function ShiftCalendar() {
     } else {
       fetchReportData();
     }
-  }, [currentDate, viewMode, tabMode, canViewUsers]);
+  }, [currentDate, viewMode, tabMode, canViewUsers, selectedProjectId]);
 
   // Buscar dados do relatório
   const fetchReportData = async () => {
@@ -603,6 +625,7 @@ export default function ShiftCalendar() {
     setShiftEndDate(dateStr);
     setShiftEndTime(timeStr);
     setSelectedUserIds([]);
+    setShiftProjectId(selectedProjectId ? Number(selectedProjectId) : '');
     setShowShiftModal(true);
   };
 
@@ -620,6 +643,7 @@ export default function ShiftCalendar() {
     setShiftEndDate(end.toISOString().split('T')[0]);
     setShiftEndTime(end.toTimeString().slice(0, 5));
     setSelectedUserIds(shift.user_ids || []);
+    setShiftProjectId(shift.project_id ?? '');
     setShowShiftModal(true);
   };
 
@@ -638,7 +662,8 @@ export default function ShiftCalendar() {
         title: shiftTitle || null,
         start_time: startDateTime,
         end_time: endDateTime,
-        user_ids: selectedUserIds
+        user_ids: selectedUserIds,
+        project_id: shiftProjectId || undefined
       };
       
       if (selectedShift) {
@@ -1197,7 +1222,7 @@ export default function ShiftCalendar() {
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 'var(--spacing-md)' }}>
                     <div style={{ flex: 1 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)', marginBottom: 'var(--spacing-xs)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)', marginBottom: 'var(--spacing-xs)', flexWrap: 'wrap' }}>
                         <h3 style={{
                           fontSize: '1.125rem',
                           fontWeight: '600',
@@ -1206,6 +1231,21 @@ export default function ShiftCalendar() {
                         }}>
                           {shift.title || 'Plantão'}
                         </h3>
+                        {shift.project_name && (
+                          <span style={{
+                            fontSize: '0.75rem',
+                            padding: '2px 6px',
+                            borderRadius: 'var(--radius-sm)',
+                            backgroundColor: 'var(--bg-secondary)',
+                            color: 'var(--text-secondary)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                          }}>
+                            <FolderKanban size={12} />
+                            {shift.project_name}
+                          </span>
+                        )}
                       </div>
                       
                       <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-md)', flexWrap: 'wrap', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
@@ -1623,6 +1663,24 @@ export default function ShiftCalendar() {
           
           {tabMode === 'calendar' && (
             <>
+              {canViewProjects && projects.length > 0 && (
+                <select
+                  className="input"
+                  value={selectedProjectId ?? ''}
+                  onChange={(e) => {
+                    const v = e.target.value || null;
+                    setSelectedProjectId(v);
+                    if (v) setSearchParams({ project: v });
+                    else setSearchParams({});
+                  }}
+                  style={{ minWidth: '180px', padding: 'var(--spacing-xs) var(--spacing-sm)' }}
+                >
+                  <option value="">Todos os projetos</option>
+                  {projects.map(p => (
+                    <option key={p.id} value={String(p.id)}>{p.name}</option>
+                  ))}
+                </select>
+              )}
               <button
                 onClick={() => setViewMode('month')}
                 className={viewMode === 'month' ? 'btn btn-primary' : 'btn btn-secondary'}
@@ -1798,6 +1856,24 @@ export default function ShiftCalendar() {
                   />
                 </div>
               </div>
+
+              {canViewProjects && projects.length > 0 && (
+                <div>
+                  <label style={{ display: 'block', marginBottom: 'var(--spacing-xs)', fontWeight: '500' }}>
+                    Projeto
+                  </label>
+                  <select
+                    className="input"
+                    value={shiftProjectId === '' ? '' : String(shiftProjectId)}
+                    onChange={(e) => setShiftProjectId(e.target.value === '' ? '' : Number(e.target.value))}
+                  >
+                    <option value="">Nenhum</option>
+                    {projects.map(p => (
+                      <option key={p.id} value={String(p.id)}>{p.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               <div>
                 <label style={{ display: 'block', marginBottom: 'var(--spacing-xs)', fontWeight: '500' }}>

@@ -18,11 +18,15 @@ router.get('/', authenticate, requirePermission(RESOURCES.AGENDA, ACTIONS.VIEW),
   try {
     const { start, end } = req.query;
     
+    const projectId = req.query.project_id;
+    
     let query = `
       SELECT DISTINCT ce.*, 
-             u.name as created_by_name
+             u.name as created_by_name,
+             p.name as project_name
       FROM calendar_events ce
       LEFT JOIN users u ON ce.created_by = u.id
+      LEFT JOIN projects p ON ce.project_id = p.id
     `;
     
     const params: any[] = [];
@@ -32,6 +36,11 @@ router.get('/', authenticate, requirePermission(RESOURCES.AGENDA, ACTIONS.VIEW),
     if (start && end) {
       conditions.push('(ce.start_time >= ? AND ce.start_time <= ?) OR (ce.end_time >= ? AND ce.end_time <= ?)');
       params.push(start, end, start, end);
+    }
+    
+    if (projectId) {
+      conditions.push('ce.project_id = ?');
+      params.push(projectId);
     }
     
     // Usuários só veem eventos onde estão vinculados ou que criaram
@@ -69,6 +78,92 @@ router.get('/', authenticate, requirePermission(RESOURCES.AGENDA, ACTIONS.VIEW),
   } catch (error) {
     console.error('Erro ao listar eventos:', error);
     res.status(500).json({ error: 'Erro ao buscar eventos' });
+  }
+});
+
+// Listar itens de projetos (tarefas com due_date e sprints) para exibir na agenda
+router.get('/project-items', authenticate, requirePermission(RESOURCES.AGENDA, ACTIONS.VIEW), requirePermission(RESOURCES.PROJECTS, ACTIONS.VIEW), async (req: AuthRequest, res: Response) => {
+  try {
+    const { start, end, project_id } = req.query;
+    if (!start || !end) {
+      return res.status(400).json({ error: 'Parâmetros start e end são obrigatórios' });
+    }
+    const startStr = start as string;
+    const endStr = end as string;
+
+    const tasks: any[] = [];
+    const sprints: any[] = [];
+
+    // Tarefas com due_date no período
+    let taskQuery = `
+      SELECT pt.id, pt.project_id, pt.title, pt.due_date, pt.priority, p.name as project_name
+      FROM project_tasks pt
+      JOIN projects p ON pt.project_id = p.id
+      WHERE pt.due_date IS NOT NULL
+        AND (pt.due_date >= ? AND pt.due_date <= ?)
+    `;
+    const taskParams: any[] = [startStr.slice(0, 10), endStr.slice(0, 10)];
+    if (project_id) {
+      taskQuery += ' AND pt.project_id = ?';
+      taskParams.push(project_id);
+    }
+    taskQuery += ' ORDER BY pt.due_date ASC';
+    const taskRows = await dbAll(taskQuery, taskParams);
+    for (const row of taskRows as any[]) {
+      const d = row.due_date ? String(row.due_date).slice(0, 10) : '';
+      tasks.push({
+        id: `task-${row.id}`,
+        task_id: row.id,
+        title: row.title,
+        start_time: d + 'T09:00:00',
+        end_time: d + 'T09:00:00',
+        type: 'project_task',
+        priority: row.priority,
+        project_id: row.project_id,
+        project_name: row.project_name,
+        color: '#6366f1'
+        });
+    }
+
+    // Sprints que se sobrepõem ao período
+    let sprintQuery = `
+      SELECT ps.id, ps.project_id, ps.name, ps.start_date, ps.end_date, p.name as project_name
+      FROM project_sprints ps
+      JOIN projects p ON ps.project_id = p.id
+      WHERE ps.start_date IS NOT NULL AND ps.end_date IS NOT NULL
+        AND (
+          (ps.start_date <= ? AND ps.end_date >= ?)
+          OR (ps.start_date >= ? AND ps.start_date <= ?)
+          OR (ps.end_date >= ? AND ps.end_date <= ?)
+        )
+    `;
+    const sprintParams: any[] = [endStr.slice(0, 10), startStr.slice(0, 10), startStr.slice(0, 10), endStr.slice(0, 10), startStr.slice(0, 10), endStr.slice(0, 10)];
+    if (project_id) {
+      sprintQuery += ' AND ps.project_id = ?';
+      sprintParams.push(project_id);
+    }
+    sprintQuery += ' ORDER BY ps.start_date ASC';
+    const sprintRows = await dbAll(sprintQuery, sprintParams);
+    for (const row of sprintRows as any[]) {
+      const startDate = String(row.start_date).slice(0, 10);
+      const endDate = String(row.end_date).slice(0, 10);
+      sprints.push({
+        id: `sprint-${row.id}`,
+        sprint_id: row.id,
+        title: row.name,
+        start_time: startDate + 'T00:00:00',
+        end_time: endDate + 'T23:59:59',
+        type: 'project_sprint',
+        project_id: row.project_id,
+        project_name: row.project_name,
+        color: '#10b981'
+      });
+    }
+
+    res.json({ tasks, sprints });
+  } catch (error) {
+    console.error('Erro ao listar itens de projetos:', error);
+    res.status(500).json({ error: 'Erro ao buscar itens de projetos' });
   }
 });
 
@@ -143,12 +238,12 @@ router.post('/', authenticate, requirePermission(RESOURCES.AGENDA, ACTIONS.CREAT
       return res.status(400).json({ errors: errors.array() });
     }
     
-    const { title, description, start_time, end_time, type, color, user_ids } = req.body;
+    const { title, description, start_time, end_time, type, color, user_ids, project_id } = req.body;
     
     // Criar evento
     const result = await dbRun(
-      `INSERT INTO calendar_events (title, description, start_time, end_time, type, color, created_by, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO calendar_events (title, description, start_time, end_time, type, color, created_by, project_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         title,
         description || null,
@@ -157,6 +252,7 @@ router.post('/', authenticate, requirePermission(RESOURCES.AGENDA, ACTIONS.CREAT
         type || 'event',
         color || null,
         req.userId,
+        project_id || null,
         getBrasiliaTimestamp(),
         getBrasiliaTimestamp()
       ]
@@ -222,7 +318,7 @@ router.put('/:id', authenticate, requirePermission(RESOURCES.AGENDA, ACTIONS.EDI
     }
     
     const eventId = parseInt(req.params.id);
-    const { title, description, start_time, end_time, type, color, user_ids } = req.body;
+    const { title, description, start_time, end_time, type, color, user_ids, project_id } = req.body;
     
     // Verificar se o evento existe e se o usuário tem permissão
     const event = await dbGet('SELECT * FROM calendar_events WHERE id = ?', [eventId]);
@@ -262,6 +358,10 @@ router.put('/:id', authenticate, requirePermission(RESOURCES.AGENDA, ACTIONS.EDI
     if (color !== undefined) {
       updateFields.push('color = ?');
       updateParams.push(color);
+    }
+    if (project_id !== undefined) {
+      updateFields.push('project_id = ?');
+      updateParams.push(project_id);
     }
     
     updateFields.push('updated_at = ?');

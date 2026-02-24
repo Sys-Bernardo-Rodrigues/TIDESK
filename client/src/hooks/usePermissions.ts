@@ -15,7 +15,8 @@ export const RESOURCES = {
   CONFIG: 'config',
   AGENDA: 'agenda',
   WEBHOOKS: 'webhooks',
-  PROJECTS: 'projects'
+  PROJECTS: 'projects',
+  DOCS: 'docs'
 } as const;
 
 export const ACTIONS = {
@@ -131,7 +132,8 @@ export const usePermissions = () => {
     if (pagePath === '/tickets' || (pagePath.startsWith('/tickets/') && pagePath !== '/tickets')) {
       return permissions.has('tickets:view') || permissions.has('approve:view') || permissions.has('track:view');
     }
-    if (pagePath === '/projetos') return permissions.has('projects:view');
+    if (pagePath === '/projetos' || pagePath.startsWith('/projetos/')) return permissions.has('projects:view');
+    if (pagePath === '/docs' || pagePath.startsWith('/docs/')) return permissions.has('docs:view');
     if (pagePath === '/historico') return permissions.has('history:view');
     if (pagePath === '/relatorios') return permissions.has('reports:view');
     if (pagePath.startsWith('/agenda/')) return permissions.has('agenda:view');
