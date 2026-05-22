@@ -26,7 +26,7 @@ const MENU_STRUCTURE: { label: string; items: NavItem[] }[] = [
       { path: '/', label: 'Dashboard', icon: Home, permission: '/' },
       { path: '/tickets', label: 'Tickets', icon: Ticket, permission: '/tickets' },
       { path: '/projetos', label: 'Projetos', icon: FolderKanban, permission: '/projetos' },
-      { path: '/docs', label: 'Docs', icon: FileText, permission: '/docs' },
+      { path: '/docs', label: 'Arquivos', icon: FileText, permission: '/docs' },
     ],
   },
   {

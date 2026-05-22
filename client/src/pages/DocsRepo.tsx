@@ -1,238 +1,428 @@
-import { useState, useEffect } from 'react';
-import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import axios from 'axios';
 import {
+  HardDrive,
+  Folder,
+  File,
   FileText,
-  FolderGit2,
-  Lock,
-  Link as LinkIcon,
-  KeyRound,
-  Video,
+  StickyNote,
   Search,
   Plus,
   X,
   ArrowLeft,
-  ExternalLink,
-  Copy,
-  Eye,
-  EyeOff,
-  Pencil,
+  Upload,
+  Download,
   Trash2,
-  ChevronLeft,
+  Pencil,
+  Share2,
+  Users,
+  Lock,
+  FolderPlus,
   ChevronRight,
+  Home,
+  Eye,
+  FileType,
 } from 'lucide-react';
-import {
-  getRepoById,
-  getItemsByRepo,
-  DOC_TYPE_LABEL,
-  DOC_TYPE_ICON,
-  type DocRepo,
-  type DocItem,
-  type DocType,
+import type {
+  DocRepository,
+  DocEntry,
+  DocRepositoryShare,
+  DocVisibility,
 } from './docs/docsData';
+import { formatDate, formatFileSize, isPdfEntry } from './docs/docsData';
+import DocsUserAccessPicker, {
+  type AccessMember,
+  type UserOption,
+} from './docs/DocsUserAccessPicker';
+import { useAuth } from '../contexts/AuthContext';
 
-const PAGE_SIZE = 8;
+type BreadcrumbItem = { id: number | null; name: string };
 
-function formatDate(s: string): string {
-  try {
-    return new Date(s).toLocaleDateString('pt-BR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-    });
-  } catch {
-    return s;
-  }
+function sharedToMembers(shared: DocRepositoryShare[]): AccessMember[] {
+  return shared.map((s) => ({
+    user_id: s.user_id,
+    name: s.user_name,
+    email: s.user_email,
+    permission: s.permission,
+  }));
 }
 
 export default function DocsRepo() {
   const { repoId } = useParams<{ repoId: string }>();
   const navigate = useNavigate();
-  const location = useLocation();
-  const [repo, setRepo] = useState<DocRepo | null>(null);
-  const [items, setItems] = useState<DocItem[]>([]);
+  const { user } = useAuth();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [repo, setRepo] = useState<DocRepository | null>(null);
+  const [entries, setEntries] = useState<DocEntry[]>([]);
+  const [breadcrumb, setBreadcrumb] = useState<BreadcrumbItem[]>([{ id: null, name: 'Raiz' }]);
   const [search, setSearch] = useState('');
-  const [tipoFiltro, setTipoFiltro] = useState<DocType | 'todos'>('todos');
-  const [showDocModal, setShowDocModal] = useState(false);
-  const [formTipo, setFormTipo] = useState<DocType>('documento');
-  const [formTitulo, setFormTitulo] = useState('');
-  const [formDescricao, setFormDescricao] = useState('');
-  const [formUrl, setFormUrl] = useState('');
-  const [formConteudo, setFormConteudo] = useState('');
-  const [formTags, setFormTags] = useState('');
-  const [formUsuario, setFormUsuario] = useState('');
-  const [selectedItem, setSelectedItem] = useState<DocItem | null>(null);
-  const [showPassword, setShowPassword] = useState(false);
-  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+
+  const [showFolderModal, setShowFolderModal] = useState(false);
+  const [folderName, setFolderName] = useState('');
+
+  const [showNoteModal, setShowNoteModal] = useState(false);
+  const [viewingNote, setViewingNote] = useState<DocEntry | null>(null);
+  const [noteName, setNoteName] = useState('');
+  const [noteContent, setNoteContent] = useState('');
+  const [editingNote, setEditingNote] = useState<DocEntry | null>(null);
+
   const [showEditRepoModal, setShowEditRepoModal] = useState(false);
   const [editRepoName, setEditRepoName] = useState('');
   const [editRepoDesc, setEditRepoDesc] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
+  const [editRepoVisibility, setEditRepoVisibility] = useState<DocVisibility>('private');
+
+  const [showAccessModal, setShowAccessModal] = useState(false);
+  const [accessMembers, setAccessMembers] = useState<AccessMember[]>([]);
+  const [allUsers, setAllUsers] = useState<UserOption[]>([]);
+  const [savingAccess, setSavingAccess] = useState(false);
+  const [pdfPreview, setPdfPreview] = useState<{ entry: DocEntry; url: string } | null>(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
+
+  const currentFolderId = breadcrumb[breadcrumb.length - 1]?.id ?? null;
+  const canEdit = repo?.access === 'owner' || repo?.access === 'edit';
+  const isOwner = repo?.access === 'owner';
+
+  const loadRepo = async () => {
+    const res = await axios.get<DocRepository>(`/api/docs/repositories/${repoId}`);
+    setRepo(res.data);
+  };
+
+  const loadEntries = async (parentId: number | null) => {
+    const params = parentId != null ? { parent_id: parentId } : {};
+    const res = await axios.get<DocEntry[]>(`/api/docs/repositories/${repoId}/entries`, { params });
+    setEntries(res.data);
+  };
+
+  const refresh = async (parentId: number | null) => {
+    await Promise.all([loadRepo(), loadEntries(parentId)]);
+  };
 
   useEffect(() => {
     if (!repoId) return;
-    const fromState = (location.state as { repo?: DocRepo })?.repo;
-    if (fromState && fromState.id === repoId) {
-      setRepo(fromState);
-    } else {
-      setRepo(getRepoById(repoId) || null);
-    }
-    setItems(getItemsByRepo(repoId));
-  }, [repoId, location.state]);
+    setLoading(true);
+    refresh(null)
+      .catch(() => setRepo(null))
+      .finally(() => setLoading(false));
+  }, [repoId]);
 
-  const filteredItems = items.filter((item) => {
-    const matchTipo = tipoFiltro === 'todos' || item.tipo === tipoFiltro;
+  useEffect(() => {
+    if (!repoId || loading) return;
+    loadEntries(currentFolderId).catch(() => setEntries([]));
+  }, [currentFolderId, repoId, loading]);
+
+  const filteredEntries = entries.filter((e) => {
     const term = search.trim().toLowerCase();
-    if (!term) return matchTipo;
+    if (!term) return true;
     return (
-      matchTipo &&
-      (item.titulo.toLowerCase().includes(term) ||
-        (item.descricao ?? '').toLowerCase().includes(term) ||
-        item.tags.some((t) => t.toLowerCase().includes(term)))
+      e.name.toLowerCase().includes(term) ||
+      (e.description ?? '').toLowerCase().includes(term) ||
+      e.tags.some((t) => t.toLowerCase().includes(term))
     );
   });
 
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [search, tipoFiltro]);
-
-  const totalItemPages = Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE));
-  const paginatedItems = filteredItems.slice(
-    (currentPage - 1) * PAGE_SIZE,
-    currentPage * PAGE_SIZE
-  );
-
   const handleBack = () => navigate('/docs');
 
-  const handleNewDoc = () => {
-    setEditingItemId(null);
-    setFormTipo('documento');
-    setFormTitulo('');
-    setFormDescricao('');
-    setFormUrl('');
-    setFormConteudo('');
-    setFormTags('');
-    setFormUsuario('');
-    setShowDocModal(true);
+  const openFolder = (entry: DocEntry) => {
+    setBreadcrumb((prev) => [...prev, { id: entry.id, name: entry.name }]);
+    setSearch('');
   };
 
-  const startEditItem = (item: DocItem) => {
-    setEditingItemId(item.id);
-    setFormTipo(item.tipo);
-    setFormTitulo(item.titulo);
-    setFormDescricao(item.descricao || '');
-    setFormUrl(item.url || '');
-    setFormConteudo(item.conteudoSensivel || '');
-    setFormTags(item.tags.join(', '));
-    setFormUsuario(item.usuario || '');
-    setSelectedItem(null);
-    setShowDocModal(true);
+  const goToBreadcrumb = (index: number) => {
+    setBreadcrumb((prev) => prev.slice(0, index + 1));
+    setSearch('');
   };
 
-  const handleSaveDoc = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!repoId) return;
-    const now = new Date().toISOString();
-    const tags = formTags ? formTags.split(',').map((t) => t.trim()).filter(Boolean) : [];
-    if (editingItemId) {
-      setItems((prev) =>
-        prev.map((i) =>
-          i.id === editingItemId
-            ? {
-                ...i,
-                tipo: formTipo,
-                titulo: formTitulo,
-                descricao: formDescricao || undefined,
-                tags,
-                url: formTipo === 'link' || formTipo === 'video' ? formUrl || undefined : undefined,
-                usuario: formTipo === 'credencial' ? formUsuario || undefined : undefined,
-                conteudoSensivel: formConteudo || undefined,
-                atualizadoEm: now,
-              }
-            : i
-        )
-      );
-    } else {
-      const newItem: DocItem = {
-        id: `i${Date.now()}`,
-        repoId,
-        tipo: formTipo,
-        titulo: formTitulo,
-        descricao: formDescricao || undefined,
-        tags,
-        url: formTipo === 'link' || formTipo === 'video' ? formUrl || undefined : undefined,
-        usuario: formTipo === 'credencial' ? formUsuario || undefined : undefined,
-        conteudoSensivel: formConteudo || undefined,
-        criadoEm: now,
-        atualizadoEm: now,
-      };
-      setItems((prev) => [...prev, newItem]);
+  const handleUpload = async (files: FileList | null) => {
+    if (!files?.length || !canEdit) return;
+    setUploading(true);
+    try {
+      for (const file of Array.from(files)) {
+        const form = new FormData();
+        form.append('file', file);
+        if (currentFolderId != null) form.append('parent_id', String(currentFolderId));
+        await axios.post(`/api/docs/repositories/${repoId}/upload`, form, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+      }
+      await refresh(currentFolderId);
+    } catch (err: unknown) {
+      const msg = axios.isAxiosError(err) ? err.response?.data?.error : 'Erro no upload';
+      alert(msg || 'Erro ao enviar arquivo');
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
-    setShowDocModal(false);
-    setEditingItemId(null);
   };
 
-  const closeModal = () => {
-    setShowDocModal(false);
-    setEditingItemId(null);
+  const handleCreateFolder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!folderName.trim()) return;
+    try {
+      await axios.post(`/api/docs/repositories/${repoId}/folders`, {
+        name: folderName.trim(),
+        parent_id: currentFolderId,
+      });
+      setShowFolderModal(false);
+      setFolderName('');
+      await refresh(currentFolderId);
+    } catch (err: unknown) {
+      const msg = axios.isAxiosError(err) ? err.response?.data?.error : 'Erro';
+      alert(msg || 'Erro ao criar pasta');
+    }
   };
 
-  const handleDeleteItem = (item: DocItem) => {
-    if (!window.confirm(`Excluir "${item.titulo}"?`)) return;
-    setItems((prev) => prev.filter((i) => i.id !== item.id));
-    setSelectedItem(null);
+  const handleSaveNote = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!noteName.trim()) return;
+    try {
+      if (editingNote) {
+        await axios.put(`/api/docs/entries/${editingNote.id}`, {
+          name: noteName.trim(),
+          content: noteContent,
+        });
+      } else {
+        await axios.post(`/api/docs/repositories/${repoId}/notes`, {
+          name: noteName.trim(),
+          content: noteContent,
+          parent_id: currentFolderId,
+        });
+      }
+      closeNoteModal();
+      await refresh(currentFolderId);
+    } catch (err: unknown) {
+      const msg = axios.isAxiosError(err) ? err.response?.data?.error : 'Erro';
+      alert(msg || 'Erro ao salvar nota');
+    }
   };
 
-  const openEditRepoModal = () => {
-    setEditRepoName(repo!.name);
-    setEditRepoDesc(repo!.description || '');
+  const fetchFileBlob = async (entry: DocEntry) => {
+    const res = await axios.get(`/api/docs/entries/${entry.id}/download`, {
+      responseType: 'blob',
+    });
+    const blob =
+      res.data instanceof Blob
+        ? res.data
+        : new Blob([res.data], { type: entry.mime_type || 'application/octet-stream' });
+    return blob;
+  };
+
+  const handleDownload = async (entry: DocEntry) => {
+    try {
+      const blob = await fetchFileBlob(entry);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = entry.name;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      alert('Erro ao baixar arquivo');
+    }
+  };
+
+  const closePdfPreview = useCallback(() => {
+    setPdfPreview((prev) => {
+      if (prev?.url) window.URL.revokeObjectURL(prev.url);
+      return null;
+    });
+    setPdfLoading(false);
+  }, []);
+
+  const openPdfPreview = async (entry: DocEntry) => {
+    setPdfPreview((prev) => {
+      if (prev?.url) window.URL.revokeObjectURL(prev.url);
+      return { entry, url: '' };
+    });
+    setPdfLoading(true);
+    try {
+      const blob = await fetchFileBlob(entry);
+      const pdfBlob = blob.type === 'application/pdf' ? blob : new Blob([blob], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(pdfBlob);
+      setPdfPreview({ entry, url });
+    } catch {
+      closePdfPreview();
+      alert('Não foi possível abrir o PDF.');
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
+  const handleOpenFile = (entry: DocEntry) => {
+    if (isPdfEntry(entry)) openPdfPreview(entry);
+    else handleDownload(entry);
+  };
+
+  const openViewNote = (entry: DocEntry) => setViewingNote(entry);
+  const closeViewNote = () => setViewingNote(null);
+
+  const closeNoteModal = () => {
+    setShowNoteModal(false);
+    setEditingNote(null);
+    setNoteName('');
+    setNoteContent('');
+  };
+
+  const openNewNoteModal = () => {
+    setEditingNote(null);
+    setNoteName('');
+    setNoteContent('');
+    setShowNoteModal(true);
+  };
+
+  const handleOpenEntry = (entry: DocEntry) => {
+    if (entry.entry_type === 'folder') openFolder(entry);
+    else if (entry.entry_type === 'note') openViewNote(entry);
+    else if (entry.entry_type === 'file') handleOpenFile(entry);
+  };
+
+  const openEditNoteFromView = () => {
+    if (!viewingNote) return;
+    const entry = viewingNote;
+    closeViewNote();
+    openEditNote(entry);
+  };
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (pdfPreview) closePdfPreview();
+      else if (viewingNote) closeViewNote();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [pdfPreview, viewingNote, closePdfPreview]);
+
+  const handleDeleteEntry = async (entry: DocEntry) => {
+    if (!window.confirm(`Excluir "${entry.name}"?`)) return;
+    try {
+      await axios.delete(`/api/docs/entries/${entry.id}`);
+      await refresh(currentFolderId);
+    } catch (err: unknown) {
+      const msg = axios.isAxiosError(err) ? err.response?.data?.error : 'Erro';
+      alert(msg || 'Erro ao excluir');
+    }
+  };
+
+  const handleDeleteRepo = async () => {
+    if (!repo || !window.confirm(`Excluir "${repo.name}" e todo o conteúdo?`)) return;
+    try {
+      await axios.delete(`/api/docs/repositories/${repo.id}`);
+      navigate('/docs');
+    } catch (err: unknown) {
+      const msg = axios.isAxiosError(err) ? err.response?.data?.error : 'Erro';
+      alert(msg || 'Erro ao excluir repositório');
+    }
+  };
+
+  const loadUsersForAccess = async () => {
+    try {
+      const res = await axios.get<UserOption[]>('/api/docs/share-users');
+      setAllUsers(res.data);
+    } catch {
+      setAllUsers([]);
+    }
+  };
+
+  const openAccessModal = async () => {
+    setAccessMembers(sharedToMembers(repo?.shared_with ?? []));
+    await loadUsersForAccess();
+    setShowAccessModal(true);
+  };
+
+  const openEditRepoModal = async () => {
+    if (!repo) return;
+    setEditRepoName(repo.name);
+    setEditRepoDesc(repo.description);
+    setEditRepoVisibility(repo.visibility);
+    setAccessMembers(sharedToMembers(repo.shared_with ?? []));
+    if (isOwner) await loadUsersForAccess();
     setShowEditRepoModal(true);
   };
 
-  const handleSaveEditRepo = (e: React.FormEvent) => {
+  const handleSaveEditRepo = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!repo) return;
-    setRepo({
-      ...repo,
-      name: editRepoName.trim(),
-      description: editRepoDesc.trim(),
-      updatedAt: new Date().toISOString(),
-    });
-    setShowEditRepoModal(false);
+    try {
+      const payload: Record<string, unknown> = {
+        name: editRepoName.trim(),
+        description: editRepoDesc.trim(),
+        visibility: editRepoVisibility,
+      };
+      if (isOwner && editRepoVisibility === 'private') {
+        payload.members = accessMembers.map((m) => ({
+          user_id: m.user_id,
+          permission: m.permission,
+        }));
+      } else if (isOwner && editRepoVisibility === 'team') {
+        payload.members = [];
+      }
+      const res = await axios.put<DocRepository>(`/api/docs/repositories/${repo.id}`, payload);
+      setRepo(res.data);
+      setShowEditRepoModal(false);
+    } catch (err: unknown) {
+      const msg = axios.isAxiosError(err) ? err.response?.data?.error : 'Erro';
+      alert(msg || 'Erro ao salvar');
+    }
   };
 
-  const handleDeleteRepo = () => {
-    if (!repo) return;
-    if (!window.confirm(`Excluir o repositório "${repo.name}"? Todos os itens serão removidos.`)) return;
-    navigate('/docs', { state: { deleteRepoId: repo.id } });
+  const handleSaveAccess = async () => {
+    if (!repoId) return;
+    setSavingAccess(true);
+    try {
+      const res = await axios.put<{ shared_with: DocRepositoryShare[] }>(
+        `/api/docs/repositories/${repoId}/access`,
+        {
+          members: accessMembers.map((m) => ({
+            user_id: m.user_id,
+            permission: m.permission,
+          })),
+        }
+      );
+      setRepo((prev) => (prev ? { ...prev, shared_with: res.data.shared_with } : prev));
+      setShowAccessModal(false);
+    } catch (err: unknown) {
+      const msg = axios.isAxiosError(err) ? err.response?.data?.error : 'Erro';
+      alert(msg || 'Erro ao salvar acessos');
+    } finally {
+      setSavingAccess(false);
+    }
   };
 
-  const handleOpenItem = (item: DocItem) => {
-    setSelectedItem(item);
-    setShowPassword(false);
+  const openEditNote = (entry: DocEntry) => {
+    setEditingNote(entry);
+    setNoteName(entry.name);
+    setNoteContent(entry.content || '');
+    setShowNoteModal(true);
   };
 
-  const closeDetailModal = () => setSelectedItem(null);
+  const entryIcon = (entry: DocEntry) => {
+    if (entry.entry_type === 'folder') return Folder;
+    if (entry.entry_type === 'note') return StickyNote;
+    if (isPdfEntry(entry)) return FileType;
+    return File;
+  };
 
-  const copyToClipboard = (text: string, label?: string) => {
-    navigator.clipboard.writeText(text).then(
-      () => alert(label ? `${label} copiado!` : 'Copiado para a área de transferência.'),
-      () => alert('Não foi possível copiar.')
+  if (loading) {
+    return (
+      <div className="docs-page">
+        <p className="docs-empty__text">Carregando...</p>
+      </div>
     );
-  };
-
-  const openUrl = (url: string) => {
-    window.open(url, '_blank', 'noopener,noreferrer');
-  };
+  }
 
   if (!repo) {
     return (
       <div className="docs-page">
         <button type="button" className="btn btn-secondary" onClick={handleBack}>
           <ArrowLeft size={16} />
-          Voltar aos repositórios
+          Voltar
         </button>
         <p style={{ marginTop: 'var(--spacing-lg)', color: 'var(--text-secondary)' }}>
-          Repositório não encontrado.
+          Repositório não encontrado ou sem acesso.
         </p>
       </div>
     );
@@ -243,45 +433,86 @@ export default function DocsRepo() {
       <div className="docs-repo-top">
         <button type="button" className="btn btn-secondary docs-back-btn" onClick={handleBack}>
           <ArrowLeft size={18} />
-          Voltar para Docs
+          Voltar para Arquivos
         </button>
       </div>
+
       <nav className="docs-breadcrumb">
         <button type="button" className="docs-breadcrumb__link" onClick={handleBack}>
-          Docs
+          Arquivos
         </button>
         <span className="docs-breadcrumb__sep">/</span>
-        <span className="docs-breadcrumb__current">{repo.name}</span>
+        <button
+          type="button"
+          className="docs-breadcrumb__link"
+          onClick={() => goToBreadcrumb(0)}
+        >
+          {repo.name}
+        </button>
+        {breadcrumb.slice(1).map((crumb, i) => (
+          <span key={crumb.id ?? i}>
+            <span className="docs-breadcrumb__sep">/</span>
+            <button
+              type="button"
+              className={
+                i === breadcrumb.length - 2
+                  ? 'docs-breadcrumb__current'
+                  : 'docs-breadcrumb__link'
+              }
+              onClick={() => goToBreadcrumb(i + 1)}
+            >
+              {crumb.name}
+            </button>
+          </span>
+        ))}
       </nav>
 
       <header className="docs-repo-header">
         <div className="docs-repo-header__icon">
-          <FolderGit2 size={28} />
+          <HardDrive size={28} />
         </div>
         <div className="docs-repo-header__text">
           <h1 className="docs-repo-header__title">{repo.name}</h1>
           <p className="docs-repo-header__desc">{repo.description || 'Sem descrição'}</p>
           <div className="docs-repo-header__meta">
             <span>
-              <FileText size={14} />
-              {items.length} {items.length === 1 ? 'item' : 'itens'}
+              {repo.visibility === 'team' ? <Users size={14} /> : <Lock size={14} />}
+              {repo.visibility === 'team' ? 'Equipe' : 'Privado'}
             </span>
-            <span>Atualizado em {formatDate(repo.updatedAt)}</span>
+            <span>
+              <FileText size={14} />
+              {repo.item_count} itens no total
+            </span>
+            <span>Por {repo.owner_name}</span>
+            {repo.visibility === 'private' && isOwner && (
+              <span>
+                <Users size={14} />
+                {(repo.shared_with?.length ?? 0) === 0
+                  ? 'Só você'
+                  : `${repo.shared_with!.length} usuário(s) com acesso`}
+              </span>
+            )}
           </div>
         </div>
         <div className="docs-repo-header__actions">
-          <button type="button" className="btn btn-secondary" onClick={openEditRepoModal}>
-            <Pencil size={16} />
-            Editar repositório
-          </button>
-          <button type="button" className="btn btn-danger" onClick={handleDeleteRepo}>
-            <Trash2 size={16} />
-            Excluir repositório
-          </button>
-          <button type="button" className="btn btn-primary" onClick={handleNewDoc}>
-            <Plus size={18} />
-            Novo documento
-          </button>
+          {isOwner && repo.visibility === 'private' && (
+            <button type="button" className="btn btn-secondary" onClick={openAccessModal}>
+              <Share2 size={16} />
+              Gerenciar acesso
+            </button>
+          )}
+          {canEdit && (
+            <button type="button" className="btn btn-secondary" onClick={openEditRepoModal}>
+              <Pencil size={16} />
+              Editar
+            </button>
+          )}
+          {isOwner && (
+            <button type="button" className="btn btn-danger" onClick={handleDeleteRepo}>
+              <Trash2 size={16} />
+              Excluir
+            </button>
+          )}
         </div>
       </header>
 
@@ -290,265 +521,215 @@ export default function DocsRepo() {
           <Search size={18} className="docs-search__icon" />
           <input
             type="text"
-            placeholder="Buscar neste repositório..."
+            placeholder="Buscar nesta pasta..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="docs-search__input"
           />
         </div>
-        <div className="docs-filters">
-          {(['todos', 'documento', 'link', 'video', 'credencial'] as const).map((tipo) => {
-            const isTodos = tipo === 'todos';
-            const isActive = tipoFiltro === tipo;
-            const Icon = isTodos ? null : DOC_TYPE_ICON[tipo];
-            return (
-              <button
-                key={tipo}
-                type="button"
-                className={`docs-filter-btn ${isActive ? 'docs-filter-btn--active' : ''}`}
-                onClick={() => setTipoFiltro(tipo)}
-              >
-                {Icon && <Icon size={14} />}
-                {isTodos ? 'Todos' : DOC_TYPE_LABEL[tipo]}
-              </button>
-            );
-          })}
-        </div>
+        {canEdit && (
+          <div className="docs-toolbar-actions">
+            <button type="button" className="btn btn-secondary" onClick={() => setShowFolderModal(true)}>
+              <FolderPlus size={18} />
+              Nova pasta
+            </button>
+            <button type="button" className="btn btn-secondary" onClick={openNewNoteModal}>
+              <StickyNote size={18} />
+              Nova nota
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={uploading}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <Upload size={18} />
+              {uploading ? 'Enviando...' : 'Enviar arquivo'}
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              hidden
+              onChange={(e) => handleUpload(e.target.files)}
+            />
+          </div>
+        )}
       </div>
 
       <div className="card docs-card">
         <div className="docs-card__head">
           <div className="docs-card__head-title">
-            <Lock size={18} />
-            <span>Conteúdo do repositório</span>
+            <Home size={18} />
+            <span>{breadcrumb[breadcrumb.length - 1]?.name || 'Raiz'}</span>
           </div>
           <div className="docs-card__head-meta">
-            Campos sensíveis são armazenados criptografados.
+            {filteredEntries.length} {filteredEntries.length === 1 ? 'item' : 'itens'} nesta pasta
+            {!canEdit && ' · Somente leitura'}
           </div>
         </div>
         <div className="docs-card__body">
-          {filteredItems.length === 0 ? (
+          {filteredEntries.length === 0 ? (
             <div className="docs-empty">
               <div className="docs-empty__icon">
-                <FileText size={40} />
+                <Folder size={40} />
               </div>
-              <h3 className="docs-empty__title">Nenhum documento ainda</h3>
+              <h3 className="docs-empty__title">Pasta vazia</h3>
               <p className="docs-empty__text">
-                Adicione documentos, links, vídeos ou credenciais a este repositório.
+                {canEdit
+                  ? 'Envie arquivos, crie pastas ou adicione notas de texto.'
+                  : 'Não há arquivos nesta pasta.'}
               </p>
-              <button type="button" className="btn btn-primary" onClick={handleNewDoc}>
-                <Plus size={18} />
-                Adicionar primeiro documento
-              </button>
             </div>
           ) : (
-            <>
-              <div className="docs-table-wrap">
-                <table className="docs-table">
-                  <thead>
-                    <tr>
-                      <th>Tipo</th>
-                      <th>Título</th>
-                      <th>Descrição</th>
-                      <th>Tags</th>
-                      <th>Atualizado</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {paginatedItems.map((item) => {
-                      const Icon = DOC_TYPE_ICON[item.tipo];
-                      return (
-                        <tr
-                          key={item.id}
-                          className="docs-table__row docs-table__row--clickable"
-                          onClick={() => handleOpenItem(item)}
-                          role="button"
-                          tabIndex={0}
-                          onKeyDown={(e) => e.key === 'Enter' && handleOpenItem(item)}
+            <div className="docs-file-grid">
+              {filteredEntries.map((entry) => {
+                const Icon = entryIcon(entry);
+                return (
+                  <div
+                    key={entry.id}
+                    className={`docs-file-card docs-file-card--${entry.entry_type}`}
+                    onClick={() => handleOpenEntry(entry)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleOpenEntry(entry);
+                    }}
+                  >
+                    <div className="docs-file-card__icon">
+                      <Icon size={32} />
+                    </div>
+                    <div className="docs-file-card__name" title={entry.name}>
+                      {entry.name}
+                    </div>
+                    <div className="docs-file-card__meta">
+                      {entry.entry_type === 'file' && isPdfEntry(entry) && 'PDF · '}
+                      {entry.entry_type === 'file' && formatFileSize(entry.size_bytes)}
+                      {entry.entry_type === 'folder' && 'Pasta'}
+                      {entry.entry_type === 'note' && 'Nota'}
+                      {' · '}
+                      {formatDate(entry.updated_at)}
+                    </div>
+                    <div className="docs-file-card__actions" onClick={(e) => e.stopPropagation()}>
+                      {entry.entry_type === 'file' && isPdfEntry(entry) && (
+                        <button
+                          type="button"
+                          className="docs-file-card__btn"
+                          title="Visualizar PDF"
+                          onClick={() => openPdfPreview(entry)}
                         >
-                          <td>
-                            <span className="docs-table-type">
-                              <Icon size={14} />
-                              {DOC_TYPE_LABEL[item.tipo]}
-                            </span>
-                          </td>
-                          <td>{item.titulo}</td>
-                          <td className="docs-table-desc">{item.descricao || '—'}</td>
-                          <td>
-                            {item.tags.length
-                              ? item.tags.map((t) => (
-                                  <span key={t} className="docs-tag">
-                                    {t}
-                                  </span>
-                                ))
-                              : '—'}
-                          </td>
-                          <td>{formatDate(item.atualizadoEm || item.criadoEm)}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-              {filteredItems.length > 0 && (
-                <div className="docs-paginator">
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    disabled={currentPage <= 1}
-                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  >
-                    <ChevronLeft size={16} />
-                    Anterior
-                  </button>
-                  <span className="docs-paginator__info">
-                    Página {currentPage} de {totalItemPages} · {filteredItems.length} itens
-                  </span>
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    disabled={currentPage >= totalItemPages}
-                    onClick={() => setCurrentPage((p) => Math.min(totalItemPages, p + 1))}
-                  >
-                    Próxima
-                    <ChevronRight size={16} />
-                  </button>
-                </div>
-              )}
-            </>
+                          <Eye size={16} />
+                        </button>
+                      )}
+                      {entry.entry_type === 'file' && (
+                        <button
+                          type="button"
+                          className="docs-file-card__btn"
+                          title="Download"
+                          onClick={() => handleDownload(entry)}
+                        >
+                          <Download size={16} />
+                        </button>
+                      )}
+                      {entry.entry_type === 'note' && canEdit && (
+                        <button
+                          type="button"
+                          className="docs-file-card__btn"
+                          title="Editar nota"
+                          onClick={() => openEditNote(entry)}
+                        >
+                          <Pencil size={16} />
+                        </button>
+                      )}
+                      {canEdit && (
+                        <button
+                          type="button"
+                          className="docs-file-card__btn docs-file-card__btn--danger"
+                          title="Excluir"
+                          onClick={() => handleDeleteEntry(entry)}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
       </div>
 
-      {showDocModal && (
-        <div className="docs-modal-backdrop" onClick={closeModal}>
-          <div className="docs-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="docs-modal__head">
-              <div>
-                <h2 className="docs-modal__title">
-                  {editingItemId ? 'Editar documento' : 'Novo documento'}
-                </h2>
-                <p className="docs-modal__subtitle">
-                  {editingItemId
-                    ? 'Altere os dados do item. Dados sensíveis serão criptografados.'
-                    : `Adicione um item ao repositório "${repo.name}". Dados sensíveis serão criptografados.`}
-                </p>
+      {pdfPreview && (
+        <div className="docs-pdf-viewer-backdrop" onClick={closePdfPreview}>
+          <div className="docs-pdf-viewer" onClick={(e) => e.stopPropagation()}>
+            <header className="docs-pdf-viewer__head">
+              <div className="docs-pdf-viewer__title">
+                <FileType size={20} />
+                <span title={pdfPreview.entry.name}>{pdfPreview.entry.name}</span>
               </div>
-              <button
-                type="button"
-                className="docs-modal__close"
-                onClick={closeModal}
-                aria-label="Fechar"
-              >
+              <div className="docs-pdf-viewer__actions">
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => handleDownload(pdfPreview.entry)}
+                >
+                  <Download size={16} />
+                  Baixar
+                </button>
+                <button
+                  type="button"
+                  className="docs-modal__close"
+                  onClick={closePdfPreview}
+                  aria-label="Fechar visualizador"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+            </header>
+            <div className="docs-pdf-viewer__body">
+              {pdfLoading || !pdfPreview.url ? (
+                <div className="docs-pdf-viewer__loading">Carregando PDF...</div>
+              ) : (
+                <iframe
+                  src={pdfPreview.url}
+                  title={`Visualização: ${pdfPreview.entry.name}`}
+                  className="docs-pdf-viewer__iframe"
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showFolderModal && (
+        <div className="docs-modal-backdrop" onClick={() => setShowFolderModal(false)}>
+          <div className="docs-modal docs-modal--sm" onClick={(e) => e.stopPropagation()}>
+            <div className="docs-modal__head">
+              <h2 className="docs-modal__title">Nova pasta</h2>
+              <button type="button" className="docs-modal__close" onClick={() => setShowFolderModal(false)}>
                 <X size={20} />
               </button>
             </div>
-            <form onSubmit={handleSaveDoc} className="docs-modal__form">
-              <div className="docs-form-grid">
-                <div className="docs-form-group">
-                  <label className="docs-form-label">Tipo</label>
-                  <select
-                    value={formTipo}
-                    onChange={(e) => setFormTipo(e.target.value as DocType)}
-                    className="docs-form-input"
-                  >
-                    <option value="documento">Documento</option>
-                    <option value="link">Link</option>
-                    <option value="video">Vídeo</option>
-                    <option value="credencial">Credencial / Senha</option>
-                  </select>
-                </div>
-                <div className="docs-form-group docs-form-group--full">
-                  <label className="docs-form-label">Título</label>
-                  <input
-                    type="text"
-                    required
-                    value={formTitulo}
-                    onChange={(e) => setFormTitulo(e.target.value)}
-                    placeholder="Ex: Procedimento de backup diário"
-                    className="docs-form-input"
-                  />
-                </div>
-                <div className="docs-form-group docs-form-group--full">
-                  <label className="docs-form-label">Descrição</label>
-                  <textarea
-                    rows={2}
-                    value={formDescricao}
-                    onChange={(e) => setFormDescricao(e.target.value)}
-                    placeholder="Resumo para facilitar buscas."
-                    className="docs-form-input docs-form-textarea"
-                  />
-                </div>
-                {(formTipo === 'link' || formTipo === 'video') && (
-                  <div className="docs-form-group docs-form-group--full">
-                    <label className="docs-form-label">URL</label>
-                    <input
-                      type="url"
-                      value={formUrl}
-                      onChange={(e) => setFormUrl(e.target.value)}
-                      placeholder="https://..."
-                      className="docs-form-input"
-                    />
-                  </div>
-                )}
-                {formTipo === 'credencial' && (
-                  <>
-                    <div className="docs-form-group">
-                      <label className="docs-form-label">Usuário / Login</label>
-                      <input
-                        type="text"
-                        value={formUsuario}
-                        onChange={(e) => setFormUsuario(e.target.value)}
-                        placeholder="Usuário (criptografado)"
-                        className="docs-form-input"
-                      />
-                    </div>
-                    <div className="docs-form-group">
-                      <label className="docs-form-label">Senha / Token</label>
-                      <input
-                        type="password"
-                        value={formConteudo}
-                        onChange={(e) => setFormConteudo(e.target.value)}
-                        placeholder="Senha (criptografada)"
-                        className="docs-form-input"
-                      />
-                    </div>
-                  </>
-                )}
-                {formTipo === 'documento' && (
-                  <div className="docs-form-group docs-form-group--full">
-                    <label className="docs-form-label">Conteúdo / Instruções</label>
-                    <textarea
-                      rows={5}
-                      value={formConteudo}
-                      onChange={(e) => setFormConteudo(e.target.value)}
-                      placeholder="Instruções, passo a passo ou detalhes."
-                      className="docs-form-input docs-form-textarea"
-                    />
-                  </div>
-                )}
-                <div className="docs-form-group docs-form-group--full">
-                  <label className="docs-form-label">Tags (separadas por vírgula)</label>
-                  <input
-                    type="text"
-                    value={formTags}
-                    onChange={(e) => setFormTags(e.target.value)}
-                    placeholder="backup, vpn, firewall..."
-                    className="docs-form-input"
-                  />
-                </div>
+            <form onSubmit={handleCreateFolder} className="docs-modal__form">
+              <div className="docs-form-group docs-form-group--full">
+                <label className="docs-form-label">Nome da pasta</label>
+                <input
+                  type="text"
+                  required
+                  value={folderName}
+                  onChange={(e) => setFolderName(e.target.value)}
+                  className="docs-form-input"
+                  autoFocus
+                />
               </div>
               <div className="docs-modal-footer">
-                <div className="docs-modal-footer__hint">
-                  <Lock size={14} />
-                  <span>Campos sensíveis serão armazenados criptografados no backend.</span>
-                </div>
                 <div className="docs-modal-footer__actions">
-                  <button type="button" className="btn btn-secondary" onClick={closeModal}>
+                  <button type="button" className="btn btn-secondary" onClick={() => setShowFolderModal(false)}>
                     Cancelar
                   </button>
                   <button type="submit" className="btn btn-primary">
-                    Salvar
+                    Criar
                   </button>
                 </div>
               </div>
@@ -557,135 +738,39 @@ export default function DocsRepo() {
         </div>
       )}
 
-      {/* Modal de detalhe do item (visualização) */}
-      {selectedItem && (
-        <div className="docs-modal-backdrop" onClick={closeDetailModal}>
+      {viewingNote && (
+        <div className="docs-modal-backdrop" onClick={closeViewNote}>
           <div className="docs-modal docs-modal--view" onClick={(e) => e.stopPropagation()}>
             <div className="docs-modal__head">
               <div className="docs-detail-header">
                 <span className="docs-detail-type">
-                  {(() => {
-                    const Icon = DOC_TYPE_ICON[selectedItem.tipo];
-                    return (
-                      <>
-                        <Icon size={18} />
-                        {DOC_TYPE_LABEL[selectedItem.tipo]}
-                      </>
-                    );
-                  })()}
+                  <StickyNote size={18} />
+                  Nota
                 </span>
-                <h2 className="docs-modal__title">{selectedItem.titulo}</h2>
+                <h2 className="docs-modal__title">{viewingNote.name}</h2>
               </div>
-              <button
-                type="button"
-                className="docs-modal__close"
-                onClick={closeDetailModal}
-                aria-label="Fechar"
-              >
+              <button type="button" className="docs-modal__close" onClick={closeViewNote} aria-label="Fechar">
                 <X size={20} />
               </button>
             </div>
-            <div className="docs-modal__body docs-detail-body">
-              {selectedItem.descricao && (
+            <div className="docs-modal__body docs-note-view">
+              {viewingNote.description && (
                 <div className="docs-detail-block">
                   <label className="docs-form-label">Descrição</label>
-                  <p className="docs-detail-text">{selectedItem.descricao}</p>
+                  <p className="docs-detail-text">{viewingNote.description}</p>
                 </div>
               )}
-              {(selectedItem.tipo === 'link' || selectedItem.tipo === 'video') && selectedItem.url && (
-                <div className="docs-detail-block">
-                  <label className="docs-form-label">URL</label>
-                  <div className="docs-detail-actions">
-                    <code className="docs-detail-url">{selectedItem.url}</code>
-                    <div className="docs-detail-buttons">
-                      <button
-                        type="button"
-                        className="btn btn-secondary btn-sm"
-                        onClick={() => openUrl(selectedItem.url!)}
-                      >
-                        <ExternalLink size={14} />
-                        Abrir
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-secondary btn-sm"
-                        onClick={() => copyToClipboard(selectedItem.url!, 'Link')}
-                      >
-                        <Copy size={14} />
-                        Copiar
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-              {selectedItem.tipo === 'documento' && selectedItem.conteudoSensivel && (
-                <div className="docs-detail-block">
-                  <label className="docs-form-label">Conteúdo</label>
-                  <pre className="docs-detail-pre">{selectedItem.conteudoSensivel}</pre>
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    style={{ marginTop: 'var(--spacing-sm)' }}
-                    onClick={() => copyToClipboard(selectedItem.conteudoSensivel!, 'Conteúdo')}
-                  >
-                    <Copy size={14} />
-                    Copiar conteúdo
-                  </button>
-                </div>
-              )}
-              {selectedItem.tipo === 'credencial' && (
-                <div className="docs-detail-block">
-                  {selectedItem.usuario && (
-                    <div className="docs-detail-field">
-                      <label className="docs-form-label">Usuário / Login</label>
-                      <div className="docs-detail-actions">
-                        <code className="docs-detail-code">{selectedItem.usuario}</code>
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-sm"
-                          onClick={() => copyToClipboard(selectedItem.usuario!, 'Usuário')}
-                        >
-                          <Copy size={14} />
-                          Copiar
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                  {selectedItem.conteudoSensivel && (
-                    <div className="docs-detail-field">
-                      <label className="docs-form-label">Senha / Token</label>
-                      <div className="docs-detail-actions">
-                        <code className="docs-detail-code">
-                          {showPassword ? selectedItem.conteudoSensivel : '••••••••••••'}
-                        </code>
-                        <div className="docs-detail-buttons">
-                          <button
-                            type="button"
-                            className="btn btn-secondary btn-sm"
-                            onClick={() => setShowPassword((p) => !p)}
-                          >
-                            {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
-                            {showPassword ? 'Ocultar' : 'Mostrar'}
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-secondary btn-sm"
-                            onClick={() => copyToClipboard(selectedItem.conteudoSensivel!, 'Senha')}
-                          >
-                            <Copy size={14} />
-                            Copiar
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-              {selectedItem.tags.length > 0 && (
+              <div className="docs-detail-block">
+                <label className="docs-form-label">Conteúdo</label>
+                <pre className="docs-note-view__content">
+                  {viewingNote.content?.trim() || '(Nota vazia)'}
+                </pre>
+              </div>
+              {viewingNote.tags.length > 0 && (
                 <div className="docs-detail-block">
                   <label className="docs-form-label">Tags</label>
                   <div className="docs-detail-tags">
-                    {selectedItem.tags.map((t) => (
+                    {viewingNote.tags.map((t) => (
                       <span key={t} className="docs-tag">
                         {t}
                       </span>
@@ -694,25 +779,20 @@ export default function DocsRepo() {
                 </div>
               )}
               <div className="docs-detail-meta">
-                Criado em {formatDate(selectedItem.criadoEm)}
-                {selectedItem.atualizadoEm && ` · Atualizado em ${formatDate(selectedItem.atualizadoEm)}`}
+                Criado em {formatDate(viewingNote.created_at)}
+                {viewingNote.updated_at !== viewingNote.created_at &&
+                  ` · Atualizado em ${formatDate(viewingNote.updated_at)}`}
+                {viewingNote.created_by_name && ` · Por ${viewingNote.created_by_name}`}
               </div>
               <div className="docs-detail-footer">
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => startEditItem(selectedItem)}
-                >
-                  <Pencil size={16} />
-                  Editar
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-danger"
-                  onClick={() => handleDeleteItem(selectedItem)}
-                >
-                  <Trash2 size={16} />
-                  Excluir
+                {canEdit && (
+                  <button type="button" className="btn btn-secondary" onClick={openEditNoteFromView}>
+                    <Pencil size={16} />
+                    Editar
+                  </button>
+                )}
+                <button type="button" className="btn btn-secondary" onClick={closeViewNote}>
+                  Fechar
                 </button>
               </div>
             </div>
@@ -720,55 +800,39 @@ export default function DocsRepo() {
         </div>
       )}
 
-      {/* Modal editar repositório */}
-      {showEditRepoModal && repo && (
-        <div className="docs-modal-backdrop" onClick={() => setShowEditRepoModal(false)}>
+      {showNoteModal && (
+        <div className="docs-modal-backdrop" onClick={closeNoteModal}>
           <div className="docs-modal" onClick={(e) => e.stopPropagation()}>
             <div className="docs-modal__head">
-              <div>
-                <h2 className="docs-modal__title">Editar repositório</h2>
-                <p className="docs-modal__subtitle">Altere nome e descrição do repositório.</p>
-              </div>
-              <button
-                type="button"
-                className="docs-modal__close"
-                onClick={() => setShowEditRepoModal(false)}
-                aria-label="Fechar"
-              >
+              <h2 className="docs-modal__title">{editingNote ? 'Editar nota' : 'Nova nota'}</h2>
+              <button type="button" className="docs-modal__close" onClick={closeNoteModal}>
                 <X size={20} />
               </button>
             </div>
-            <form onSubmit={handleSaveEditRepo} className="docs-modal__form">
-              <div className="docs-form-grid">
-                <div className="docs-form-group docs-form-group--full">
-                  <label className="docs-form-label">Nome do repositório</label>
-                  <input
-                    type="text"
-                    required
-                    value={editRepoName}
-                    onChange={(e) => setEditRepoName(e.target.value)}
-                    placeholder="Ex: Procedimentos de rede"
-                    className="docs-form-input"
-                  />
-                </div>
-                <div className="docs-form-group docs-form-group--full">
-                  <label className="docs-form-label">Descrição</label>
-                  <textarea
-                    rows={3}
-                    value={editRepoDesc}
-                    onChange={(e) => setEditRepoDesc(e.target.value)}
-                    placeholder="Breve descrição."
-                    className="docs-form-input docs-form-textarea"
-                  />
-                </div>
+            <form onSubmit={handleSaveNote} className="docs-modal__form">
+              <div className="docs-form-group docs-form-group--full">
+                <label className="docs-form-label">Título</label>
+                <input
+                  type="text"
+                  required
+                  value={noteName}
+                  onChange={(e) => setNoteName(e.target.value)}
+                  className="docs-form-input"
+                />
+              </div>
+              <div className="docs-form-group docs-form-group--full">
+                <label className="docs-form-label">Conteúdo</label>
+                <textarea
+                  rows={8}
+                  value={noteContent}
+                  onChange={(e) => setNoteContent(e.target.value)}
+                  className="docs-form-input docs-form-textarea"
+                  placeholder="Texto, instruções, links..."
+                />
               </div>
               <div className="docs-modal-footer">
-                <div className="docs-modal-footer__actions" style={{ marginLeft: 0 }}>
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={() => setShowEditRepoModal(false)}
-                  >
+                <div className="docs-modal-footer__actions">
+                  <button type="button" className="btn btn-secondary" onClick={closeNoteModal}>
                     Cancelar
                   </button>
                   <button type="submit" className="btn btn-primary">
@@ -777,6 +841,110 @@ export default function DocsRepo() {
                 </div>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {showEditRepoModal && (
+        <div className="docs-modal-backdrop" onClick={() => setShowEditRepoModal(false)}>
+          <div className="docs-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="docs-modal__head">
+              <h2 className="docs-modal__title">Editar repositório</h2>
+              <button type="button" className="docs-modal__close" onClick={() => setShowEditRepoModal(false)}>
+                <X size={20} />
+              </button>
+            </div>
+            <form onSubmit={handleSaveEditRepo} className="docs-modal__form">
+              <div className="docs-form-group docs-form-group--full">
+                <label className="docs-form-label">Nome</label>
+                <input
+                  type="text"
+                  required
+                  value={editRepoName}
+                  onChange={(e) => setEditRepoName(e.target.value)}
+                  className="docs-form-input"
+                />
+              </div>
+              <div className="docs-form-group docs-form-group--full">
+                <label className="docs-form-label">Descrição</label>
+                <textarea
+                  rows={3}
+                  value={editRepoDesc}
+                  onChange={(e) => setEditRepoDesc(e.target.value)}
+                  className="docs-form-input docs-form-textarea"
+                />
+              </div>
+              <div className="docs-form-group docs-form-group--full">
+                <label className="docs-form-label">Quem pode acessar</label>
+                <select
+                  value={editRepoVisibility}
+                  onChange={(e) => setEditRepoVisibility(e.target.value as DocVisibility)}
+                  className="docs-form-input"
+                >
+                  <option value="private">Usuários selecionados</option>
+                  <option value="team">Toda a equipe</option>
+                </select>
+              </div>
+              {isOwner && editRepoVisibility === 'private' && (
+                <div className="docs-form-group docs-form-group--full">
+                  <DocsUserAccessPicker
+                    users={allUsers}
+                    value={accessMembers}
+                    onChange={setAccessMembers}
+                    excludeUserIds={repo.owner_id ? [repo.owner_id] : []}
+                  />
+                </div>
+              )}
+              <div className="docs-modal-footer">
+                <div className="docs-modal-footer__actions">
+                  <button type="button" className="btn btn-secondary" onClick={() => setShowEditRepoModal(false)}>
+                    Cancelar
+                  </button>
+                  <button type="submit" className="btn btn-primary">
+                    Salvar
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showAccessModal && (
+        <div className="docs-modal-backdrop" onClick={() => setShowAccessModal(false)}>
+          <div className="docs-modal docs-modal--wide" onClick={(e) => e.stopPropagation()}>
+            <div className="docs-modal__head">
+              <div>
+                <h2 className="docs-modal__title">Quem tem acesso</h2>
+                <p className="docs-modal__subtitle">
+                  Selecione os usuários que podem ver ou editar arquivos neste repositório.
+                </p>
+              </div>
+              <button type="button" className="docs-modal__close" onClick={() => setShowAccessModal(false)}>
+                <X size={20} />
+              </button>
+            </div>
+            <DocsUserAccessPicker
+              users={allUsers}
+              value={accessMembers}
+              onChange={setAccessMembers}
+              excludeUserIds={[repo.owner_id, user?.id].filter((id): id is number => id != null)}
+            />
+            <div className="docs-modal-footer">
+              <div className="docs-modal-footer__actions" style={{ marginLeft: 'auto' }}>
+                <button type="button" className="btn btn-secondary" onClick={() => setShowAccessModal(false)}>
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={savingAccess}
+                  onClick={handleSaveAccess}
+                >
+                  {savingAccess ? 'Salvando...' : 'Salvar acessos'}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

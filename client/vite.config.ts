@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import fs from 'fs'
 import path from 'path'
@@ -31,15 +31,20 @@ const httpsOpts = useHttps
   ? { key: fs.readFileSync(keyPath!), cert: fs.readFileSync(certPath!) }
   : false
 
-// Proxy: HTTPS quando frontend está em HTTPS (certs). Use VITE_API_HTTPS=false se o backend for só HTTP.
-const apiTarget =
-  process.env.VITE_API_HTTPS === 'false'
-    ? 'http://localhost:5000'
-    : useHttps
-      ? 'https://localhost:5000'
-      : 'http://localhost:5000'
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, path.resolve(__dirname), '')
+  const apiPort = env.VITE_API_PORT || '5000'
+  const apiHost = `localhost:${apiPort}`
 
-export default defineConfig({
+  // Proxy: HTTPS quando frontend está em HTTPS (certs). Use VITE_API_HTTPS=false se o backend for só HTTP.
+  const apiTarget =
+    env.VITE_API_HTTPS === 'false'
+      ? `http://${apiHost}`
+      : useHttps
+        ? `https://${apiHost}`
+        : `http://${apiHost}`
+
+  return {
   plugins: [react()],
   server: {
     host: '0.0.0.0',
@@ -93,5 +98,6 @@ export default defineConfig({
         secure: false
       }
     }
+  }
   }
 })

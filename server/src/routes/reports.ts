@@ -2,131 +2,98 @@ import express from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { requirePermission, RESOURCES, ACTIONS } from '../middleware/permissions';
 import { dbGet, dbAll } from '../database';
+import {
+  getReportDateRange,
+  activeResolutionHoursExpr,
+  toNumber,
+  round2,
+  type ReportPeriodQuery,
+} from '../utils/report-period';
 
 const DB_TYPE = process.env.DB_TYPE || 'sqlite';
 
 const router = express.Router();
 
-// Todas as rotas requerem autenticação
 router.use(authenticate);
 
-// Função auxiliar para calcular período
-function getDateRange(period: string): { start: string; end: string } {
-  const now = new Date();
-  const end = new Date(now.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
-  let start = new Date(end);
-
-  switch (period) {
-    case 'today':
-      start.setHours(0, 0, 0, 0);
-      break;
-    case 'week':
-      start.setDate(start.getDate() - 7);
-      break;
-    case 'month':
-      start.setMonth(start.getMonth() - 1);
-      break;
-    case 'quarter':
-      start.setMonth(start.getMonth() - 3);
-      break;
-    case 'year':
-      start.setFullYear(start.getFullYear() - 1);
-      break;
-    default:
-      start.setMonth(start.getMonth() - 1);
-  }
-
-  const formatDate = (date: Date): string => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    const hours = String(date.getHours()).padStart(2, '0');
-    const minutes = String(date.getMinutes()).padStart(2, '0');
-    const seconds = String(date.getSeconds()).padStart(2, '0');
-    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
-  };
-
-  return {
-    start: formatDate(start),
-    end: formatDate(end)
-  };
+function resolveRange(query: ReportPeriodQuery) {
+  return getReportDateRange(query);
 }
+
+const ACTIVE_HOURS = activeResolutionHoursExpr(DB_TYPE);
 
 // Estatísticas gerais
 router.get('/overview', requirePermission(RESOURCES.REPORTS, ACTIONS.VIEW), async (req: AuthRequest, res) => {
   try {
-    const { period = 'month', start: customStart, end: customEnd } = req.query;
-    
-    let start: string, end: string;
-    if (period === 'custom' && customStart && customEnd) {
-      // Usar datas customizadas
-      start = `${customStart} 00:00:00`;
-      end = `${customEnd} 23:59:59`;
-    } else {
-      const dateRange = getDateRange(period as string);
-      start = dateRange.start;
-      end = dateRange.end;
-    }
+    const { start, end, period } = resolveRange(req.query as ReportPeriodQuery);
 
-    // Total de tickets
     const totalTickets = await dbGet(
       `SELECT COUNT(*) as count FROM tickets WHERE created_at >= ? AND created_at <= ?`,
       [start, end]
     );
 
-    // Tickets por status
-    const ticketsByStatus = await dbAll(`
-      SELECT status, COUNT(*) as count
-      FROM tickets
-      WHERE created_at >= ? AND created_at <= ?
-      GROUP BY status
-    `, [start, end]);
-
-    // Tickets por prioridade
-    const ticketsByPriority = await dbAll(`
-      SELECT priority, COUNT(*) as count
-      FROM tickets
-      WHERE created_at >= ? AND created_at <= ?
-      GROUP BY priority
-    `, [start, end]);
-
-    // Tempo de resolução: do momento em que o agente pegou o ticket até fechamento (não abertura→fechamento)
-    const activeHoursExpr = DB_TYPE === 'sqlite'
-      ? `(julianday(t.updated_at) - julianday(COALESCE(t.assigned_at, t.created_at))) * 24 - COALESCE((SELECT SUM((julianday(p.resumed_at) - julianday(p.paused_at)) * 24) FROM ticket_pauses p WHERE p.ticket_id = t.id AND p.resumed_at IS NOT NULL), 0)`
-      : `EXTRACT(EPOCH FROM (t.updated_at - COALESCE(t.assigned_at, t.created_at))) / 3600 - COALESCE((SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (p.resumed_at - p.paused_at))), 0) / 3600 FROM ticket_pauses p WHERE p.ticket_id = t.id AND p.resumed_at IS NOT NULL), 0)`;
-    const avgResolutionTimeQuery = `
-      SELECT AVG(active_hours) as avg_hours
-      FROM (
-        SELECT ${activeHoursExpr} AS active_hours
-        FROM tickets t
-        WHERE t.status IN ('resolved', 'closed')
-          AND t.created_at >= ? AND t.created_at <= ?
-      ) x
-    `;
-    const avgResolutionTime = await dbGet(avgResolutionTimeQuery, [start, end]);
-
-    // Tickets resolvidos
-    const resolvedTickets = await dbGet(
-      `SELECT COUNT(*) as count FROM tickets 
-       WHERE status IN ('resolved', 'closed') 
-       AND created_at >= ? AND created_at <= ?`,
+    const ticketsByStatus = await dbAll(
+      `SELECT status, COUNT(*) as count FROM tickets
+       WHERE created_at >= ? AND created_at <= ?
+       GROUP BY status ORDER BY count DESC`,
       [start, end]
     );
 
-    // Taxa de resolução
-    const total = (totalTickets as any)?.count || 0;
-    const resolved = (resolvedTickets as any)?.count || 0;
-    const resolutionRate = total > 0 ? (resolved / total) * 100 : 0;
+    const ticketsByPriority = await dbAll(
+      `SELECT priority, COUNT(*) as count FROM tickets
+       WHERE created_at >= ? AND created_at <= ?
+       GROUP BY priority ORDER BY count DESC`,
+      [start, end]
+    );
+
+    // Resolvidos no período (data de conclusão = updated_at)
+    const resolvedInPeriod = await dbGet(
+      `SELECT COUNT(*) as count FROM tickets
+       WHERE status IN ('resolved', 'closed')
+         AND updated_at >= ? AND updated_at <= ?`,
+      [start, end]
+    );
+
+    // Do lote criado no período, quantos já estão resolvidos/fechados (taxa de conclusão do lote)
+    const cohortResolved = await dbGet(
+      `SELECT COUNT(*) as count FROM tickets
+       WHERE created_at >= ? AND created_at <= ?
+         AND status IN ('resolved', 'closed')`,
+      [start, end]
+    );
+
+    const avgResolutionTime = await dbGet(
+      `SELECT AVG(active_hours) as avg_hours FROM (
+        SELECT ${ACTIVE_HOURS} AS active_hours
+        FROM tickets t
+        WHERE t.status IN ('resolved', 'closed')
+          AND t.updated_at >= ? AND t.updated_at <= ?
+      ) x WHERE active_hours IS NOT NULL`,
+      [start, end]
+    );
+
+    const total = toNumber((totalTickets as any)?.count);
+    const resolvedInPeriodCount = toNumber((resolvedInPeriod as any)?.count);
+    const cohortResolvedCount = toNumber((cohortResolved as any)?.count);
+    const resolutionRate = total > 0 ? (cohortResolvedCount / total) * 100 : 0;
 
     res.json({
       period,
       dateRange: { start, end },
       totalTickets: total,
-      resolvedTickets: resolved,
-      resolutionRate: Math.round(resolutionRate * 100) / 100,
-      avgResolutionTimeHours: Math.round(((avgResolutionTime as any)?.avg_hours || 0) * 100) / 100,
-      ticketsByStatus: ticketsByStatus || [],
-      ticketsByPriority: ticketsByPriority || []
+      resolvedTickets: resolvedInPeriodCount,
+      resolvedInPeriod: resolvedInPeriodCount,
+      cohortResolved: cohortResolvedCount,
+      resolutionRate: round2(resolutionRate),
+      avgResolutionTimeHours: round2(toNumber((avgResolutionTime as any)?.avg_hours)),
+      ticketsByStatus: (ticketsByStatus || []).map((r: any) => ({
+        status: r.status,
+        count: toNumber(r.count),
+      })),
+      ticketsByPriority: (ticketsByPriority || []).map((r: any) => ({
+        priority: r.priority,
+        count: toNumber(r.count),
+      })),
     });
   } catch (error) {
     console.error('Erro ao buscar estatísticas gerais:', error);
@@ -137,45 +104,38 @@ router.get('/overview', requirePermission(RESOURCES.REPORTS, ACTIONS.VIEW), asyn
 // Tickets por formulário
 router.get('/by-form', requirePermission(RESOURCES.REPORTS, ACTIONS.VIEW), async (req: AuthRequest, res) => {
   try {
-    const { period = 'month', start: customStart, end: customEnd } = req.query;
-    
-    let start: string, end: string;
-    if (period === 'custom' && customStart && customEnd) {
-      start = `${customStart} 00:00:00`;
-      end = `${customEnd} 23:59:59`;
-    } else {
-      const dateRange = getDateRange(period as string);
-      start = dateRange.start;
-      end = dateRange.end;
-    }
+    const { start, end } = resolveRange(req.query as ReportPeriodQuery);
 
-    const activeHoursFormExpr = DB_TYPE === 'sqlite'
-      ? `(julianday(t.updated_at) - julianday(COALESCE(t.assigned_at, t.created_at))) * 24 - COALESCE((SELECT SUM((julianday(p.resumed_at) - julianday(p.paused_at)) * 24) FROM ticket_pauses p WHERE p.ticket_id = t.id AND p.resumed_at IS NOT NULL), 0)`
-      : `EXTRACT(EPOCH FROM (t.updated_at - COALESCE(t.assigned_at, t.created_at))) / 3600 - COALESCE((SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (p.resumed_at - p.paused_at))), 0) / 3600 FROM ticket_pauses p WHERE p.ticket_id = t.id AND p.resumed_at IS NOT NULL), 0)`;
-    const ticketsByFormQuery = `
-      SELECT 
+    const ticketsByForm = await dbAll(
+      `SELECT
         f.id,
         f.name,
         COUNT(t.id) as ticket_count,
         COUNT(CASE WHEN t.status IN ('resolved', 'closed') THEN 1 END) as resolved_count,
         AVG(
-          CASE 
-            WHEN t.status IN ('resolved', 'closed') 
-            THEN ${activeHoursFormExpr}
-            ELSE NULL
-          END
+          CASE WHEN t.status IN ('resolved', 'closed')
+            AND t.updated_at >= ? AND t.updated_at <= ?
+          THEN ${ACTIVE_HOURS}
+          ELSE NULL END
         ) as avg_resolution_hours
       FROM forms f
-      LEFT JOIN tickets t ON f.id = t.form_id 
+      INNER JOIN tickets t ON f.id = t.form_id
         AND t.created_at >= ? AND t.created_at <= ?
       GROUP BY f.id, f.name
-      HAVING ticket_count > 0
-      ORDER BY ticket_count DESC
-    `;
-    
-    const ticketsByForm = await dbAll(ticketsByFormQuery, [start, end]);
+      ORDER BY ticket_count DESC`,
+      [start, end, start, end]
+    );
 
-    res.json(ticketsByForm || []);
+    res.json(
+      (ticketsByForm || []).map((r: any) => ({
+        id: r.id,
+        name: r.name,
+        ticket_count: toNumber(r.ticket_count),
+        resolved_count: toNumber(r.resolved_count),
+        avg_resolution_hours:
+          r.avg_resolution_hours != null ? round2(toNumber(r.avg_resolution_hours)) : null,
+      }))
+    );
   } catch (error) {
     console.error('Erro ao buscar tickets por formulário:', error);
     res.status(500).json({ error: 'Erro ao buscar tickets por formulário' });
@@ -185,191 +145,214 @@ router.get('/by-form', requirePermission(RESOURCES.REPORTS, ACTIONS.VIEW), async
 // Performance de agentes
 router.get('/agents-performance', requirePermission(RESOURCES.REPORTS, ACTIONS.VIEW), async (req: AuthRequest, res) => {
   try {
-    const { period = 'month', start: customStart, end: customEnd } = req.query;
-    
-    let start: string, end: string;
-    if (period === 'custom' && customStart && customEnd) {
-      start = `${customStart} 00:00:00`;
-      end = `${customEnd} 23:59:59`;
-    } else {
-      const dateRange = getDateRange(period as string);
-      start = dateRange.start;
-      end = dateRange.end;
-    }
+    const { start, end } = resolveRange(req.query as ReportPeriodQuery);
 
-    const activeHoursAgentExpr = DB_TYPE === 'sqlite'
-      ? `(julianday(t.updated_at) - julianday(COALESCE(t.assigned_at, t.created_at))) * 24 - COALESCE((SELECT SUM((julianday(p.resumed_at) - julianday(p.paused_at)) * 24) FROM ticket_pauses p WHERE p.ticket_id = t.id AND p.resumed_at IS NOT NULL), 0)`
-      : `EXTRACT(EPOCH FROM (t.updated_at - COALESCE(t.assigned_at, t.created_at))) / 3600 - COALESCE((SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (p.resumed_at - p.paused_at))), 0) / 3600 FROM ticket_pauses p WHERE p.ticket_id = t.id AND p.resumed_at IS NOT NULL), 0)`;
-    const agentPerformanceQuery = `
-      SELECT 
+    const agentPerformance = await dbAll(
+      `SELECT
         u.id,
         u.name,
         u.email,
         COUNT(t.id) as total_tickets,
-        COUNT(CASE WHEN t.status IN ('resolved', 'closed') THEN 1 END) as resolved_tickets,
+        COUNT(CASE WHEN t.status IN ('resolved', 'closed')
+          AND t.updated_at >= ? AND t.updated_at <= ? THEN 1 END) as resolved_tickets,
         AVG(
-          CASE 
-            WHEN t.status IN ('resolved', 'closed') 
-            THEN ${activeHoursAgentExpr}
-            ELSE NULL
-          END
+          CASE WHEN t.status IN ('resolved', 'closed')
+            AND t.updated_at >= ? AND t.updated_at <= ?
+          THEN ${ACTIVE_HOURS}
+          ELSE NULL END
         ) as avg_resolution_hours,
         MIN(
-          CASE 
-            WHEN t.status IN ('resolved', 'closed') 
-            THEN ${activeHoursAgentExpr}
-            ELSE NULL
-          END
+          CASE WHEN t.status IN ('resolved', 'closed')
+            AND t.updated_at >= ? AND t.updated_at <= ?
+          THEN ${ACTIVE_HOURS}
+          ELSE NULL END
         ) as min_resolution_hours,
         MAX(
-          CASE 
-            WHEN t.status IN ('resolved', 'closed') 
-            THEN ${activeHoursAgentExpr}
-            ELSE NULL
-          END
+          CASE WHEN t.status IN ('resolved', 'closed')
+            AND t.updated_at >= ? AND t.updated_at <= ?
+          THEN ${ACTIVE_HOURS}
+          ELSE NULL END
         ) as max_resolution_hours
       FROM users u
       INNER JOIN tickets t ON u.id = t.assigned_to
-      WHERE t.created_at >= ? AND t.created_at <= ?
+      WHERE COALESCE(t.assigned_at, t.created_at) >= ?
+        AND COALESCE(t.assigned_at, t.created_at) <= ?
       GROUP BY u.id, u.name, u.email
-      ORDER BY total_tickets DESC
-    `;
-    
-    const agentPerformance = await dbAll(agentPerformanceQuery, [start, end]);
+      ORDER BY total_tickets DESC`,
+      [start, end, start, end, start, end, start, end, start, end]
+    );
 
-    res.json(agentPerformance || []);
+    res.json(
+      (agentPerformance || []).map((r: any) => ({
+        id: r.id,
+        name: r.name,
+        email: r.email,
+        total_tickets: toNumber(r.total_tickets),
+        resolved_tickets: toNumber(r.resolved_tickets),
+        avg_resolution_hours:
+          r.avg_resolution_hours != null ? round2(toNumber(r.avg_resolution_hours)) : null,
+        min_resolution_hours:
+          r.min_resolution_hours != null ? round2(toNumber(r.min_resolution_hours)) : null,
+        max_resolution_hours:
+          r.max_resolution_hours != null ? round2(toNumber(r.max_resolution_hours)) : null,
+      }))
+    );
   } catch (error) {
     console.error('Erro ao buscar performance de agentes:', error);
     res.status(500).json({ error: 'Erro ao buscar performance de agentes' });
   }
 });
 
-// Evolução de tickets ao longo do tempo
+// Evolução: tickets criados e resolvidos por dia
 router.get('/timeline', requirePermission(RESOURCES.REPORTS, ACTIONS.VIEW), async (req: AuthRequest, res) => {
   try {
-    const { period = 'month', groupBy = 'day', start: customStart, end: customEnd } = req.query;
-    
-    let start: string, end: string;
-    if (period === 'custom' && customStart && customEnd) {
-      start = `${customStart} 00:00:00`;
-      end = `${customEnd} 23:59:59`;
-    } else {
-      const dateRange = getDateRange(period as string);
-      start = dateRange.start;
-      end = dateRange.end;
-    }
+    const { start, end, period } = resolveRange(req.query as ReportPeriodQuery);
+    const groupBy = (req.query.groupBy as string) || 'day';
 
-    let dateFormat: string;
+    let dateFormatCreated: string;
+    let dateFormatUpdated: string;
     if (DB_TYPE === 'sqlite') {
-      if (groupBy === 'day') {
-        dateFormat = "DATE(created_at)";
-      } else if (groupBy === 'week') {
-        dateFormat = "strftime('%Y-W%W', created_at)";
+      if (groupBy === 'week') {
+        dateFormatCreated = "strftime('%Y-W%W', created_at)";
+        dateFormatUpdated = "strftime('%Y-W%W', updated_at)";
+      } else if (groupBy === 'month') {
+        dateFormatCreated = "strftime('%Y-%m', created_at)";
+        dateFormatUpdated = "strftime('%Y-%m', updated_at)";
       } else {
-        dateFormat = "strftime('%Y-%m', created_at)";
+        dateFormatCreated = 'DATE(created_at)';
+        dateFormatUpdated = 'DATE(updated_at)';
       }
     } else {
-      if (groupBy === 'day') {
-        dateFormat = "DATE(created_at)";
-      } else if (groupBy === 'week') {
-        dateFormat = "TO_CHAR(created_at, 'IYYY-IW')";
+      if (groupBy === 'week') {
+        dateFormatCreated = "TO_CHAR(created_at, 'IYYY-IW')";
+        dateFormatUpdated = "TO_CHAR(updated_at, 'IYYY-IW')";
+      } else if (groupBy === 'month') {
+        dateFormatCreated = "TO_CHAR(created_at, 'YYYY-MM')";
+        dateFormatUpdated = "TO_CHAR(updated_at, 'YYYY-MM')";
       } else {
-        dateFormat = "TO_CHAR(created_at, 'YYYY-MM')";
+        dateFormatCreated = 'DATE(created_at)';
+        dateFormatUpdated = 'DATE(updated_at)';
       }
     }
 
-    const timeline = await dbAll(`
-      SELECT 
-        ${dateFormat} as period,
-        COUNT(*) as total,
-        COUNT(CASE WHEN status = 'open' THEN 1 END) as open,
-        COUNT(CASE WHEN status = 'in_progress' THEN 1 END) as in_progress,
-        COUNT(CASE WHEN status IN ('resolved', 'closed') THEN 1 END) as resolved
-      FROM tickets
-      WHERE created_at >= ? AND created_at <= ?
-      GROUP BY ${dateFormat}
-      ORDER BY period ASC
-    `, [start, end]);
+    const created = await dbAll(
+      `SELECT ${dateFormatCreated} as period, COUNT(*) as total
+       FROM tickets WHERE created_at >= ? AND created_at <= ?
+       GROUP BY ${dateFormatCreated}`,
+      [start, end]
+    );
 
-    res.json(timeline || []);
+    const resolved = await dbAll(
+      `SELECT ${dateFormatUpdated} as period, COUNT(*) as resolved
+       FROM tickets
+       WHERE status IN ('resolved', 'closed')
+         AND updated_at >= ? AND updated_at <= ?
+       GROUP BY ${dateFormatUpdated}`,
+      [start, end]
+    );
+
+    const map = new Map<string, { period: string; total: number; resolved: number; open: number; in_progress: number }>();
+
+    for (const row of created as any[]) {
+      const key = String(row.period);
+      map.set(key, {
+        period: key,
+        total: toNumber(row.total),
+        resolved: 0,
+        open: 0,
+        in_progress: 0,
+      });
+    }
+
+    for (const row of resolved as any[]) {
+      const key = String(row.period);
+      const existing = map.get(key) || {
+        period: key,
+        total: 0,
+        resolved: 0,
+        open: 0,
+        in_progress: 0,
+      };
+      existing.resolved = toNumber(row.resolved);
+      map.set(key, existing);
+    }
+
+    const timeline = Array.from(map.values()).sort((a, b) =>
+      a.period.localeCompare(b.period)
+    );
+
+    res.json(timeline);
   } catch (error) {
     console.error('Erro ao buscar timeline:', error);
     res.status(500).json({ error: 'Erro ao buscar timeline' });
   }
 });
 
-// Tempo médio de resposta por prioridade
+// Tempo médio de resolução por prioridade (tickets concluídos no período)
 router.get('/response-time-by-priority', requirePermission(RESOURCES.REPORTS, ACTIONS.VIEW), async (req: AuthRequest, res) => {
   try {
-    const { period = 'month', start: customStart, end: customEnd } = req.query;
-    
-    let start: string, end: string;
-    if (period === 'custom' && customStart && customEnd) {
-      start = `${customStart} 00:00:00`;
-      end = `${customEnd} 23:59:59`;
-    } else {
-      const dateRange = getDateRange(period as string);
-      start = dateRange.start;
-      end = dateRange.end;
-    }
+    const { start, end } = resolveRange(req.query as ReportPeriodQuery);
 
-    const activeHoursPriorityExpr = DB_TYPE === 'sqlite'
-      ? `(julianday(t.updated_at) - julianday(COALESCE(t.assigned_at, t.created_at))) * 24 - COALESCE((SELECT SUM((julianday(p.resumed_at) - julianday(p.paused_at)) * 24) FROM ticket_pauses p WHERE p.ticket_id = t.id AND p.resumed_at IS NOT NULL), 0)`
-      : `EXTRACT(EPOCH FROM (t.updated_at - COALESCE(t.assigned_at, t.created_at))) / 3600 - COALESCE((SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (p.resumed_at - p.paused_at))), 0) / 3600 FROM ticket_pauses p WHERE p.ticket_id = t.id AND p.resumed_at IS NOT NULL), 0)`;
-    const responseTimeQuery = `
-      SELECT 
+    const responseTime = await dbAll(
+      `SELECT
         t.priority,
         COUNT(*) as total_tickets,
-        AVG(${activeHoursPriorityExpr}) as avg_hours,
-        MIN(${activeHoursPriorityExpr}) as min_hours,
-        MAX(${activeHoursPriorityExpr}) as max_hours
+        AVG(${ACTIVE_HOURS}) as avg_hours,
+        MIN(${ACTIVE_HOURS}) as min_hours,
+        MAX(${ACTIVE_HOURS}) as max_hours
       FROM tickets t
-      WHERE t.created_at >= ? AND t.created_at <= ?
-        AND t.status IN ('resolved', 'closed')
+      WHERE t.status IN ('resolved', 'closed')
+        AND t.updated_at >= ? AND t.updated_at <= ?
       GROUP BY t.priority
-      ORDER BY 
-        CASE t.priority
-          WHEN 'urgent' THEN 1
-          WHEN 'high' THEN 2
-          WHEN 'medium' THEN 3
-          WHEN 'low' THEN 4
-        END
-    `;
-    
-    const responseTime = await dbAll(responseTimeQuery, [start, end]);
+      ORDER BY CASE t.priority
+        WHEN 'urgent' THEN 1
+        WHEN 'high' THEN 2
+        WHEN 'medium' THEN 3
+        WHEN 'low' THEN 4
+        ELSE 5
+      END`,
+      [start, end]
+    );
 
-    res.json(responseTime || []);
+    res.json(
+      (responseTime || []).map((r: any) => ({
+        priority: r.priority,
+        total_tickets: toNumber(r.total_tickets),
+        avg_hours: round2(toNumber(r.avg_hours)),
+        min_hours: round2(toNumber(r.min_hours)),
+        max_hours: round2(toNumber(r.max_hours)),
+      }))
+    );
   } catch (error) {
     console.error('Erro ao buscar tempo de resposta por prioridade:', error);
     res.status(500).json({ error: 'Erro ao buscar tempo de resposta' });
   }
 });
 
-// Métricas gerais do sistema (contagens atuais, não filtradas por período)
+// Métricas gerais do sistema (contagens atuais)
 router.get('/system', requirePermission(RESOURCES.REPORTS, ACTIONS.VIEW), async (_req: AuthRequest, res) => {
   try {
-    const [users, forms, pages, groups, projects, projectTasks, projectTasksOpen, pendingApproval] = await Promise.all([
-      dbGet('SELECT COUNT(*) as count FROM users'),
-      dbGet('SELECT COUNT(*) as count FROM forms'),
-      dbGet('SELECT COUNT(*) as count FROM pages'),
-      dbGet('SELECT COUNT(*) as count FROM groups'),
-      dbGet('SELECT COUNT(*) as count FROM projects'),
-      dbGet('SELECT COUNT(*) as count FROM project_tasks'),
-      dbGet('SELECT COUNT(*) as count FROM project_tasks WHERE completed_at IS NULL'),
-      dbGet("SELECT COUNT(*) as count FROM tickets WHERE status = 'pending_approval'")
-    ]);
-
-    const rowCount = (row: any) => (row && typeof row.count !== 'undefined' ? Number(row.count) : 0);
+    const [users, forms, pages, groups, projects, projectTasks, projectTasksOpen, pendingApproval] =
+      await Promise.all([
+        dbGet('SELECT COUNT(*) as count FROM users'),
+        dbGet('SELECT COUNT(*) as count FROM forms'),
+        dbGet('SELECT COUNT(*) as count FROM pages'),
+        dbGet('SELECT COUNT(*) as count FROM groups'),
+        dbGet('SELECT COUNT(*) as count FROM projects'),
+        dbGet('SELECT COUNT(*) as count FROM project_tasks'),
+        dbGet('SELECT COUNT(*) as count FROM project_tasks WHERE completed_at IS NULL'),
+        dbGet("SELECT COUNT(*) as count FROM tickets WHERE status = 'pending_approval'"),
+      ]);
 
     res.json({
-      users: rowCount(users),
-      forms: rowCount(forms),
-      pages: rowCount(pages),
-      groups: rowCount(groups),
-      projects: rowCount(projects),
-      projectTasks: rowCount(projectTasks),
-      projectTasksOpen: rowCount(projectTasksOpen),
-      ticketsPendingApproval: rowCount(pendingApproval)
+      users: toNumber((users as any)?.count),
+      forms: toNumber((forms as any)?.count),
+      pages: toNumber((pages as any)?.count),
+      groups: toNumber((groups as any)?.count),
+      projects: toNumber((projects as any)?.count),
+      projectTasks: toNumber((projectTasks as any)?.count),
+      projectTasksOpen: toNumber((projectTasksOpen as any)?.count),
+      ticketsPendingApproval: toNumber((pendingApproval as any)?.count),
     });
   } catch (error) {
     console.error('Erro ao buscar métricas do sistema:', error);
@@ -380,32 +363,30 @@ router.get('/system', requirePermission(RESOURCES.REPORTS, ACTIONS.VIEW), async 
 // Categorias mais utilizadas
 router.get('/by-category', requirePermission(RESOURCES.REPORTS, ACTIONS.VIEW), async (req: AuthRequest, res) => {
   try {
-    const { period = 'month', start: customStart, end: customEnd } = req.query;
-    let start: string, end: string;
-    if (period === 'custom' && customStart && customEnd) {
-      start = `${customStart} 00:00:00`;
-      end = `${customEnd} 23:59:59`;
-    } else {
-      const dateRange = getDateRange(period as string);
-      start = dateRange.start;
-      end = dateRange.end;
-    }
+    const { start, end } = resolveRange(req.query as ReportPeriodQuery);
 
-    const byCategory = await dbAll(`
-      SELECT 
+    const byCategory = await dbAll(
+      `SELECT
         c.id,
         c.name,
         COUNT(t.id) as ticket_count,
         COUNT(CASE WHEN t.status IN ('resolved', 'closed') THEN 1 END) as resolved_count
       FROM categories c
-      LEFT JOIN tickets t ON c.id = t.category_id 
+      INNER JOIN tickets t ON c.id = t.category_id
         AND t.created_at >= ? AND t.created_at <= ?
       GROUP BY c.id, c.name
-      HAVING ticket_count > 0
-      ORDER BY ticket_count DESC
-    `, [start, end]);
+      ORDER BY ticket_count DESC`,
+      [start, end]
+    );
 
-    res.json(byCategory || []);
+    res.json(
+      (byCategory || []).map((r: any) => ({
+        id: r.id,
+        name: r.name,
+        ticket_count: toNumber(r.ticket_count),
+        resolved_count: toNumber(r.resolved_count),
+      }))
+    );
   } catch (error) {
     console.error('Erro ao buscar tickets por categoria:', error);
     res.status(500).json({ error: 'Erro ao buscar tickets por categoria' });
@@ -415,59 +396,43 @@ router.get('/by-category', requirePermission(RESOURCES.REPORTS, ACTIONS.VIEW), a
 // Estatísticas de webhooks
 router.get('/webhooks', requirePermission(RESOURCES.REPORTS, ACTIONS.VIEW), async (req: AuthRequest, res) => {
   try {
-    const { period = 'month', start: customStart, end: customEnd } = req.query;
-    
-    let start: string, end: string;
-    if (period === 'custom' && customStart && customEnd) {
-      start = `${customStart} 00:00:00`;
-      end = `${customEnd} 23:59:59`;
-    } else {
-      const dateRange = getDateRange(period as string);
-      start = dateRange.start;
-      end = dateRange.end;
-    }
+    const { start, end, period } = resolveRange(req.query as ReportPeriodQuery);
 
-    // Total de webhooks
     const totalWebhooks = await dbGet('SELECT COUNT(*) as count FROM webhooks');
     const activeWebhooks = await dbGet('SELECT COUNT(*) as count FROM webhooks WHERE active = 1');
 
-    // Chamadas de webhooks no período
     const totalCalls = await dbGet(
       'SELECT COUNT(*) as count FROM webhook_logs WHERE created_at >= ? AND created_at <= ?',
       [start, end]
     );
 
-    // Chamadas bem-sucedidas
     const successCalls = await dbGet(
-      `SELECT COUNT(*) as count FROM webhook_logs 
+      `SELECT COUNT(*) as count FROM webhook_logs
        WHERE status = 'success' AND created_at >= ? AND created_at <= ?`,
       [start, end]
     );
 
-    // Chamadas com erro
     const errorCalls = await dbGet(
-      `SELECT COUNT(*) as count FROM webhook_logs 
+      `SELECT COUNT(*) as count FROM webhook_logs
        WHERE status = 'error' AND created_at >= ? AND created_at <= ?`,
       [start, end]
     );
 
-    // Tickets criados por webhooks
     const ticketsFromWebhooks = await dbGet(
       `SELECT COUNT(DISTINCT wl.ticket_id) as count
        FROM webhook_logs wl
-       WHERE wl.ticket_id IS NOT NULL 
-       AND wl.created_at >= ? AND wl.created_at <= ?`,
+       WHERE wl.ticket_id IS NOT NULL
+         AND wl.created_at >= ? AND wl.created_at <= ?`,
       [start, end]
     );
 
-    // Taxa de sucesso
-    const total = (totalCalls as any)?.count || 0;
-    const success = (successCalls as any)?.count || 0;
+    const total = toNumber((totalCalls as any)?.count);
+    const success = toNumber((successCalls as any)?.count);
     const successRate = total > 0 ? (success / total) * 100 : 0;
 
-    // Webhooks mais utilizados
-    const topWebhooks = await dbAll(`
-      SELECT 
+    const dateFormat = DB_TYPE === 'sqlite' ? 'DATE(created_at)' : 'DATE(created_at)';
+    const topWebhooks = await dbAll(
+      `SELECT
         w.id,
         w.name,
         COUNT(wl.id) as total_calls,
@@ -478,16 +443,14 @@ router.get('/webhooks', requirePermission(RESOURCES.REPORTS, ACTIONS.VIEW), asyn
       LEFT JOIN webhook_logs wl ON w.id = wl.webhook_id
         AND wl.created_at >= ? AND wl.created_at <= ?
       GROUP BY w.id, w.name
+      HAVING COUNT(wl.id) > 0
       ORDER BY total_calls DESC
-      LIMIT 10
-    `, [start, end]);
+      LIMIT 10`,
+      [start, end]
+    );
 
-    // Evolução de chamadas ao longo do tempo
-    const dateFormat = DB_TYPE === 'sqlite'
-      ? "DATE(created_at)"
-      : "DATE(created_at)";
-    const callsTimeline = await dbAll(`
-      SELECT 
+    const callsTimeline = await dbAll(
+      `SELECT
         ${dateFormat} as date,
         COUNT(*) as total,
         COUNT(CASE WHEN status = 'success' THEN 1 END) as success,
@@ -495,21 +458,34 @@ router.get('/webhooks', requirePermission(RESOURCES.REPORTS, ACTIONS.VIEW), asyn
       FROM webhook_logs
       WHERE created_at >= ? AND created_at <= ?
       GROUP BY ${dateFormat}
-      ORDER BY date ASC
-    `, [start, end]);
+      ORDER BY date ASC`,
+      [start, end]
+    );
 
     res.json({
       period,
       dateRange: { start, end },
-      totalWebhooks: (totalWebhooks as any)?.count || 0,
-      activeWebhooks: (activeWebhooks as any)?.count || 0,
+      totalWebhooks: toNumber((totalWebhooks as any)?.count),
+      activeWebhooks: toNumber((activeWebhooks as any)?.count),
       totalCalls: total,
       successCalls: success,
-      errorCalls: (errorCalls as any)?.count || 0,
-      ticketsCreated: (ticketsFromWebhooks as any)?.count || 0,
-      successRate: Math.round(successRate * 100) / 100,
-      topWebhooks: topWebhooks || [],
-      timeline: callsTimeline || []
+      errorCalls: toNumber((errorCalls as any)?.count),
+      ticketsCreated: toNumber((ticketsFromWebhooks as any)?.count),
+      successRate: round2(successRate),
+      topWebhooks: (topWebhooks || []).map((w: any) => ({
+        id: w.id,
+        name: w.name,
+        total_calls: toNumber(w.total_calls),
+        success_calls: toNumber(w.success_calls),
+        error_calls: toNumber(w.error_calls),
+        tickets_created: toNumber(w.tickets_created),
+      })),
+      timeline: (callsTimeline || []).map((r: any) => ({
+        date: r.date,
+        total: toNumber(r.total),
+        success: toNumber(r.success),
+        error: toNumber(r.error),
+      })),
     });
   } catch (error) {
     console.error('Erro ao buscar estatísticas de webhooks:', error);

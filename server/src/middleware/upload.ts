@@ -119,3 +119,24 @@ export const uploadProjectTaskAttachment = multer({
   storage: projectTasksStorage,
   limits: { fileSize: 25 * 1024 * 1024 }, // 25MB
 });
+
+const docsUploadsDir = path.join(process.cwd(), 'uploads', 'docs');
+if (!fs.existsSync(docsUploadsDir)) {
+  fs.mkdirSync(docsUploadsDir, { recursive: true });
+}
+
+const docsStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, docsUploadsDir),
+  filename: (_req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    const ext = path.extname(file.originalname) || '';
+    cb(null, `${uniqueSuffix}${ext}`);
+  },
+});
+
+export const uploadDocsFile = multer({
+  storage: docsStorage,
+  limits: { fileSize: 100 * 1024 * 1024 }, // 100MB
+});
+
+export const DOCS_UPLOAD_DIR = docsUploadsDir;

@@ -3,6 +3,11 @@ import { body, validationResult } from 'express-validator';
 import { authenticate, AuthRequest, requireAdmin } from '../middleware/auth';
 import { dbGet, dbAll, dbRun, getBrasiliaTimestamp } from '../database';
 import { invalidateAllPermissions } from '../middleware/permissions';
+import {
+  normalizeProfileAccess,
+  PERMISSION_TO_PAGE,
+  type ProfilePermission,
+} from '../utils/access-profile-sync';
 
 const router = express.Router();
 
@@ -101,6 +106,11 @@ router.post('/', [
 
     const { name, description, permissions, pages } = req.body;
 
+    const normalized = normalizeProfileAccess(
+      Array.isArray(permissions) ? permissions : [],
+      Array.isArray(pages) ? pages : []
+    );
+
     // Verificar se nome já existe
     const existing = await dbGet('SELECT id FROM access_profiles WHERE name = ?', [name]);
     if (existing) {
@@ -116,8 +126,8 @@ router.post('/', [
     const profileId = (profileResult as any).lastID || (profileResult as any).id;
 
     // Criar permissões
-    if (permissions && Array.isArray(permissions)) {
-      for (const perm of permissions) {
+    if (normalized.permissions.length > 0) {
+      for (const perm of normalized.permissions) {
         if (perm.resource && perm.action) {
           try {
             await dbRun(`
@@ -135,19 +145,15 @@ router.post('/', [
     }
 
     // Criar páginas permitidas
-    if (pages && Array.isArray(pages)) {
-      for (const pagePath of pages) {
-        if (pagePath && typeof pagePath === 'string') {
-          try {
-            await dbRun(`
-              INSERT INTO access_profile_pages (access_profile_id, page_path)
-              VALUES (?, ?)
-            `, [profileId, pagePath]);
-          } catch (error: any) {
-            if (!error.message?.includes('UNIQUE')) {
-              throw error;
-            }
-          }
+    for (const pagePath of normalized.pages) {
+      try {
+        await dbRun(`
+          INSERT INTO access_profile_pages (access_profile_id, page_path)
+          VALUES (?, ?)
+        `, [profileId, pagePath]);
+      } catch (error: any) {
+        if (!error.message?.includes('UNIQUE')) {
+          throw error;
         }
       }
     }
@@ -176,6 +182,11 @@ router.put('/:id', [
 
     const { name, description, permissions, pages } = req.body;
 
+    const normalized = normalizeProfileAccess(
+      Array.isArray(permissions) ? permissions : [],
+      Array.isArray(pages) ? pages : []
+    );
+
     // Verificar se perfil existe
     const existing = await dbGet('SELECT id FROM access_profiles WHERE id = ?', [req.params.id]);
     if (!existing) {
@@ -199,8 +210,8 @@ router.put('/:id', [
     await dbRun('DELETE FROM permissions WHERE access_profile_id = ?', [req.params.id]);
 
     // Criar novas permissões
-    if (permissions && Array.isArray(permissions)) {
-      for (const perm of permissions) {
+    if (normalized.permissions.length > 0) {
+      for (const perm of normalized.permissions) {
         if (perm.resource && perm.action) {
           try {
             await dbRun(`
@@ -220,19 +231,15 @@ router.put('/:id', [
     await dbRun('DELETE FROM access_profile_pages WHERE access_profile_id = ?', [req.params.id]);
 
     // Criar novas páginas
-    if (pages && Array.isArray(pages)) {
-      for (const pagePath of pages) {
-        if (pagePath && typeof pagePath === 'string') {
-          try {
-            await dbRun(`
-              INSERT INTO access_profile_pages (access_profile_id, page_path)
-              VALUES (?, ?)
-            `, [req.params.id, pagePath]);
-          } catch (error: any) {
-            if (!error.message?.includes('UNIQUE')) {
-              throw error;
-            }
-          }
+    for (const pagePath of normalized.pages) {
+      try {
+        await dbRun(`
+          INSERT INTO access_profile_pages (access_profile_id, page_path)
+          VALUES (?, ?)
+        `, [req.params.id, pagePath]);
+      } catch (error: any) {
+        if (!error.message?.includes('UNIQUE')) {
+          throw error;
         }
       }
     }
@@ -383,11 +390,51 @@ router.delete('/:id/users/:userId', authenticate, requireAdmin, async (req: Auth
   }
 });
 
-// Mapeamento: permissão (resource:action) -> página que deve ser liberada
-const PERMISSION_TO_PAGE: Record<string, string> = {
-  'projects:view': '/projetos',
-  'docs:view': '/docs',
-};
+// Corrigir sincronização permissões ↔ páginas em todos os perfis (admin)
+router.post('/sync-all', authenticate, requireAdmin, async (_req: AuthRequest, res: Response) => {
+  try {
+    const profiles = await dbAll('SELECT id FROM access_profiles');
+    let fixed = 0;
+
+    for (const row of profiles as { id: number }[]) {
+      const permissions = await dbAll(
+        'SELECT resource, action FROM permissions WHERE access_profile_id = ?',
+        [row.id]
+      );
+      const pagesRows = await dbAll(
+        'SELECT page_path FROM access_profile_pages WHERE access_profile_id = ?',
+        [row.id]
+      );
+      const normalized = normalizeProfileAccess(
+        (permissions as ProfilePermission[]) || [],
+        (pagesRows as { page_path: string }[]).map((p) => p.page_path)
+      );
+
+      await dbRun('DELETE FROM permissions WHERE access_profile_id = ?', [row.id]);
+      for (const perm of normalized.permissions) {
+        await dbRun(
+          'INSERT INTO permissions (access_profile_id, resource, action) VALUES (?, ?, ?)',
+          [row.id, perm.resource, perm.action]
+        );
+      }
+
+      await dbRun('DELETE FROM access_profile_pages WHERE access_profile_id = ?', [row.id]);
+      for (const pagePath of normalized.pages) {
+        await dbRun(
+          'INSERT INTO access_profile_pages (access_profile_id, page_path) VALUES (?, ?)',
+          [row.id, pagePath]
+        );
+      }
+      fixed++;
+    }
+
+    invalidateAllPermissions();
+    res.json({ message: 'Perfis sincronizados', profiles: fixed });
+  } catch (error) {
+    console.error('Erro ao sincronizar perfis:', error);
+    res.status(500).json({ error: 'Erro ao sincronizar perfis' });
+  }
+});
 
 // Obter permissões do usuário atual
 router.get('/me/permissions', authenticate, async (req: AuthRequest, res) => {

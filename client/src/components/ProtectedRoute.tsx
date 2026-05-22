@@ -39,60 +39,14 @@ export default function ProtectedRoute({
     return <Navigate to="/login" />;
   }
 
-  // Verificar acesso à página
-  const currentPath = location.pathname;
-  if (!hasPageAccess(currentPath)) {
-    // Redirecionar para a primeira página permitida
-    const allowedPages = getAllowedPages();
-    if (allowedPages.length > 0) {
-      return <Navigate to={allowedPages[0]} replace />;
-    }
-    
-    if (fallback) {
-      return <>{fallback}</>;
-    }
-    
-    return (
-      <div style={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: 'var(--bg-primary)',
-        padding: 'var(--spacing-2xl)'
-      }}>
-        <div className="card" style={{
-          maxWidth: '600px',
-          textAlign: 'center',
-          padding: 'var(--spacing-2xl)',
-          border: '1px solid var(--border-primary)'
-        }}>
-          <h1 style={{
-            fontSize: '2rem',
-            fontWeight: '700',
-            color: 'var(--red)',
-            marginBottom: 'var(--spacing-md)'
-          }}>
-            Acesso Negado
-          </h1>
-          <p style={{
-            color: 'var(--text-secondary)',
-            fontSize: '1rem',
-            marginBottom: 'var(--spacing-lg)'
-          }}>
-            Você não tem permissão para acessar esta página.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  // Verificar permissão principal ou permissões alternativas
   const hasMainPermission = hasPermission(resource, action);
-  const hasAlternativePermission = alternativePermissions.length > 0 && 
-    alternativePermissions.some(alt => hasPermission(alt.resource, alt.action));
-  
-  if (!hasMainPermission && !hasAlternativePermission) {
+  const hasAlternativePermission =
+    alternativePermissions.length > 0 &&
+    alternativePermissions.some((alt) => hasPermission(alt.resource, alt.action));
+  const hasResourceAccess = hasMainPermission || hasAlternativePermission;
+
+  // Rotas com recurso/ação: a permissão do perfil é o critério principal (ex.: projects:view)
+  if (!hasResourceAccess) {
     if (fallback) {
       return <>{fallback}</>;
     }
@@ -143,6 +97,53 @@ export default function ProtectedRoute({
                 ))}
               </>
             )}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const currentPath = location.pathname;
+  if (!hasPageAccess(currentPath)) {
+    const allowedPages = getAllowedPages();
+    if (allowedPages.length > 0) {
+      return <Navigate to={allowedPages[0]} replace />;
+    }
+    if (fallback) {
+      return <>{fallback}</>;
+    }
+    return (
+      <div
+        style={{
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: 'var(--bg-primary)',
+          padding: 'var(--spacing-2xl)',
+        }}
+      >
+        <div
+          className="card"
+          style={{
+            maxWidth: '600px',
+            textAlign: 'center',
+            padding: 'var(--spacing-2xl)',
+            border: '1px solid var(--border-primary)',
+          }}
+        >
+          <h1
+            style={{
+              fontSize: '2rem',
+              fontWeight: '700',
+              color: 'var(--red)',
+              marginBottom: 'var(--spacing-md)',
+            }}
+          >
+            Acesso Negado
+          </h1>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '1rem' }}>
+            Esta página não está liberada no seu perfil de acesso.
           </p>
         </div>
       </div>

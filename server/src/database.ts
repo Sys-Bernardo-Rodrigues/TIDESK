@@ -924,6 +924,57 @@ const initSQLite = async () => {
     )
   `);
 
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS doc_repositories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      slug TEXT NOT NULL,
+      description TEXT,
+      owner_id INTEGER NOT NULL,
+      visibility TEXT NOT NULL DEFAULT 'private',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS doc_repository_shares (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      repository_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      permission TEXT NOT NULL DEFAULT 'view',
+      created_by INTEGER NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(repository_id, user_id),
+      FOREIGN KEY (repository_id) REFERENCES doc_repositories(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS doc_entries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      repository_id INTEGER NOT NULL,
+      parent_id INTEGER,
+      name TEXT NOT NULL,
+      entry_type TEXT NOT NULL,
+      storage_path TEXT,
+      mime_type TEXT,
+      size_bytes INTEGER DEFAULT 0,
+      content TEXT,
+      description TEXT,
+      tags TEXT,
+      created_by INTEGER NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (repository_id) REFERENCES doc_repositories(id) ON DELETE CASCADE,
+      FOREIGN KEY (parent_id) REFERENCES doc_entries(id) ON DELETE CASCADE,
+      FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+
   await seedDatabase();
 };
 
@@ -1418,6 +1469,57 @@ const initPostgreSQL = async () => {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (webhook_id) REFERENCES webhooks(id) ON DELETE CASCADE,
       FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE SET NULL
+    )
+  `);
+
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS doc_repositories (
+      id SERIAL PRIMARY KEY,
+      name VARCHAR(255) NOT NULL,
+      slug VARCHAR(255) NOT NULL,
+      description TEXT,
+      owner_id INTEGER NOT NULL,
+      visibility VARCHAR(50) NOT NULL DEFAULT 'private',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS doc_repository_shares (
+      id SERIAL PRIMARY KEY,
+      repository_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      permission VARCHAR(50) NOT NULL DEFAULT 'view',
+      created_by INTEGER NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(repository_id, user_id),
+      FOREIGN KEY (repository_id) REFERENCES doc_repositories(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS doc_entries (
+      id SERIAL PRIMARY KEY,
+      repository_id INTEGER NOT NULL,
+      parent_id INTEGER,
+      name VARCHAR(512) NOT NULL,
+      entry_type VARCHAR(50) NOT NULL,
+      storage_path TEXT,
+      mime_type VARCHAR(255),
+      size_bytes INTEGER DEFAULT 0,
+      content TEXT,
+      description TEXT,
+      tags TEXT,
+      created_by INTEGER NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (repository_id) REFERENCES doc_repositories(id) ON DELETE CASCADE,
+      FOREIGN KEY (parent_id) REFERENCES doc_entries(id) ON DELETE CASCADE,
+      FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
     )
   `);
 

@@ -23,6 +23,7 @@ import updateRoutes from './routes/updates';
 import dashboardRoutes from './routes/dashboard';
 import webhookRoutes from './routes/webhooks';
 import projectRoutes from './routes/projects';
+import docsRoutes from './routes/docs';
 import { startBackupScheduler } from './services/backup-scheduler';
 
 dotenv.config();
@@ -137,6 +138,7 @@ app.use('/api/dashboard', dashboardRoutes);
 // Registrar rotas de webhook (incluindo recebimento que já tem raw body parsing)
 app.use('/api/webhooks', webhookRoutes);
 app.use('/api/projects', projectRoutes);
+app.use('/api/docs', docsRoutes);
 
 // Rota de health check
 app.get('/api/health', (req, res) => {

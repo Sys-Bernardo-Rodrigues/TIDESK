@@ -1,126 +1,85 @@
-/** Tipos e dados mock para o sistema de Docs (repositórios estilo GitHub) */
+/** Repositório de arquivos TIDESK (estilo drive / Nextcloud) */
 
-import type { LucideIcon } from 'lucide-react';
-import { FileText, Link as LinkIcon, Video, KeyRound } from 'lucide-react';
+export type DocVisibility = 'private' | 'team';
+export type DocAccess = 'owner' | 'edit' | 'view';
+export type DocEntryType = 'folder' | 'file' | 'note';
+export type SharePermission = 'view' | 'edit';
 
-export type DocType = 'documento' | 'link' | 'video' | 'credencial';
-
-export type DocItem = {
-  id: string;
-  repoId: string;
-  tipo: DocType;
-  titulo: string;
-  descricao?: string;
-  tags: string[];
-  conteudoSensivel?: string;
-  url?: string;
-  usuario?: string;
-  criadoEm: string;
-  atualizadoEm?: string;
+export type DocRepositoryShare = {
+  id?: number;
+  user_id: number;
+  user_name: string;
+  user_email: string;
+  permission: SharePermission;
 };
 
-export type DocRepo = {
-  id: string;
+export type DocRepository = {
+  id: number;
   name: string;
   slug: string;
   description: string;
-  itemCount: number;
-  createdAt: string;
-  updatedAt: string;
+  owner_id: number;
+  owner_name?: string;
+  visibility: DocVisibility;
+  item_count: number;
+  created_at: string;
+  updated_at: string;
+  access?: DocAccess;
+  shared_with?: DocRepositoryShare[];
 };
 
-export const DOC_TYPE_LABEL: Record<DocType, string> = {
-  documento: 'Documento',
-  link: 'Link',
-  video: 'Vídeo',
-  credencial: 'Credencial / Senha',
+export type DocEntry = {
+  id: number;
+  repository_id: number;
+  parent_id: number | null;
+  name: string;
+  entry_type: DocEntryType;
+  mime_type?: string | null;
+  size_bytes: number;
+  description?: string | null;
+  tags: string[];
+  content?: string;
+  created_by: number;
+  created_by_name?: string;
+  created_at: string;
+  updated_at: string;
 };
 
-export const DOC_TYPE_ICON: Record<DocType, LucideIcon> = {
-  documento: FileText,
-  link: LinkIcon,
-  video: Video,
-  credencial: KeyRound,
+export type DocShare = {
+  id: number;
+  repository_id: number;
+  user_id: number;
+  user_name: string;
+  user_email: string;
+  permission: SharePermission;
+  created_by: number;
+  created_at: string;
 };
 
-/** Mock: repositórios disponíveis */
-export const MOCK_REPOS: DocRepo[] = [
-  {
-    id: '1',
-    name: 'Procedimentos de rede',
-    slug: 'procedimentos-rede',
-    description: 'Documentação de rede, VPN, firewall e acessos.',
-    itemCount: 3,
-    createdAt: '2025-01-15T10:00:00',
-    updatedAt: '2025-02-20T14:30:00',
-  },
-  {
-    id: '2',
-    name: 'Credenciais e acessos',
-    slug: 'credenciais-acessos',
-    description: 'Logins, senhas e tokens de sistemas (criptografados).',
-    itemCount: 0,
-    createdAt: '2025-02-01T09:00:00',
-    updatedAt: '2025-02-01T09:00:00',
-  },
-  {
-    id: '3',
-    name: 'Tutoriais e vídeos',
-    slug: 'tutoriais-videos',
-    description: 'Links para tutoriais, vídeos e materiais de treinamento.',
-    itemCount: 1,
-    createdAt: '2025-02-10T11:00:00',
-    updatedAt: '2025-02-18T16:00:00',
-  },
-];
-
-/** Mock: itens (documentos) por repositório */
-export const MOCK_ITEMS: DocItem[] = [
-  {
-    id: 'i1',
-    repoId: '1',
-    tipo: 'documento',
-    titulo: 'Checklist de backup diário',
-    descricao: 'Passo a passo para verificação do backup.',
-    tags: ['backup', 'procedimento'],
-    criadoEm: '2025-02-01T10:00:00',
-    atualizadoEm: '2025-02-20T14:30:00',
-  },
-  {
-    id: 'i2',
-    repoId: '1',
-    tipo: 'link',
-    titulo: 'Portal da VPN',
-    descricao: 'Acesso ao painel da VPN corporativa.',
-    tags: ['vpn', 'acesso'],
-    url: 'https://vpn.empresa.com',
-    criadoEm: '2025-02-05T09:00:00',
-  },
-  {
-    id: 'i3',
-    repoId: '1',
-    tipo: 'credencial',
-    titulo: 'Firewall – admin',
-    descricao: 'Conta de administração do firewall.',
-    tags: ['firewall', 'admin'],
-    criadoEm: '2025-02-10T11:00:00',
-  },
-  {
-    id: 'i4',
-    repoId: '3',
-    tipo: 'video',
-    titulo: 'Treinamento TIDESK – novos usuários',
-    descricao: 'Vídeo de onboarding no sistema de tickets.',
-    tags: ['treinamento', 'tidesk'],
-    url: 'https://example.com/video-tidesk',
-    criadoEm: '2025-02-18T16:00:00',
-  },
-];
-
-export function getItemsByRepo(repoId: string): DocItem[] {
-  return MOCK_ITEMS.filter((i) => i.repoId === repoId);
+export function isPdfEntry(entry: DocEntry): boolean {
+  if (entry.entry_type !== 'file') return false;
+  const mime = (entry.mime_type || '').toLowerCase();
+  if (mime === 'application/pdf') return true;
+  return entry.name.toLowerCase().endsWith('.pdf');
 }
 
-export function getRepoById(id: string): DocRepo | undefined {
-  return MOCK_REPOS.find((r) => r.id === id);
+export function formatFileSize(bytes: number): string {
+  if (!bytes || bytes < 1024) return `${bytes || 0} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
+
+export function formatDate(s: string): string {
+  try {
+    return new Date(s).toLocaleDateString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  } catch {
+    return s;
+  }
 }

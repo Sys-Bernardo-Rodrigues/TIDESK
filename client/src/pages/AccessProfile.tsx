@@ -3,6 +3,11 @@ import axios from 'axios';
 import { Shield, Plus, Search, Edit, Trash2, Users, X, Save, CheckSquare, Square, Home, Ticket, FileEdit, FileText, User, Database, RefreshCw, CheckCircle, Eye, History, FileBarChart, Calendar, CalendarDays, Webhook, FolderKanban, BookOpen } from 'lucide-react';
 import { RESOURCES, ACTIONS } from '../hooks/usePermissions';
 import { formatDateBR } from '../utils/dateUtils';
+import {
+  applyPageToggle,
+  applyPermissionToggle,
+  normalizeProfileAccess,
+} from '../utils/accessProfileSync';
 
 interface Permission {
   resource: string;
@@ -33,7 +38,7 @@ const RESOURCE_LABELS: Record<string, string> = {
   agenda: 'Agenda',
   webhooks: 'Webhooks',
   projects: 'Projetos',
-  docs: 'Docs'
+  docs: 'Arquivos'
 };
 
 const ACTION_LABELS: Record<string, string> = {
@@ -50,7 +55,7 @@ const SYSTEM_PAGES = [
   { path: '/', label: 'Dashboard', Icon: Home },
   { path: '/tickets', label: 'Tickets', Icon: Ticket },
   { path: '/projetos', label: 'Projetos', Icon: FolderKanban },
-  { path: '/docs', label: 'Docs', Icon: BookOpen },
+  { path: '/docs', label: 'Arquivos', Icon: BookOpen },
   { path: '/create/forms', label: 'Formulários', Icon: FileEdit },
   { path: '/create/pages', label: 'Páginas', Icon: FileText },
   { path: '/create/webhooks', label: 'Webhooks', Icon: Webhook },
@@ -142,22 +147,16 @@ export default function AccessProfile() {
 
   const togglePermission = (resource: string, action: string) => {
     const exists = formData.permissions.some(
-      p => p.resource === resource && p.action === action
+      (p) => p.resource === resource && p.action === action
     );
-
-    if (exists) {
-      setFormData({
-        ...formData,
-        permissions: formData.permissions.filter(
-          p => !(p.resource === resource && p.action === action)
-        )
-      });
-    } else {
-      setFormData({
-        ...formData,
-        permissions: [...formData.permissions, { resource, action }]
-      });
-    }
+    const next = applyPermissionToggle(
+      formData.permissions,
+      formData.pages,
+      resource,
+      action,
+      !exists
+    );
+    setFormData({ ...formData, permissions: next.permissions, pages: next.pages });
   };
 
   const hasPermission = (resource: string, action: string): boolean => {
@@ -173,11 +172,12 @@ export default function AccessProfile() {
     }
 
     try {
+      const normalized = normalizeProfileAccess(formData.permissions, formData.pages);
       const payload = {
         name: formData.name,
         description: formData.description || null,
-        permissions: formData.permissions,
-        pages: formData.pages
+        permissions: normalized.permissions,
+        pages: normalized.pages,
       };
 
       if (editingProfile) {
@@ -488,7 +488,7 @@ export default function AccessProfile() {
                       </h3>
                       {resource === 'projects' && (
                         <p style={{ fontSize: '0.8125rem', color: 'var(--text-tertiary)', marginBottom: 'var(--spacing-sm)' }}>
-                          Para stakeholders (apenas leitura), marque apenas Visualizar.
+                          Marcar Visualizar (ou Criar/Editar) libera automaticamente o menu Projetos. Desmarcar Projetos nas páginas remove todas as permissões de projetos.
                         </p>
                       )}
                       <div style={{
@@ -631,17 +631,17 @@ export default function AccessProfile() {
                           type="checkbox"
                           checked={isSelected}
                           onChange={() => {
-                            if (isSelected) {
-                              setFormData({
-                                ...formData,
-                                pages: formData.pages.filter(p => p !== page.path)
-                              });
-                            } else {
-                              setFormData({
-                                ...formData,
-                                pages: [...formData.pages, page.path]
-                              });
-                            }
+                            const next = applyPageToggle(
+                              formData.permissions,
+                              formData.pages,
+                              page.path,
+                              !isSelected
+                            );
+                            setFormData({
+                              ...formData,
+                              permissions: next.permissions,
+                              pages: next.pages,
+                            });
                           }}
                           style={{ display: 'none' }}
                         />

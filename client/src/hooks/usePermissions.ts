@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
+import { PERMISSION_TO_PAGE } from '../utils/accessProfileSync';
 
 export const RESOURCES = {
   TICKETS: 'tickets',
@@ -67,6 +68,9 @@ export const usePermissions = () => {
         setAllowedPages(allPages);
       } else {
         const pages = new Set<string>(response.data.pages || []);
+        for (const [perm, pagePath] of Object.entries(PERMISSION_TO_PAGE)) {
+          if (userPermissions.has(perm)) pages.add(pagePath);
+        }
         if (userPermissions.has('pages:create')) pages.add('/create/pages/builder');
         if (userPermissions.has('forms:create')) pages.add('/create/forms/builder');
         setAllowedPages(pages);

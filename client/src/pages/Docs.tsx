@@ -1,83 +1,77 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
 import {
-  FolderGit2,
+  HardDrive,
   Search,
   Plus,
   FileText,
+  Users,
   Lock,
   ChevronRight,
   X,
   Trash2,
   ChevronLeft,
+  Globe,
 } from 'lucide-react';
-import { MOCK_REPOS, type DocRepo } from './docs/docsData';
+import { usePermissions, RESOURCES, ACTIONS } from '../hooks/usePermissions';
+import type { DocRepository, DocVisibility } from './docs/docsData';
+import { formatDate } from './docs/docsData';
+import DocsUserAccessPicker, {
+  type AccessMember,
+  type UserOption,
+} from './docs/DocsUserAccessPicker';
+import { useAuth } from '../contexts/AuthContext';
 
 const PAGE_SIZE = 8;
-const STORAGE_KEY = 'tidesk_docs_repos';
 
-function loadReposFromStorage(): DocRepo[] {
-  try {
-    const raw = sessionStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as unknown;
-      if (Array.isArray(parsed) && parsed.length >= 0) return parsed as DocRepo[];
-    }
-  } catch {
-    // ignore
-  }
-  return [...MOCK_REPOS];
-}
-
-function saveReposToStorage(repos: DocRepo[]) {
-  try {
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(repos));
-  } catch {
-    // ignore
-  }
-}
-
-function formatDate(s: string): string {
-  try {
-    return new Date(s).toLocaleDateString('pt-BR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-    });
-  } catch {
-    return s;
-  }
-}
+const VISIBILITY_LABEL: Record<DocVisibility, string> = {
+  private: 'Privado',
+  team: 'Equipe',
+};
 
 export default function Docs() {
   const navigate = useNavigate();
-  const location = useLocation();
+  const { user } = useAuth();
+  const { hasPermission } = usePermissions();
+  const canCreate = hasPermission(RESOURCES.DOCS, ACTIONS.CREATE);
+
   const [search, setSearch] = useState('');
-  const [repos, setRepos] = useState<DocRepo[]>(loadReposFromStorage);
+  const [repos, setRepos] = useState<DocRepository[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [showNewRepoModal, setShowNewRepoModal] = useState(false);
   const [newRepoName, setNewRepoName] = useState('');
   const [newRepoDesc, setNewRepoDesc] = useState('');
+  const [newRepoVisibility, setNewRepoVisibility] = useState<DocVisibility>('private');
+  const [accessMembers, setAccessMembers] = useState<AccessMember[]>([]);
+  const [allUsers, setAllUsers] = useState<UserOption[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
-    saveReposToStorage(repos);
-  }, [repos]);
+    if (!showNewRepoModal) return;
+    axios
+      .get<UserOption[]>('/api/docs/share-users')
+      .then((res) => setAllUsers(res.data))
+      .catch(() => setAllUsers([]));
+  }, [showNewRepoModal]);
+
+  const loadRepos = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await axios.get<DocRepository[]>('/api/docs/repositories');
+      setRepos(res.data);
+    } catch {
+      setError('Não foi possível carregar os repositórios.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const deleteId = (location.state as { deleteRepoId?: string })?.deleteRepoId;
-    if (deleteId) {
-      const updatedRepos = repos.filter((r) => r.id !== deleteId);
-      setRepos(updatedRepos);
-      saveReposToStorage(updatedRepos);
-      navigate('/docs', { replace: true, state: {} });
-    }
-  }, [location.state, navigate]);
-
-  const handleDeleteRepo = (e: React.MouseEvent, repo: DocRepo) => {
-    e.stopPropagation();
-    if (!window.confirm(`Excluir o repositório "${repo.name}"? Todos os itens serão removidos.`)) return;
-    setRepos((prev) => prev.filter((r) => r.id !== repo.id));
-  };
+    loadRepos();
+  }, []);
 
   const filteredRepos = repos.filter(
     (r) =>
@@ -96,44 +90,57 @@ export default function Docs() {
     currentPage * PAGE_SIZE
   );
 
-  const handleOpenRepo = (repo: DocRepo) => {
-    navigate(`/docs/${repo.id}`, { state: { repo } });
+  const handleOpenRepo = (repo: DocRepository) => {
+    navigate(`/docs/${repo.id}`);
   };
 
-  const handleCreateRepo = (e: React.FormEvent) => {
+  const handleDeleteRepo = async (e: React.MouseEvent, repo: DocRepository) => {
+    e.stopPropagation();
+    if (repo.access !== 'owner') {
+      alert('Apenas o proprietário pode excluir este repositório.');
+      return;
+    }
+    if (!window.confirm(`Excluir o repositório "${repo.name}" e todos os arquivos?`)) return;
+    try {
+      await axios.delete(`/api/docs/repositories/${repo.id}`);
+      setRepos((prev) => prev.filter((r) => r.id !== repo.id));
+    } catch (err: unknown) {
+      const msg = axios.isAxiosError(err) ? err.response?.data?.error : 'Erro ao excluir';
+      alert(msg || 'Erro ao excluir');
+    }
+  };
+
+  const handleCreateRepo = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newRepoName.trim()) return;
-    const slug = newRepoName
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/\p{Diacritic}/gu, '')
-      .replace(/\s+/g, '-')
-      .replace(/[^a-z0-9-]/g, '');
-    const now = new Date().toISOString();
-    const newRepo: DocRepo = {
-      id: String(Date.now()),
-      name: newRepoName.trim(),
-      slug: slug || String(Date.now()),
-      description: newRepoDesc.trim(),
-      itemCount: 0,
-      createdAt: now,
-      updatedAt: now,
-    };
-    const updatedRepos = [...repos, newRepo];
-    setRepos(updatedRepos);
-    saveReposToStorage(updatedRepos);
-    setNewRepoName('');
-    setNewRepoDesc('');
-    setShowNewRepoModal(false);
-    navigate(`/docs/${newRepo.id}`, { state: { repo: newRepo } });
+    try {
+      const res = await axios.post<DocRepository>('/api/docs/repositories', {
+        name: newRepoName.trim(),
+        description: newRepoDesc.trim(),
+        visibility: newRepoVisibility,
+        members:
+          newRepoVisibility === 'private'
+            ? accessMembers.map((m) => ({ user_id: m.user_id, permission: m.permission }))
+            : [],
+      });
+      setShowNewRepoModal(false);
+      setNewRepoName('');
+      setNewRepoDesc('');
+      setNewRepoVisibility('private');
+      setAccessMembers([]);
+      navigate(`/docs/${res.data.id}`);
+    } catch (err: unknown) {
+      const msg = axios.isAxiosError(err) ? err.response?.data?.error : 'Erro ao criar';
+      alert(msg || 'Erro ao criar repositório');
+    }
   };
 
   return (
     <div className="docs-page">
       <header className="docs-header">
-        <h1 className="docs-header__title">Docs</h1>
+        <h1 className="docs-header__title">Arquivos</h1>
         <p className="docs-header__subtitle">
-          Repositórios de conhecimento da equipe — organize documentos, links, vídeos e credenciais.
+          Repositório de arquivos da equipe — envie documentos, organize em pastas e compartilhe com colegas.
         </p>
       </header>
 
@@ -148,22 +155,30 @@ export default function Docs() {
             className="docs-search__input"
           />
         </div>
-        <button
-          type="button"
-          className="btn btn-primary"
-          onClick={() => setShowNewRepoModal(true)}
-        >
-          <Plus size={18} />
-          Novo repositório
-        </button>
+        {canCreate && (
+          <button type="button" className="btn btn-primary" onClick={() => setShowNewRepoModal(true)}>
+            <Plus size={18} />
+            Novo repositório
+          </button>
+        )}
       </div>
 
+      {error && (
+        <p className="docs-error" role="alert">
+          {error}
+        </p>
+      )}
+
       <div className="docs-repos">
-        {filteredRepos.length === 0 ? (
+        {loading ? (
+          <div className="card docs-empty-card">
+            <p className="docs-empty__text">Carregando repositórios...</p>
+          </div>
+        ) : filteredRepos.length === 0 ? (
           <div className="card docs-empty-card">
             <div className="docs-empty">
               <div className="docs-empty__icon docs-empty__icon--repo">
-                <FolderGit2 size={40} />
+                <HardDrive size={40} />
               </div>
               <h3 className="docs-empty__title">
                 {search ? 'Nenhum repositório encontrado' : 'Nenhum repositório ainda'}
@@ -171,14 +186,10 @@ export default function Docs() {
               <p className="docs-empty__text">
                 {search
                   ? 'Tente outro termo de busca.'
-                  : 'Crie o primeiro repositório para organizar documentos da equipe.'}
+                  : 'Crie um repositório para armazenar e compartilhar arquivos com a equipe.'}
               </p>
-              {!search && (
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={() => setShowNewRepoModal(true)}
-                >
+              {!search && canCreate && (
+                <button type="button" className="btn btn-primary" onClick={() => setShowNewRepoModal(true)}>
                   <Plus size={18} />
                   Criar repositório
                 </button>
@@ -202,29 +213,35 @@ export default function Docs() {
                     {String((currentPage - 1) * PAGE_SIZE + index + 1).padStart(2, '0')}
                   </span>
                   <span className="docs-list-item__icon">
-                    <FolderGit2 size={20} />
+                    <HardDrive size={20} />
                   </span>
                   <div className="docs-list-item__content">
                     <span className="docs-list-item__name">{repo.name}</span>
                     <span className="docs-list-item__desc">{repo.description || 'Sem descrição'}</span>
                   </div>
                   <div className="docs-list-item__meta">
+                    <span className={`docs-visibility docs-visibility--${repo.visibility}`}>
+                      {repo.visibility === 'team' ? <Users size={12} /> : <Lock size={12} />}
+                      {VISIBILITY_LABEL[repo.visibility]}
+                    </span>
                     <span>
                       <FileText size={12} />
-                      {repo.itemCount} {repo.itemCount === 1 ? 'item' : 'itens'}
+                      {repo.item_count} {repo.item_count === 1 ? 'item' : 'itens'}
                     </span>
-                    <span>{formatDate(repo.updatedAt)}</span>
+                    <span>{formatDate(repo.updated_at)}</span>
                   </div>
                   <div className="docs-list-item__actions">
-                    <button
-                      type="button"
-                      className="docs-list-item__btn docs-list-item__btn--delete"
-                      onClick={(e) => handleDeleteRepo(e, repo)}
-                      title="Excluir repositório"
-                      aria-label="Excluir repositório"
-                    >
-                      <Trash2 size={14} />
-                    </button>
+                    {repo.access === 'owner' && (
+                      <button
+                        type="button"
+                        className="docs-list-item__btn docs-list-item__btn--delete"
+                        onClick={(e) => handleDeleteRepo(e, repo)}
+                        title="Excluir repositório"
+                        aria-label="Excluir repositório"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
                     <span className="docs-list-item__open">
                       <ChevronRight size={18} />
                     </span>
@@ -262,16 +279,13 @@ export default function Docs() {
       </div>
 
       {showNewRepoModal && (
-        <div
-          className="docs-modal-backdrop"
-          onClick={() => setShowNewRepoModal(false)}
-        >
+        <div className="docs-modal-backdrop" onClick={() => setShowNewRepoModal(false)}>
           <div className="docs-modal" onClick={(e) => e.stopPropagation()}>
             <div className="docs-modal__head">
               <div>
                 <h2 className="docs-modal__title">Novo repositório</h2>
                 <p className="docs-modal__subtitle">
-                  Crie um repositório para agrupar documentos, links, vídeos e credenciais.
+                  Espaço para arquivos, pastas e notas. Compartilhe com usuários específicos ou com toda a equipe.
                 </p>
               </div>
               <button
@@ -286,13 +300,13 @@ export default function Docs() {
             <form onSubmit={handleCreateRepo} className="docs-modal__form">
               <div className="docs-form-grid">
                 <div className="docs-form-group docs-form-group--full">
-                  <label className="docs-form-label">Nome do repositório</label>
+                  <label className="docs-form-label">Nome</label>
                   <input
                     type="text"
                     required
                     value={newRepoName}
                     onChange={(e) => setNewRepoName(e.target.value)}
-                    placeholder="Ex: Procedimentos de rede"
+                    placeholder="Ex: Documentos da equipe"
                     className="docs-form-input"
                     autoFocus
                   />
@@ -303,22 +317,43 @@ export default function Docs() {
                     rows={3}
                     value={newRepoDesc}
                     onChange={(e) => setNewRepoDesc(e.target.value)}
-                    placeholder="Breve descrição do que este repositório contém."
+                    placeholder="Para que serve este repositório?"
                     className="docs-form-input docs-form-textarea"
                   />
                 </div>
+                <div className="docs-form-group docs-form-group--full">
+                  <label className="docs-form-label">Quem pode acessar</label>
+                  <select
+                    value={newRepoVisibility}
+                    onChange={(e) => setNewRepoVisibility(e.target.value as DocVisibility)}
+                    className="docs-form-input"
+                  >
+                    <option value="private">Usuários selecionados (+ você como dono)</option>
+                    <option value="team">Toda a equipe (quem tem permissão Arquivos)</option>
+                  </select>
+                </div>
+                {newRepoVisibility === 'private' && (
+                  <div className="docs-form-group docs-form-group--full">
+                    <DocsUserAccessPicker
+                      users={allUsers}
+                      value={accessMembers}
+                      onChange={setAccessMembers}
+                      excludeUserIds={user?.id ? [user.id] : []}
+                    />
+                  </div>
+                )}
               </div>
               <div className="docs-modal-footer">
                 <div className="docs-modal-footer__hint">
-                  <Lock size={14} />
-                  <span>Conteúdo sensível nos itens será armazenado criptografado.</span>
+                  <Globe size={14} />
+                  <span>
+                    {newRepoVisibility === 'private'
+                      ? 'Somente os usuários marcados e você terão acesso.'
+                      : 'Todos com permissão de Arquivos no sistema poderão ver.'}
+                  </span>
                 </div>
                 <div className="docs-modal-footer__actions">
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={() => setShowNewRepoModal(false)}
-                  >
+                  <button type="button" className="btn btn-secondary" onClick={() => setShowNewRepoModal(false)}>
                     Cancelar
                   </button>
                   <button type="submit" className="btn btn-primary">

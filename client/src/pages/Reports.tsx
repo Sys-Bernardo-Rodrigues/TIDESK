@@ -35,6 +35,8 @@ interface OverviewData {
   dateRange: { start: string; end: string };
   totalTickets: number;
   resolvedTickets: number;
+  resolvedInPeriod?: number;
+  cohortResolved?: number;
   resolutionRate: number;
   avgResolutionTimeHours: number;
   ticketsByStatus: Array<{ status: string; count: number }>;
@@ -114,7 +116,7 @@ interface WebhooksData {
 
 // ——— Helpers ———
 function formatHours(hours: number | null | undefined): string {
-  if (hours == null || isNaN(hours)) return '—';
+  if (hours == null || isNaN(hours) || hours < 0) return '—';
   if (hours < 1) return `${Math.round(hours * 60)} min`;
   if (hours < 24) return `${Math.round(hours * 10) / 10} h`;
   const d = Math.floor(hours / 24);
@@ -221,6 +223,7 @@ export default function Reports() {
   };
 
   useEffect(() => {
+    if (useCustomDates && (!customStart || !customEnd)) return;
     fetchAll();
   }, [period, useCustomDates, customStart, customEnd]);
 
@@ -345,9 +348,10 @@ export default function Reports() {
       doc.setTextColor(textDark[0], textDark[1], textDark[2]);
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(10);
+      const cohort = overview.cohortResolved ?? overview.resolvedTickets;
       const resumoText = overview.totalTickets === 0
         ? 'Nenhum ticket criado no período selecionado.'
-        : `No período foram criados ${overview.totalTickets} tickets. ${overview.resolvedTickets} foram resolvidos ou fechados (taxa de ${overview.resolutionRate.toFixed(1)}%). Tempo médio de resolução: ${formatHours(overview.avgResolutionTimeHours)}.`;
+        : `No período foram criados ${overview.totalTickets} tickets. ${overview.resolvedTickets} foram concluídos no período. Dos criados no período, ${cohort} já estão resolvidos ou fechados (${overview.resolutionRate.toFixed(1)}%). Tempo médio de resolução (conclusões no período): ${formatHours(overview.avgResolutionTimeHours)}.`;
       doc.text(resumoText, margin, y, { maxWidth: w - 2 * margin });
       y += 12;
 
@@ -643,21 +647,21 @@ export default function Reports() {
           <div className="reports__kpi">
             <div className="reports__kpi-icon reports__kpi-icon--green"><CheckCircle size={22} /></div>
             <div className="reports__kpi-body">
-              <span className="reports__kpi-label">Resolvidos <InfoTooltip text="Tickets finalizados com status Resolvido ou Fechado no período. Indica quantas demandas foram concluídas." /></span>
+              <span className="reports__kpi-label">Resolvidos no período <InfoTooltip text="Tickets marcados como Resolvido ou Fechado cuja última atualização (conclusão) ocorreu dentro do período selecionado." /></span>
               <span className="reports__kpi-value">{overview.resolvedTickets}</span>
             </div>
           </div>
           <div className="reports__kpi">
             <div className="reports__kpi-icon reports__kpi-icon--purple"><TrendingUp size={22} /></div>
             <div className="reports__kpi-body">
-              <span className="reports__kpi-label">Taxa de resolução <InfoTooltip text="Percentual de tickets resolvidos ou fechados em relação ao total criado no período. Quanto maior, maior a eficiência no fechamento das demandas." /></span>
+              <span className="reports__kpi-label">Taxa do lote <InfoTooltip text="Entre os tickets criados no período, qual percentual já está Resolvido ou Fechado hoje. Não usa o total de conclusões do período (que pode incluir tickets antigos)." /></span>
               <span className="reports__kpi-value">{overview.resolutionRate.toFixed(1)}%</span>
             </div>
           </div>
           <div className="reports__kpi">
             <div className="reports__kpi-icon reports__kpi-icon--orange"><Clock size={22} /></div>
             <div className="reports__kpi-body">
-              <span className="reports__kpi-label">Tempo médio <InfoTooltip text="Tempo médio entre o agente assumir o ticket e o fechamento. Pausas são descontadas. Baseado nos tickets resolvidos no período." /></span>
+              <span className="reports__kpi-label">Tempo médio <InfoTooltip text="Média de horas entre o agente assumir o ticket e a conclusão, descontando pausas. Considera apenas tickets concluídos no período (data de conclusão)." /></span>
               <span className="reports__kpi-value">{formatHours(overview.avgResolutionTimeHours)}</span>
             </div>
           </div>
@@ -805,7 +809,7 @@ export default function Reports() {
       {/* Performance de agentes */}
       {agentsData.length > 0 && (
         <section className="reports__section">
-          <h2 className="reports__section-title">Performance de agentes <InfoTooltip text="Métricas por agente: total de tickets atendidos, resolvidos, taxa de resolução e tempo médio (mínimo e máximo) no período." /></h2>
+          <h2 className="reports__section-title">Performance de agentes <InfoTooltip text="Tickets atribuídos ao agente no período (data de atribuição ou criação). Resolvidos = concluídos no período. Taxa = resolvidos no período ÷ atribuídos no período." /></h2>
           <div className="reports__card reports__table-wrap">
             <table className="reports__table">
               <thead>
@@ -875,19 +879,24 @@ export default function Reports() {
       {/* Evolução (timeline) */}
       {timeline.length > 0 && (
         <section className="reports__section">
-          <h2 className="reports__section-title">Evolução no período <InfoTooltip text="Quantidade de tickets criados ao longo do tempo (por dia ou agrupado conforme o período). Mostra a distribuição da demanda no tempo." /></h2>
+          <h2 className="reports__section-title">Evolução no período <InfoTooltip text="Barras = tickets criados em cada dia/semana. O rótulo mostra criados / resolvidos naquele intervalo (resolvidos usam data de conclusão)." /></h2>
           <div className="reports__card">
             <div className="reports__chart-bars">
-              {timeline.map((t, i) => {
+              {timeline.map((t) => {
                 const pct = (t.total / maxTimeline) * 100;
                 return (
                   <div
                     key={t.period}
                     className="reports__chart-bar"
                     style={{ height: `${Math.max(pct, t.total > 0 ? 8 : 0)}%` }}
-                    title={`${t.period}: ${t.total} tickets`}
+                    title={`${t.period}: ${t.total} criados, ${t.resolved} resolvidos`}
                   >
-                    {t.total > 0 && <span className="reports__chart-bar-label">{t.total}</span>}
+                    {t.total > 0 && (
+                      <span className="reports__chart-bar-label">
+                        {t.total}
+                        {t.resolved > 0 ? ` / ${t.resolved}` : ''}
+                      </span>
+                    )}
                   </div>
                 );
               })}
