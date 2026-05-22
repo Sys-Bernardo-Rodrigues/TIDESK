@@ -56,12 +56,12 @@ export type DocShare = {
   created_at: string;
 };
 
-export function isPdfEntry(entry: DocEntry): boolean {
-  if (entry.entry_type !== 'file') return false;
-  const mime = (entry.mime_type || '').toLowerCase();
-  if (mime === 'application/pdf') return true;
-  return entry.name.toLowerCase().endsWith('.pdf');
-}
+export type DocSearchResult = DocEntry & {
+  path: string[];
+  snippet?: string;
+};
+
+export { isPdfEntry, canPreviewInBrowser, getFilePreviewKind } from './previewUtils';
 
 export function formatFileSize(bytes: number): string {
   if (!bytes || bytes < 1024) return `${bytes || 0} B`;

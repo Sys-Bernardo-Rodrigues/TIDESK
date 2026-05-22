@@ -23,14 +23,23 @@ import {
   Home,
   Eye,
   FileType,
+  Image as ImageIcon,
 } from 'lucide-react';
 import type {
   DocRepository,
   DocEntry,
+  DocSearchResult,
   DocRepositoryShare,
   DocVisibility,
 } from './docs/docsData';
-import { formatDate, formatFileSize, isPdfEntry } from './docs/docsData';
+import {
+  formatDate,
+  formatFileSize,
+  isPdfEntry,
+  canPreviewInBrowser,
+  getFilePreviewKind,
+} from './docs/docsData';
+import type { FilePreviewKind } from './docs/previewUtils';
 import DocsUserAccessPicker, {
   type AccessMember,
   type UserOption,
@@ -79,8 +88,16 @@ export default function DocsRepo() {
   const [accessMembers, setAccessMembers] = useState<AccessMember[]>([]);
   const [allUsers, setAllUsers] = useState<UserOption[]>([]);
   const [savingAccess, setSavingAccess] = useState(false);
-  const [pdfPreview, setPdfPreview] = useState<{ entry: DocEntry; url: string } | null>(null);
-  const [pdfLoading, setPdfLoading] = useState(false);
+  const [searchResults, setSearchResults] = useState<DocSearchResult[] | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [filePreview, setFilePreview] = useState<{
+    entry: DocEntry;
+    kind: FilePreviewKind;
+    url?: string;
+    textContent?: string;
+    htmlContent?: string;
+  } | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   const currentFolderId = breadcrumb[breadcrumb.length - 1]?.id ?? null;
   const canEdit = repo?.access === 'owner' || repo?.access === 'edit';
@@ -114,8 +131,34 @@ export default function DocsRepo() {
     loadEntries(currentFolderId).catch(() => setEntries([]));
   }, [currentFolderId, repoId, loading]);
 
+  const searchTerm = search.trim();
+  const isSearchMode = searchTerm.length >= 2;
+
+  useEffect(() => {
+    if (!repoId || !isSearchMode) {
+      setSearchResults(null);
+      setSearching(false);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const res = await axios.get<DocSearchResult[]>(`/api/docs/repositories/${repoId}/search`, {
+          params: { q: searchTerm },
+        });
+        setSearchResults(res.data);
+      } catch {
+        setSearchResults([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [repoId, searchTerm, isSearchMode]);
+
   const filteredEntries = entries.filter((e) => {
-    const term = search.trim().toLowerCase();
+    if (isSearchMode) return false;
+    const term = searchTerm.toLowerCase();
     if (!term) return true;
     return (
       e.name.toLowerCase().includes(term) ||
@@ -123,6 +166,10 @@ export default function DocsRepo() {
       e.tags.some((t) => t.toLowerCase().includes(term))
     );
   });
+
+  const displayEntries: (DocEntry | DocSearchResult)[] = isSearchMode
+    ? searchResults ?? []
+    : filteredEntries;
 
   const handleBack = () => navigate('/docs');
 
@@ -199,6 +246,17 @@ export default function DocsRepo() {
     }
   };
 
+  const fetchPreviewBlob = async (entry: DocEntry) => {
+    const res = await axios.get(`/api/docs/entries/${entry.id}/preview`, {
+      responseType: 'blob',
+    });
+    const blob =
+      res.data instanceof Blob
+        ? res.data
+        : new Blob([res.data], { type: entry.mime_type || 'application/octet-stream' });
+    return blob;
+  };
+
   const fetchFileBlob = async (entry: DocEntry) => {
     const res = await axios.get(`/api/docs/entries/${entry.id}/download`, {
       responseType: 'blob',
@@ -224,35 +282,56 @@ export default function DocsRepo() {
     }
   };
 
-  const closePdfPreview = useCallback(() => {
-    setPdfPreview((prev) => {
+  const closeFilePreview = useCallback(() => {
+    setFilePreview((prev) => {
       if (prev?.url) window.URL.revokeObjectURL(prev.url);
       return null;
     });
-    setPdfLoading(false);
+    setPreviewLoading(false);
   }, []);
 
-  const openPdfPreview = async (entry: DocEntry) => {
-    setPdfPreview((prev) => {
+  const openFilePreview = async (entry: DocEntry) => {
+    const kind = getFilePreviewKind(entry);
+    if (kind === 'none') {
+      handleDownload(entry);
+      return;
+    }
+
+    setFilePreview((prev) => {
       if (prev?.url) window.URL.revokeObjectURL(prev.url);
-      return { entry, url: '' };
+      return { entry, kind };
     });
-    setPdfLoading(true);
+    setPreviewLoading(true);
+
     try {
-      const blob = await fetchFileBlob(entry);
-      const pdfBlob = blob.type === 'application/pdf' ? blob : new Blob([blob], { type: 'application/pdf' });
-      const url = window.URL.createObjectURL(pdfBlob);
-      setPdfPreview({ entry, url });
+      if (kind === 'html') {
+        const res = await axios.get<{ html: string }>(`/api/docs/entries/${entry.id}/preview-html`);
+        setFilePreview({ entry, kind, htmlContent: res.data.html });
+      } else if (kind === 'text' && entry.entry_type === 'note') {
+        setFilePreview({ entry, kind, textContent: entry.content || '' });
+      } else if (kind === 'text') {
+        const blob = await fetchPreviewBlob(entry);
+        const text = await blob.text();
+        setFilePreview({ entry, kind, textContent: text });
+      } else {
+        const blob = await fetchPreviewBlob(entry);
+        const mime =
+          entry.mime_type ||
+          (kind === 'pdf' ? 'application/pdf' : blob.type || 'application/octet-stream');
+        const typed = blob.type ? blob : new Blob([blob], { type: mime });
+        const url = window.URL.createObjectURL(typed);
+        setFilePreview({ entry, kind, url });
+      }
     } catch {
-      closePdfPreview();
-      alert('Não foi possível abrir o PDF.');
+      closeFilePreview();
+      alert('Não foi possível abrir o arquivo no navegador.');
     } finally {
-      setPdfLoading(false);
+      setPreviewLoading(false);
     }
   };
 
   const handleOpenFile = (entry: DocEntry) => {
-    if (isPdfEntry(entry)) openPdfPreview(entry);
+    if (canPreviewInBrowser(entry)) openFilePreview(entry);
     else handleDownload(entry);
   };
 
@@ -289,12 +368,12 @@ export default function DocsRepo() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
-      if (pdfPreview) closePdfPreview();
+      if (filePreview) closeFilePreview();
       else if (viewingNote) closeViewNote();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [pdfPreview, viewingNote, closePdfPreview]);
+  }, [filePreview, viewingNote, closeFilePreview]);
 
   const handleDeleteEntry = async (entry: DocEntry) => {
     if (!window.confirm(`Excluir "${entry.name}"?`)) return;
@@ -403,7 +482,13 @@ export default function DocsRepo() {
     if (entry.entry_type === 'folder') return Folder;
     if (entry.entry_type === 'note') return StickyNote;
     if (isPdfEntry(entry)) return FileType;
+    if (entry.entry_type === 'file' && entry.mime_type?.startsWith('image/')) return ImageIcon;
     return File;
+  };
+
+  const openSearchResult = (item: DocSearchResult) => {
+    if (item.entry_type === 'note') openViewNote(item);
+    else if (item.entry_type === 'file') handleOpenFile(item);
   };
 
   if (loading) {
@@ -521,7 +606,7 @@ export default function DocsRepo() {
           <Search size={18} className="docs-search__icon" />
           <input
             type="text"
-            placeholder="Buscar nesta pasta..."
+            placeholder="Buscar nome, notas e texto dentro dos arquivos..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="docs-search__input"
@@ -564,32 +649,61 @@ export default function DocsRepo() {
             <span>{breadcrumb[breadcrumb.length - 1]?.name || 'Raiz'}</span>
           </div>
           <div className="docs-card__head-meta">
-            {filteredEntries.length} {filteredEntries.length === 1 ? 'item' : 'itens'} nesta pasta
+            {isSearchMode
+              ? searching
+                ? 'Buscando...'
+                : `${displayEntries.length} resultado${displayEntries.length === 1 ? '' : 's'} no repositório`
+              : `${displayEntries.length} ${displayEntries.length === 1 ? 'item' : 'itens'} nesta pasta`}
             {!canEdit && ' · Somente leitura'}
           </div>
         </div>
         <div className="docs-card__body">
-          {filteredEntries.length === 0 ? (
+          {displayEntries.length === 0 ? (
             <div className="docs-empty">
               <div className="docs-empty__icon">
                 <Folder size={40} />
               </div>
-              <h3 className="docs-empty__title">Pasta vazia</h3>
+              <h3 className="docs-empty__title">
+                {isSearchMode ? 'Nenhum resultado' : 'Pasta vazia'}
+              </h3>
               <p className="docs-empty__text">
-                {canEdit
-                  ? 'Envie arquivos, crie pastas ou adicione notas de texto.'
-                  : 'Não há arquivos nesta pasta.'}
+                {isSearchMode
+                  ? 'Tente outras palavras. A busca inclui PDF, DOCX, TXT e notas (mínimo 2 caracteres).'
+                  : canEdit
+                    ? 'Envie arquivos, crie pastas ou adicione notas de texto.'
+                    : 'Não há arquivos nesta pasta.'}
               </p>
             </div>
+          ) : isSearchMode ? (
+            <ul className="docs-search-results">
+              {(displayEntries as DocSearchResult[]).map((item) => (
+                <li key={item.id}>
+                  <button
+                    type="button"
+                    className="docs-search-result"
+                    onClick={() => openSearchResult(item)}
+                  >
+                    <span className="docs-search-result__name">{item.name}</span>
+                    <span className="docs-search-result__path">
+                      {(item.path?.length ? item.path.join(' / ') : 'Raiz') +
+                        ` · ${item.entry_type === 'note' ? 'Nota' : 'Arquivo'}`}
+                    </span>
+                    {item.snippet && (
+                      <span className="docs-search-result__snippet">{item.snippet}</span>
+                    )}
+                  </button>
+                </li>
+              ))}
+            </ul>
           ) : (
             <div className="docs-file-grid">
-              {filteredEntries.map((entry) => {
+              {displayEntries.map((entry) => {
                 const Icon = entryIcon(entry);
                 return (
                   <div
                     key={entry.id}
                     className={`docs-file-card docs-file-card--${entry.entry_type}`}
-                    onClick={() => handleOpenEntry(entry)}
+                    onClick={() => handleOpenEntry(entry as DocEntry)}
                     role="button"
                     tabIndex={0}
                     onKeyDown={(e) => {
@@ -611,12 +725,12 @@ export default function DocsRepo() {
                       {formatDate(entry.updated_at)}
                     </div>
                     <div className="docs-file-card__actions" onClick={(e) => e.stopPropagation()}>
-                      {entry.entry_type === 'file' && isPdfEntry(entry) && (
+                      {entry.entry_type === 'file' && canPreviewInBrowser(entry) && (
                         <button
                           type="button"
                           className="docs-file-card__btn"
-                          title="Visualizar PDF"
-                          onClick={() => openPdfPreview(entry)}
+                          title="Visualizar no navegador"
+                          onClick={() => openFilePreview(entry)}
                         >
                           <Eye size={16} />
                         </button>
@@ -660,42 +774,59 @@ export default function DocsRepo() {
         </div>
       </div>
 
-      {pdfPreview && (
-        <div className="docs-pdf-viewer-backdrop" onClick={closePdfPreview}>
-          <div className="docs-pdf-viewer" onClick={(e) => e.stopPropagation()}>
-            <header className="docs-pdf-viewer__head">
-              <div className="docs-pdf-viewer__title">
+      {filePreview && (
+        <div className="docs-file-preview-backdrop" onClick={closeFilePreview}>
+          <div className="docs-file-preview" onClick={(e) => e.stopPropagation()}>
+            <header className="docs-file-preview__head">
+              <div className="docs-file-preview__title">
                 <FileType size={20} />
-                <span title={pdfPreview.entry.name}>{pdfPreview.entry.name}</span>
+                <span title={filePreview.entry.name}>{filePreview.entry.name}</span>
               </div>
-              <div className="docs-pdf-viewer__actions">
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => handleDownload(pdfPreview.entry)}
-                >
-                  <Download size={16} />
-                  Baixar
-                </button>
+              <div className="docs-file-preview__actions">
+                {filePreview.entry.entry_type === 'file' && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => handleDownload(filePreview.entry)}
+                  >
+                    <Download size={16} />
+                    Baixar
+                  </button>
+                )}
                 <button
                   type="button"
                   className="docs-modal__close"
-                  onClick={closePdfPreview}
+                  onClick={closeFilePreview}
                   aria-label="Fechar visualizador"
                 >
                   <X size={20} />
                 </button>
               </div>
             </header>
-            <div className="docs-pdf-viewer__body">
-              {pdfLoading || !pdfPreview.url ? (
-                <div className="docs-pdf-viewer__loading">Carregando PDF...</div>
-              ) : (
+            <div className="docs-file-preview__body">
+              {previewLoading ? (
+                <div className="docs-file-preview__loading">Carregando...</div>
+              ) : filePreview.kind === 'pdf' && filePreview.url ? (
                 <iframe
-                  src={pdfPreview.url}
-                  title={`Visualização: ${pdfPreview.entry.name}`}
-                  className="docs-pdf-viewer__iframe"
+                  src={filePreview.url}
+                  title={`Visualização: ${filePreview.entry.name}`}
+                  className="docs-file-preview__iframe"
                 />
+              ) : filePreview.kind === 'image' && filePreview.url ? (
+                <img
+                  src={filePreview.url}
+                  alt={filePreview.entry.name}
+                  className="docs-file-preview__img"
+                />
+              ) : filePreview.kind === 'html' && filePreview.htmlContent ? (
+                <div
+                  className="docs-file-preview__html"
+                  dangerouslySetInnerHTML={{ __html: filePreview.htmlContent }}
+                />
+              ) : filePreview.kind === 'text' && filePreview.textContent != null ? (
+                <pre className="docs-file-preview__text">{filePreview.textContent}</pre>
+              ) : (
+                <div className="docs-file-preview__loading">Não foi possível exibir o arquivo.</div>
               )}
             </div>
           </div>

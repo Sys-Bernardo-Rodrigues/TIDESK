@@ -966,6 +966,7 @@ const initSQLite = async () => {
       content TEXT,
       description TEXT,
       tags TEXT,
+      search_text TEXT,
       created_by INTEGER NOT NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -974,6 +975,12 @@ const initSQLite = async () => {
       FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
     )
   `);
+
+  try {
+    await dbRun(`ALTER TABLE doc_entries ADD COLUMN search_text TEXT`);
+  } catch {
+    // coluna já existe
+  }
 
   await seedDatabase();
 };
@@ -1514,6 +1521,7 @@ const initPostgreSQL = async () => {
       content TEXT,
       description TEXT,
       tags TEXT,
+      search_text TEXT,
       created_by INTEGER NOT NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -1522,6 +1530,12 @@ const initPostgreSQL = async () => {
       FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
     )
   `);
+
+  try {
+    await dbRun(`ALTER TABLE doc_entries ADD COLUMN IF NOT EXISTS search_text TEXT`);
+  } catch {
+    // SQLite ou versão antiga do PG
+  }
 
   await seedDatabase();
 };

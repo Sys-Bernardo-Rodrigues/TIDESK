@@ -6,6 +6,12 @@ import { authenticate, AuthRequest } from '../middleware/auth';
 import { requirePermission, getUserPermissions, RESOURCES, ACTIONS } from '../middleware/permissions';
 import { dbGet, dbAll, dbRun, getBrasiliaTimestamp } from '../database';
 import { uploadDocsFile, DOCS_UPLOAD_DIR } from '../middleware/upload';
+import {
+  buildEntrySearchText,
+  extractDocxPreviewHtml,
+  extractFileSearchText,
+  makeSearchSnippet,
+} from '../utils/doc-text-index';
 
 const router = express.Router();
 
@@ -131,6 +137,44 @@ function formatEntry(row: any) {
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
+}
+
+async function buildEntryPath(repoId: number, parentId: number | null): Promise<string[]> {
+  const pathNames: string[] = [];
+  let pid = parentId;
+  while (pid != null) {
+    const row = (await dbGet(
+      'SELECT id, parent_id, name, entry_type FROM doc_entries WHERE id = ? AND repository_id = ?',
+      [pid, repoId]
+    )) as any;
+    if (!row) break;
+    pathNames.unshift(row.name);
+    pid = row.parent_id;
+  }
+  return pathNames;
+}
+
+async function indexFileEntry(
+  entryId: number,
+  storagePath: string,
+  mime: string,
+  name: string,
+  description?: string | null,
+  tags?: string | null
+) {
+  const filePath = path.join(DOCS_UPLOAD_DIR, storagePath);
+  const extracted = await extractFileSearchText(filePath, mime, name);
+  const searchText = buildEntrySearchText([
+    name,
+    description,
+    parseTags(tags).join(' '),
+    extracted,
+  ]);
+  await dbRun('UPDATE doc_entries SET search_text = ? WHERE id = ?', [searchText, entryId]);
+}
+
+function noteSearchText(name: string, content: string, description?: string | null, tags?: string | null) {
+  return buildEntrySearchText([name, content, description, parseTags(tags).join(' ')]);
 }
 
 // Listar repositórios acessíveis
@@ -357,6 +401,109 @@ router.delete(
   }
 );
 
+// Busca no repositório (nome, descrição, tags, conteúdo de notas e texto indexado de arquivos)
+router.get(
+  '/repositories/:id/search',
+  authenticate,
+  requirePermission(RESOURCES.DOCS, ACTIONS.VIEW),
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const repoId = Number(req.params.id);
+      const { ok } = await requireRepoAccess(req.userId!, repoId, 'view');
+      if (!ok) return res.status(404).json({ error: 'Repositório não encontrado' });
+
+      const q = String(req.query.q || '').trim().toLowerCase();
+      if (q.length < 2) return res.json([]);
+
+      const pattern = `%${q.replace(/[%_]/g, (c) => `\\${c}`)}%`;
+      const rows = await dbAll(
+        `SELECT e.*, u.name as created_by_name
+         FROM doc_entries e
+         LEFT JOIN users u ON e.created_by = u.id
+         WHERE e.repository_id = ?
+           AND e.entry_type != 'folder'
+           AND (
+             LOWER(e.name) LIKE ? ESCAPE '\\'
+             OR LOWER(COALESCE(e.description, '')) LIKE ? ESCAPE '\\'
+             OR LOWER(COALESCE(e.search_text, '')) LIKE ? ESCAPE '\\'
+             OR LOWER(COALESCE(e.content, '')) LIKE ? ESCAPE '\\'
+             OR LOWER(COALESCE(e.tags, '')) LIKE ? ESCAPE '\\'
+           )
+         ORDER BY LOWER(e.name)
+         LIMIT 80`,
+        [repoId, pattern, pattern, pattern, pattern, pattern]
+      );
+
+      const results = [];
+      for (const row of rows as any[]) {
+        const pathNames = await buildEntryPath(repoId, row.parent_id);
+        const haystack = [
+          row.name,
+          row.description,
+          row.content,
+          row.search_text,
+          row.tags,
+        ]
+          .filter(Boolean)
+          .join('\n');
+        const snippet = makeSearchSnippet(haystack, q);
+        results.push({
+          ...formatEntry(row),
+          path: pathNames,
+          snippet,
+        });
+      }
+
+      res.json(results);
+    } catch (error) {
+      console.error('Erro na busca do repositório:', error);
+      res.status(500).json({ error: 'Erro na busca' });
+    }
+  }
+);
+
+// Reindexar texto pesquisável dos arquivos (proprietário / admin)
+router.post(
+  '/repositories/:id/reindex',
+  authenticate,
+  requirePermission(RESOURCES.DOCS, ACTIONS.VIEW),
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const repoId = Number(req.params.id);
+      const access = await getRepoAccess(req.userId!, repoId);
+      if (access !== 'owner') return res.status(403).json({ error: 'Apenas o proprietário pode reindexar' });
+
+      const files = await dbAll(
+        `SELECT id, storage_path, mime_type, name, description, tags FROM doc_entries
+         WHERE repository_id = ? AND entry_type = 'file' AND storage_path IS NOT NULL`,
+        [repoId]
+      );
+
+      let indexed = 0;
+      for (const f of files as any[]) {
+        await indexFileEntry(f.id, f.storage_path, f.mime_type, f.name, f.description, f.tags);
+        indexed++;
+      }
+
+      const notes = await dbAll(
+        `SELECT id, name, content, description, tags FROM doc_entries
+         WHERE repository_id = ? AND entry_type = 'note'`,
+        [repoId]
+      );
+      for (const n of notes as any[]) {
+        const st = noteSearchText(n.name, n.content || '', n.description, n.tags);
+        await dbRun('UPDATE doc_entries SET search_text = ? WHERE id = ?', [st, n.id]);
+        indexed++;
+      }
+
+      res.json({ message: 'Reindexação concluída', indexed });
+    } catch (error) {
+      console.error('Erro ao reindexar:', error);
+      res.status(500).json({ error: 'Erro ao reindexar' });
+    }
+  }
+);
+
 // Listar entradas (pasta)
 router.get(
   '/repositories/:id/entries',
@@ -478,6 +625,14 @@ router.post(
       );
 
       const id = (result as any).lastID ?? (result as any).insertId;
+      await indexFileEntry(
+        id,
+        req.file.filename,
+        req.file.mimetype,
+        displayName,
+        req.body.description?.trim() || null,
+        req.body.tags ? JSON.stringify(parseTags(req.body.tags)) : null
+      );
       await dbRun('UPDATE doc_repositories SET updated_at = ? WHERE id = ?', [now, repoId]);
 
       const entry = await dbGet(
@@ -510,18 +665,25 @@ router.post(
 
       const parentId = req.body.parent_id != null ? Number(req.body.parent_id) : null;
       const now = getBrasiliaTimestamp();
+      const noteName = req.body.name.trim();
+      const noteBody = req.body.content || '';
+      const noteDesc = req.body.description?.trim() || null;
+      const noteTags = req.body.tags ? JSON.stringify(parseTags(req.body.tags)) : null;
+      const searchText = noteSearchText(noteName, noteBody, noteDesc, noteTags);
+
       const result = await dbRun(
         `INSERT INTO doc_entries (
-          repository_id, parent_id, name, entry_type, content, description, tags,
+          repository_id, parent_id, name, entry_type, content, description, tags, search_text,
           created_by, created_at, updated_at
-        ) VALUES (?, ?, ?, 'note', ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, 'note', ?, ?, ?, ?, ?, ?, ?)`,
         [
           repoId,
           parentId,
-          req.body.name.trim(),
-          req.body.content || '',
-          req.body.description?.trim() || null,
-          req.body.tags ? JSON.stringify(parseTags(req.body.tags)) : null,
+          noteName,
+          noteBody,
+          noteDesc,
+          noteTags,
+          searchText,
           req.userId,
           now,
           now,
@@ -582,11 +744,22 @@ router.put(
       const newDesc =
         description !== undefined ? (description?.trim() || null) : entry.description;
       const newTags = tags !== undefined ? JSON.stringify(parseTags(tags)) : entry.tags;
+      let newSearchText = entry.search_text;
+      if (entry.entry_type === 'note') {
+        newSearchText = noteSearchText(newName, newContent || '', newDesc, newTags);
+      } else if (entry.entry_type === 'file' && name !== undefined) {
+        newSearchText = buildEntrySearchText([
+          newName,
+          newDesc,
+          parseTags(newTags).join(' '),
+          entry.search_text,
+        ]);
+      }
 
       await dbRun(
-        `UPDATE doc_entries SET name = ?, parent_id = ?, content = ?, description = ?, tags = ?, updated_at = ?
+        `UPDATE doc_entries SET name = ?, parent_id = ?, content = ?, description = ?, tags = ?, search_text = ?, updated_at = ?
          WHERE id = ?`,
-        [newName, newParent, newContent, newDesc, newTags, now, entryId]
+        [newName, newParent, newContent, newDesc, newTags, newSearchText, now, entryId]
       );
 
       await dbRun('UPDATE doc_repositories SET updated_at = ? WHERE id = ?', [now, entry.repository_id]);
@@ -599,6 +772,46 @@ router.put(
     } catch (error) {
       console.error('Erro ao atualizar entrada:', error);
       res.status(500).json({ error: 'Erro ao atualizar' });
+    }
+  }
+);
+
+// Pré-visualização HTML (DOCX convertido para exibir no navegador)
+router.get(
+  '/entries/:entryId/preview-html',
+  authenticate,
+  requirePermission(RESOURCES.DOCS, ACTIONS.VIEW),
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const entryId = Number(req.params.entryId);
+      const entry = await dbGet('SELECT * FROM doc_entries WHERE id = ?', [entryId]) as any;
+      if (!entry || entry.entry_type !== 'file' || !entry.storage_path) {
+        return res.status(404).json({ error: 'Arquivo não encontrado' });
+      }
+
+      const { ok } = await requireRepoAccess(req.userId!, entry.repository_id, 'view');
+      if (!ok) return res.status(403).json({ error: 'Acesso negado' });
+
+      const filePath = path.join(DOCS_UPLOAD_DIR, entry.storage_path);
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ error: 'Arquivo não encontrado no disco' });
+      }
+
+      const ext = path.extname(entry.name).toLowerCase();
+      const mime = (entry.mime_type || '').toLowerCase();
+      if (
+        ext === '.docx' ||
+        mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      ) {
+        const html = await extractDocxPreviewHtml(filePath);
+        if (!html) return res.status(422).json({ error: 'Não foi possível converter o documento' });
+        return res.json({ format: 'html', html });
+      }
+
+      return res.status(400).json({ error: 'Formato sem pré-visualização HTML' });
+    } catch (error) {
+      console.error('Erro na pré-visualização HTML:', error);
+      res.status(500).json({ error: 'Erro ao gerar pré-visualização' });
     }
   }
 );

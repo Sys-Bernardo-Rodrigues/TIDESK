@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import type { LucideIcon } from 'lucide-react';
+import { APP_VERSION_LABEL } from '../constants/appVersion';
 
 type NavItem = {
   path: string;
@@ -168,7 +169,7 @@ export default function Layout() {
                 <LayoutDashboard size={18} color="#FFF" strokeWidth={2.5} />
          </div>
               <div className="sidebar-logo-text">
-                TIDESK<span className="sidebar-logo-badge">BETA</span>
+                TIDESK<span className="sidebar-logo-badge">{APP_VERSION_LABEL}</span>
               </div>
               <button
                 className="sidebar-toggle"

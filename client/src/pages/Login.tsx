@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { Loader2, AlertCircle } from 'lucide-react';
 import axios from 'axios';
+import { APP_VERSION_LABEL } from '../constants/appVersion';
 
 export default function Login() {
   const { theme, setTheme } = useTheme();
@@ -102,7 +103,8 @@ export default function Login() {
         <div className="login-card__logo">
           <h1 className="login-card__title">TIDESK</h1>
           <p className="login-card__subtitle">
-            Sistema de Helpdesk Profissional <span className="login-card__beta">BETA</span>
+            Sistema de Helpdesk Profissional{' '}
+            <span className="login-card__beta">{APP_VERSION_LABEL}</span>
           </p>
         </div>
 
