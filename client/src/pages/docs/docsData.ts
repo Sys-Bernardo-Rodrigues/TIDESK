@@ -59,6 +59,7 @@ export type DocShare = {
 export type DocSearchResult = DocEntry & {
   path: string[];
   snippet?: string;
+  match_count?: number;
 };
 
 export { isPdfEntry, canPreviewInBrowser, getFilePreviewKind } from './previewUtils';

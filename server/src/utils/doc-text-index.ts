@@ -127,6 +127,30 @@ export async function extractDocxPreviewHtml(filePath: string): Promise<string |
   }
 }
 
+/** Termos de busca (palavras com 2+ caracteres) */
+export function splitSearchTerms(query: string): string[] {
+  return query
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((t) => t.length >= 2);
+}
+
+export function countTermMatches(text: string, term: string): number {
+  if (!text || !term.trim()) return 0;
+  const lower = text.toLowerCase();
+  const t = term.toLowerCase();
+  let count = 0;
+  let pos = 0;
+  while (true) {
+    const i = lower.indexOf(t, pos);
+    if (i < 0) break;
+    count++;
+    pos = i + t.length;
+  }
+  return count;
+}
+
 export function makeSearchSnippet(text: string, term: string, radius = 60): string {
   const lower = text.toLowerCase();
   const t = term.toLowerCase();

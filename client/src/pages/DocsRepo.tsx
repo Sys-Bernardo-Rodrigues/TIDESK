@@ -40,6 +40,12 @@ import {
   getFilePreviewKind,
 } from './docs/docsData';
 import type { FilePreviewKind } from './docs/previewUtils';
+import {
+  HighlightedText,
+  highlightTextInElement,
+  goToMatchInRoot,
+  countMarksInRoot,
+} from './docs/searchHighlight';
 import DocsUserAccessPicker, {
   type AccessMember,
   type UserOption,
@@ -75,6 +81,7 @@ export default function DocsRepo() {
 
   const [showNoteModal, setShowNoteModal] = useState(false);
   const [viewingNote, setViewingNote] = useState<DocEntry | null>(null);
+  const [noteHighlightQuery, setNoteHighlightQuery] = useState('');
   const [noteName, setNoteName] = useState('');
   const [noteContent, setNoteContent] = useState('');
   const [editingNote, setEditingNote] = useState<DocEntry | null>(null);
@@ -96,8 +103,45 @@ export default function DocsRepo() {
     url?: string;
     textContent?: string;
     htmlContent?: string;
+    highlightQuery?: string;
+    extractedText?: string;
   } | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const htmlPreviewRef = useRef<HTMLDivElement>(null);
+  const previewBodyRef = useRef<HTMLDivElement>(null);
+  const matchNavIndex = useRef(0);
+  const [previewMatchCount, setPreviewMatchCount] = useState(0);
+
+  useEffect(() => {
+    if (!filePreview?.htmlContent || !filePreview.highlightQuery || !htmlPreviewRef.current) {
+      return;
+    }
+    const t = setTimeout(() => {
+      const root = htmlPreviewRef.current!;
+      highlightTextInElement(root, filePreview.highlightQuery!);
+      matchNavIndex.current = 0;
+      const first = root.querySelector('mark.docs-search-highlight');
+      first?.classList.add('docs-search-highlight--active');
+      first?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      setPreviewMatchCount(countMarksInRoot(previewBodyRef.current));
+    }, 80);
+    return () => clearTimeout(t);
+  }, [filePreview?.htmlContent, filePreview?.highlightQuery]);
+
+  useEffect(() => {
+    if (!filePreview?.highlightQuery) {
+      setPreviewMatchCount(0);
+      return;
+    }
+    const t = setTimeout(() => {
+      setPreviewMatchCount(countMarksInRoot(previewBodyRef.current));
+    }, 120);
+    return () => clearTimeout(t);
+  }, [filePreview?.textContent, filePreview?.extractedText, filePreview?.highlightQuery, previewLoading]);
+
+  const goToPreviewMatch = (delta: number) => {
+    goToMatchInRoot(previewBodyRef.current, delta, matchNavIndex);
+  };
 
   const currentFolderId = breadcrumb[breadcrumb.length - 1]?.id ?? null;
   const canEdit = repo?.access === 'owner' || repo?.access === 'edit';
@@ -290,29 +334,52 @@ export default function DocsRepo() {
     setPreviewLoading(false);
   }, []);
 
-  const openFilePreview = async (entry: DocEntry) => {
+  const openFilePreview = async (entry: DocEntry, highlightQuery?: string) => {
     const kind = getFilePreviewKind(entry);
     if (kind === 'none') {
       handleDownload(entry);
       return;
     }
 
+    const highlight = highlightQuery?.trim() || (isSearchMode ? searchTerm : undefined);
+
     setFilePreview((prev) => {
       if (prev?.url) window.URL.revokeObjectURL(prev.url);
-      return { entry, kind };
+      return { entry, kind, highlightQuery: highlight };
     });
     setPreviewLoading(true);
 
     try {
+      let extractedText: string | undefined;
+      if (highlight && (kind === 'pdf' || kind === 'html')) {
+        try {
+          const tr = await axios.get<{ text: string }>(`/api/docs/entries/${entry.id}/text-content`);
+          extractedText = tr.data.text || '';
+        } catch {
+          extractedText = '';
+        }
+      }
+
       if (kind === 'html') {
         const res = await axios.get<{ html: string }>(`/api/docs/entries/${entry.id}/preview-html`);
-        setFilePreview({ entry, kind, htmlContent: res.data.html });
+        setFilePreview({
+          entry,
+          kind,
+          htmlContent: res.data.html,
+          highlightQuery: highlight,
+          extractedText,
+        });
       } else if (kind === 'text' && entry.entry_type === 'note') {
-        setFilePreview({ entry, kind, textContent: entry.content || '' });
+        setFilePreview({
+          entry,
+          kind,
+          textContent: entry.content || '',
+          highlightQuery: highlight,
+        });
       } else if (kind === 'text') {
         const blob = await fetchPreviewBlob(entry);
         const text = await blob.text();
-        setFilePreview({ entry, kind, textContent: text });
+        setFilePreview({ entry, kind, textContent: text, highlightQuery: highlight });
       } else {
         const blob = await fetchPreviewBlob(entry);
         const mime =
@@ -320,7 +387,7 @@ export default function DocsRepo() {
           (kind === 'pdf' ? 'application/pdf' : blob.type || 'application/octet-stream');
         const typed = blob.type ? blob : new Blob([blob], { type: mime });
         const url = window.URL.createObjectURL(typed);
-        setFilePreview({ entry, kind, url });
+        setFilePreview({ entry, kind, url, highlightQuery: highlight, extractedText });
       }
     } catch {
       closeFilePreview();
@@ -331,12 +398,19 @@ export default function DocsRepo() {
   };
 
   const handleOpenFile = (entry: DocEntry) => {
-    if (canPreviewInBrowser(entry)) openFilePreview(entry);
-    else handleDownload(entry);
+    if (canPreviewInBrowser(entry)) {
+      openFilePreview(entry, isSearchMode ? searchTerm : undefined);
+    } else handleDownload(entry);
   };
 
-  const openViewNote = (entry: DocEntry) => setViewingNote(entry);
-  const closeViewNote = () => setViewingNote(null);
+  const openViewNote = (entry: DocEntry, highlight?: string) => {
+    setViewingNote(entry);
+    setNoteHighlightQuery(highlight?.trim() || (isSearchMode ? searchTerm : ''));
+  };
+  const closeViewNote = () => {
+    setViewingNote(null);
+    setNoteHighlightQuery('');
+  };
 
   const closeNoteModal = () => {
     setShowNoteModal(false);
@@ -354,7 +428,7 @@ export default function DocsRepo() {
 
   const handleOpenEntry = (entry: DocEntry) => {
     if (entry.entry_type === 'folder') openFolder(entry);
-    else if (entry.entry_type === 'note') openViewNote(entry);
+    else if (entry.entry_type === 'note') openViewNote(entry, isSearchMode ? searchTerm : undefined);
     else if (entry.entry_type === 'file') handleOpenFile(entry);
   };
 
@@ -487,8 +561,8 @@ export default function DocsRepo() {
   };
 
   const openSearchResult = (item: DocSearchResult) => {
-    if (item.entry_type === 'note') openViewNote(item);
-    else if (item.entry_type === 'file') handleOpenFile(item);
+    if (item.entry_type === 'note') openViewNote(item, searchTerm);
+    else if (item.entry_type === 'file') openFilePreview(item, searchTerm);
   };
 
   if (loading) {
@@ -606,7 +680,7 @@ export default function DocsRepo() {
           <Search size={18} className="docs-search__icon" />
           <input
             type="text"
-            placeholder="Buscar nome, notas e texto dentro dos arquivos..."
+            placeholder="Buscar em todo o repositório (nome, notas, PDF, DOCX, TXT…)"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="docs-search__input"
@@ -689,7 +763,14 @@ export default function DocsRepo() {
                         ` · ${item.entry_type === 'note' ? 'Nota' : 'Arquivo'}`}
                     </span>
                     {item.snippet && (
-                      <span className="docs-search-result__snippet">{item.snippet}</span>
+                      <span className="docs-search-result__snippet">
+                        <HighlightedText text={item.snippet} query={searchTerm} />
+                      </span>
+                    )}
+                    {item.match_count != null && item.match_count > 0 && (
+                      <span className="docs-search-result__matches">
+                        {item.match_count} ocorrência{item.match_count === 1 ? '' : 's'}
+                      </span>
                     )}
                   </button>
                 </li>
@@ -783,6 +864,29 @@ export default function DocsRepo() {
                 <span title={filePreview.entry.name}>{filePreview.entry.name}</span>
               </div>
               <div className="docs-file-preview__actions">
+                {filePreview.highlightQuery && previewMatchCount > 0 && (
+                  <div className="docs-search-match-nav">
+                    <span className="docs-search-match-nav__count">
+                      {previewMatchCount} ocorrência{previewMatchCount === 1 ? '' : 's'}
+                    </span>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => goToPreviewMatch(-1)}
+                      title="Ocorrência anterior"
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => goToPreviewMatch(1)}
+                      title="Próxima ocorrência"
+                    >
+                      ↓
+                    </button>
+                  </div>
+                )}
                 {filePreview.entry.entry_type === 'file' && (
                   <button
                     type="button"
@@ -803,15 +907,33 @@ export default function DocsRepo() {
                 </button>
               </div>
             </header>
-            <div className="docs-file-preview__body">
+            <div
+              ref={previewBodyRef}
+              className={`docs-file-preview__body${filePreview.kind === 'pdf' && filePreview.highlightQuery && filePreview.extractedText != null ? ' docs-file-preview__body--split' : ''}`}
+            >
               {previewLoading ? (
                 <div className="docs-file-preview__loading">Carregando...</div>
               ) : filePreview.kind === 'pdf' && filePreview.url ? (
-                <iframe
-                  src={filePreview.url}
-                  title={`Visualização: ${filePreview.entry.name}`}
-                  className="docs-file-preview__iframe"
-                />
+                <>
+                  <iframe
+                    src={filePreview.url}
+                    title={`Visualização: ${filePreview.entry.name}`}
+                    className="docs-file-preview__iframe"
+                  />
+                  {filePreview.highlightQuery && filePreview.extractedText != null && (
+                    <div className="docs-file-preview__text-panel">
+                      <p className="docs-file-preview__text-panel-label">
+                        Texto do documento (termo pesquisado destacado)
+                      </p>
+                      <HighlightedText
+                        text={filePreview.extractedText}
+                        query={filePreview.highlightQuery}
+                        className="docs-file-preview__text"
+                        as="pre"
+                      />
+                    </div>
+                  )}
+                </>
               ) : filePreview.kind === 'image' && filePreview.url ? (
                 <img
                   src={filePreview.url}
@@ -820,11 +942,21 @@ export default function DocsRepo() {
                 />
               ) : filePreview.kind === 'html' && filePreview.htmlContent ? (
                 <div
+                  ref={htmlPreviewRef}
                   className="docs-file-preview__html"
                   dangerouslySetInnerHTML={{ __html: filePreview.htmlContent }}
                 />
               ) : filePreview.kind === 'text' && filePreview.textContent != null ? (
-                <pre className="docs-file-preview__text">{filePreview.textContent}</pre>
+                filePreview.highlightQuery ? (
+                  <HighlightedText
+                    text={filePreview.textContent}
+                    query={filePreview.highlightQuery}
+                    className="docs-file-preview__text"
+                    as="pre"
+                  />
+                ) : (
+                  <pre className="docs-file-preview__text">{filePreview.textContent}</pre>
+                )
               ) : (
                 <div className="docs-file-preview__loading">Não foi possível exibir o arquivo.</div>
               )}
@@ -894,7 +1026,16 @@ export default function DocsRepo() {
               <div className="docs-detail-block">
                 <label className="docs-form-label">Conteúdo</label>
                 <pre className="docs-note-view__content">
-                  {viewingNote.content?.trim() || '(Nota vazia)'}
+                  {noteHighlightQuery && viewingNote.content?.trim() ? (
+                    <HighlightedText
+                      text={viewingNote.content}
+                      query={noteHighlightQuery}
+                      className="docs-note-view__content"
+                      as="p"
+                    />
+                  ) : (
+                    viewingNote.content?.trim() || '(Nota vazia)'
+                  )}
                 </pre>
               </div>
               {viewingNote.tags.length > 0 && (

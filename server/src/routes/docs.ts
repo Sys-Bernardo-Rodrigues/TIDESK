@@ -11,6 +11,8 @@ import {
   extractDocxPreviewHtml,
   extractFileSearchText,
   makeSearchSnippet,
+  splitSearchTerms,
+  countTermMatches,
 } from '../utils/doc-text-index';
 
 const router = express.Router();
@@ -175,6 +177,39 @@ async function indexFileEntry(
 
 function noteSearchText(name: string, content: string, description?: string | null, tags?: string | null) {
   return buildEntrySearchText([name, content, description, parseTags(tags).join(' ')]);
+}
+
+async function ensureRepoIndexed(repoId: number, maxFiles = 150) {
+  const unindexed = await dbAll(
+    `SELECT id, storage_path, mime_type, name, description, tags FROM doc_entries
+     WHERE repository_id = ? AND entry_type = 'file' AND storage_path IS NOT NULL
+       AND (search_text IS NULL OR TRIM(COALESCE(search_text, '')) = '')`,
+    [repoId]
+  );
+  for (const f of (unindexed as any[]).slice(0, maxFiles)) {
+    await indexFileEntry(f.id, f.storage_path, f.mime_type, f.name, f.description, f.tags);
+  }
+}
+
+function likePattern(term: string): string {
+  return `%${term.replace(/[%_\\]/g, (c) => `\\${c}`)}%`;
+}
+
+function entryMatchesQuery(row: any, terms: string[], fullPhrase: string): boolean {
+  const haystack = [
+    row.name,
+    row.description,
+    row.content,
+    row.search_text,
+    row.tags,
+  ]
+    .filter(Boolean)
+    .join('\n')
+    .toLowerCase();
+
+  if (fullPhrase.length >= 2 && haystack.includes(fullPhrase)) return true;
+  if (!terms.length) return fullPhrase.length >= 2 && haystack.includes(fullPhrase);
+  return terms.every((t) => haystack.includes(t));
 }
 
 // Listar repositórios acessíveis
@@ -415,46 +450,59 @@ router.get(
       const q = String(req.query.q || '').trim().toLowerCase();
       if (q.length < 2) return res.json([]);
 
-      const pattern = `%${q.replace(/[%_]/g, (c) => `\\${c}`)}%`;
-      const rows = await dbAll(
-        `SELECT e.*, u.name as created_by_name
+      await ensureRepoIndexed(repoId);
+
+      const terms = splitSearchTerms(q);
+      const fullPhrase = q;
+      const searchTerms = terms.length ? terms : [fullPhrase];
+
+      let sql = `SELECT e.*, u.name as created_by_name
          FROM doc_entries e
          LEFT JOIN users u ON e.created_by = u.id
          WHERE e.repository_id = ?
-           AND e.entry_type != 'folder'
-           AND (
+           AND e.entry_type != 'folder'`;
+      const params: unknown[] = [repoId];
+
+      for (const term of searchTerms) {
+        const pattern = likePattern(term);
+        sql += ` AND (
              LOWER(e.name) LIKE ? ESCAPE '\\'
              OR LOWER(COALESCE(e.description, '')) LIKE ? ESCAPE '\\'
              OR LOWER(COALESCE(e.search_text, '')) LIKE ? ESCAPE '\\'
              OR LOWER(COALESCE(e.content, '')) LIKE ? ESCAPE '\\'
              OR LOWER(COALESCE(e.tags, '')) LIKE ? ESCAPE '\\'
-           )
-         ORDER BY LOWER(e.name)
-         LIMIT 80`,
-        [repoId, pattern, pattern, pattern, pattern, pattern]
-      );
+           )`;
+        params.push(pattern, pattern, pattern, pattern, pattern);
+      }
+
+      sql += ` ORDER BY LOWER(e.name) LIMIT 120`;
+
+      const rows = await dbAll(sql, params);
 
       const results = [];
       for (const row of rows as any[]) {
+        if (!entryMatchesQuery(row, terms, fullPhrase)) continue;
+
         const pathNames = await buildEntryPath(repoId, row.parent_id);
-        const haystack = [
-          row.name,
-          row.description,
-          row.content,
-          row.search_text,
-          row.tags,
-        ]
+        const haystack = [row.name, row.description, row.content, row.search_text, row.tags]
           .filter(Boolean)
           .join('\n');
-        const snippet = makeSearchSnippet(haystack, q);
+        const snippetTerm = fullPhrase.length >= 2 ? fullPhrase : terms[0] || fullPhrase;
+        const snippet = makeSearchSnippet(haystack, snippetTerm);
+        let match_count = countTermMatches(haystack, fullPhrase);
+        if (!match_count) {
+          for (const t of terms) match_count += countTermMatches(haystack, t);
+        }
+
         results.push({
           ...formatEntry(row),
           path: pathNames,
           snippet,
+          match_count,
         });
       }
 
-      res.json(results);
+      res.json(results.slice(0, 80));
     } catch (error) {
       console.error('Erro na busca do repositório:', error);
       res.status(500).json({ error: 'Erro na busca' });
@@ -772,6 +820,48 @@ router.put(
     } catch (error) {
       console.error('Erro ao atualizar entrada:', error);
       res.status(500).json({ error: 'Erro ao atualizar' });
+    }
+  }
+);
+
+// Texto extraído do arquivo (busca + destaque na visualização)
+router.get(
+  '/entries/:entryId/text-content',
+  authenticate,
+  requirePermission(RESOURCES.DOCS, ACTIONS.VIEW),
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const entryId = Number(req.params.entryId);
+      const entry = await dbGet('SELECT * FROM doc_entries WHERE id = ?', [entryId]) as any;
+      if (!entry) return res.status(404).json({ error: 'Item não encontrado' });
+
+      const { ok } = await requireRepoAccess(req.userId!, entry.repository_id, 'view');
+      if (!ok) return res.status(403).json({ error: 'Acesso negado' });
+
+      if (entry.entry_type === 'note') {
+        return res.json({ text: entry.content || '' });
+      }
+
+      if (entry.entry_type !== 'file' || !entry.storage_path) {
+        return res.status(400).json({ error: 'Sem conteúdo de texto' });
+      }
+
+      let text = (entry.search_text || '').trim();
+      if (!text) {
+        const filePath = path.join(DOCS_UPLOAD_DIR, entry.storage_path);
+        text = await extractFileSearchText(filePath, entry.mime_type, entry.name);
+        if (text) {
+          await dbRun('UPDATE doc_entries SET search_text = ? WHERE id = ?', [
+            buildEntrySearchText([entry.name, entry.description, parseTags(entry.tags).join(' '), text]),
+            entryId,
+          ]);
+        }
+      }
+
+      res.json({ text: text || '' });
+    } catch (error) {
+      console.error('Erro ao obter texto:', error);
+      res.status(500).json({ error: 'Erro ao obter texto do arquivo' });
     }
   }
 );
