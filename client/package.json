@@ -1,6 +1,6 @@
 {
   "name": "tidesk-client",
-  "version": "0.5.26",
+  "version": "0.6.26",
   "description": "Frontend do sistema TIDESK",
   "type": "module",
   "scripts": {

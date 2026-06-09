@@ -143,7 +143,7 @@ export default function Aprovar() {
         </p>
       </div>
 
-      <div style={{ 
+      <div className="list-page-toolbar" style={{ 
         display: 'flex', 
         justifyContent: 'space-between', 
         alignItems: 'center', 

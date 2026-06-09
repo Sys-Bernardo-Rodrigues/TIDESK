@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import TicketDetail from './TicketDetail';
 import { useAuth } from '../contexts/AuthContext';
@@ -11,10 +11,13 @@ import {
   CheckCircle,
   RefreshCw,
   LayoutGrid,
-  Filter,
   User,
   Inbox,
   Pause,
+  Zap,
+  CalendarClock,
+  Sparkles,
+  ArrowUpRight,
 } from 'lucide-react';
 
 interface Ticket {
@@ -53,7 +56,7 @@ function formatScheduledDate(dateString: string): string {
     month: '2-digit',
     year: '2-digit',
   });
-  return `${time} e ${dayDate}`;
+  return `${time} · ${dayDate}`;
 }
 
 function getTicketFullId(ticket: Ticket): string {
@@ -76,35 +79,93 @@ function formatTicketId(ticket: Ticket): string {
   return `${year}/${String(month).padStart(2, '0')}/${String(day).padStart(2, '0')}/${number}`;
 }
 
+function getInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return '?';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function formatRelativeAge(createdAt: string): string {
+  const hours = Math.floor((Date.now() - new Date(createdAt).getTime()) / (1000 * 60 * 60));
+  if (hours < 1) return 'agora';
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d`;
+  return `${Math.floor(days / 7)}sem`;
+}
+
 interface Column {
   id: string;
   title: string;
+  subtitle: string;
   status: Ticket['status'][];
   color: string;
   bgColor: string;
+  accent: string;
   icon: typeof Inbox;
 }
 
 const COLUMNS: Column[] = [
-  { id: 'open', title: 'Aberto', status: ['open'], color: 'var(--red)', bgColor: 'var(--red-light)', icon: Inbox },
-  { id: 'in_progress', title: 'Em progresso', status: ['in_progress'], color: 'var(--blue)', bgColor: 'var(--blue-light)', icon: LayoutGrid },
-  { id: 'scheduled', title: 'Agendados', status: ['scheduled'], color: 'var(--purple)', bgColor: 'var(--purple-light)', icon: Clock },
-  { id: 'closed', title: 'Finalizados', status: ['closed'], color: 'var(--green)', bgColor: 'var(--green-light)', icon: CheckCircle },
+  {
+    id: 'open',
+    title: 'Aberto',
+    subtitle: 'Aguardando atendimento',
+    status: ['open'],
+    color: 'var(--red)',
+    bgColor: 'var(--red-light)',
+    accent: '#EF4444',
+    icon: Inbox,
+  },
+  {
+    id: 'in_progress',
+    title: 'Em progresso',
+    subtitle: 'Sendo trabalhado',
+    status: ['in_progress'],
+    color: 'var(--blue)',
+    bgColor: 'var(--blue-light)',
+    accent: '#3B82F6',
+    icon: LayoutGrid,
+  },
+  {
+    id: 'scheduled',
+    title: 'Agendados',
+    subtitle: 'Retorno programado',
+    status: ['scheduled'],
+    color: 'var(--purple)',
+    bgColor: 'var(--purple-light)',
+    accent: '#9147FF',
+    icon: CalendarClock,
+  },
+  {
+    id: 'closed',
+    title: 'Finalizados',
+    subtitle: 'Concluídos',
+    status: ['closed'],
+    color: 'var(--green)',
+    bgColor: 'var(--green-light)',
+    accent: '#10B981',
+    icon: CheckCircle,
+  },
 ];
 
-const PRIORITY_COLORS: Record<Ticket['priority'], string> = {
-  low: 'var(--text-tertiary)',
-  medium: 'var(--blue)',
-  high: 'var(--orange)',
-  urgent: 'var(--red)',
+const PRIORITY_META: Record<
+  Ticket['priority'],
+  { label: string; color: string; class: string }
+> = {
+  low: { label: 'Baixa', color: 'var(--text-tertiary)', class: 'tickets-priority--low' },
+  medium: { label: 'Média', color: 'var(--blue)', class: 'tickets-priority--medium' },
+  high: { label: 'Alta', color: 'var(--orange)', class: 'tickets-priority--high' },
+  urgent: { label: 'Urgente', color: 'var(--red)', class: 'tickets-priority--urgent' },
 };
 
-const PRIORITY_LABELS: Record<Ticket['priority'], string> = {
-  low: 'Baixa',
-  medium: 'Média',
-  high: 'Alta',
-  urgent: 'Urgente',
-};
+const PRIORITY_FILTERS = [
+  { id: 'all', label: 'Todas' },
+  { id: 'urgent', label: 'Urgente' },
+  { id: 'high', label: 'Alta' },
+  { id: 'medium', label: 'Média' },
+  { id: 'low', label: 'Baixa' },
+] as const;
 
 export default function Tickets() {
   const { user } = useAuth();
@@ -158,9 +219,10 @@ export default function Tickets() {
       if (assignToUserId != null) payload.assigned_to = assignToUserId;
       await axios.put(`/api/tickets/${id}`, payload);
       await fetchTickets();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Erro ao atualizar status:', err);
-      alert(err.response?.data?.error || 'Erro ao atualizar status');
+      const msg = axios.isAxiosError(err) ? err.response?.data?.error : 'Erro ao atualizar status';
+      alert(msg || 'Erro ao atualizar status');
       await fetchTickets();
     }
   };
@@ -212,29 +274,46 @@ export default function Tickets() {
   const isScheduledOverdue = (t: Ticket) =>
     !!t.scheduled_at && t.status === 'scheduled' && new Date(t.scheduled_at) < new Date();
 
-  const getTicketsForColumn = (col: Column): Ticket[] => {
-    let list = tickets.filter((t) => col.status.includes(t.status));
+  const filterTicketList = (list: Ticket[]) => {
+    let filtered = list;
     if (onlyMyTickets && user) {
-      list = list.filter((t) => t.assigned_name?.toLowerCase() === user.name?.toLowerCase());
+      filtered = filtered.filter((t) => t.assigned_name?.toLowerCase() === user.name?.toLowerCase());
     }
     if (searchTerm) {
       const q = searchTerm.toLowerCase();
-      list = list.filter(
+      filtered = filtered.filter(
         (t) =>
           t.title.toLowerCase().includes(q) ||
           t.description.toLowerCase().includes(q) ||
           t.form_name?.toLowerCase().includes(q) ||
-          t.user_name?.toLowerCase().includes(q)
+          t.user_name?.toLowerCase().includes(q) ||
+          formatTicketId(t).toLowerCase().includes(q)
       );
     }
-    if (priorityFilter !== 'all') list = list.filter((t) => t.priority === priorityFilter);
+    if (priorityFilter !== 'all') filtered = filtered.filter((t) => t.priority === priorityFilter);
+    return filtered;
+  };
 
+  const getTicketsForColumn = (col: Column): Ticket[] => {
+    const list = filterTicketList(tickets.filter((t) => col.status.includes(t.status)));
     const order: Record<Ticket['priority'], number> = { urgent: 4, high: 3, medium: 2, low: 1 };
     return list.sort((a, b) => {
       const d = order[b.priority] - order[a.priority];
       return d !== 0 ? d : new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     });
   };
+
+  const stats = useMemo(() => {
+    const base = filterTicketList(tickets);
+    return {
+      total: base.length,
+      open: base.filter((t) => t.status === 'open').length,
+      inProgress: base.filter((t) => t.status === 'in_progress').length,
+      scheduled: base.filter((t) => t.status === 'scheduled').length,
+      closed: base.filter((t) => t.status === 'closed').length,
+      urgent: base.filter((t) => t.priority === 'urgent' && t.status !== 'closed').length,
+    };
+  }, [tickets, searchTerm, priorityFilter, onlyMyTickets, user]);
 
   const handleTicketClick = (id: number) => {
     setViewedTickets((prev) => {
@@ -251,67 +330,108 @@ export default function Tickets() {
 
   if (loading) {
     return (
-      <div className="tickets-loading">
-        <div className="tickets-loading-spinner" />
-        <p>Carregando tickets…</p>
+      <div className="tickets-page">
+        <div className="tickets-loading">
+          <div className="tickets-loading__orb" />
+          <p>Carregando fila de atendimento…</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="tickets-kanban">
+    <div className="tickets-page">
+      <header className="tickets-hero">
+        <div className="tickets-hero__glow" aria-hidden />
+        <div className="tickets-hero__row">
+          <div className="tickets-hero__title-row">
+            <div className="tickets-hero__icon">
+              <Sparkles size={18} />
+            </div>
+            <h1 className="tickets-hero__title">Tickets</h1>
+          </div>
+
+          <div className="tickets-stats">
+            <div className="tickets-stat tickets-stat--open" title="Abertos">
+              <span className="tickets-stat__value">{stats.open}</span>
+              <span className="tickets-stat__label">Abertos</span>
+            </div>
+            <div className="tickets-stat tickets-stat--progress" title="Em progresso">
+              <span className="tickets-stat__value">{stats.inProgress}</span>
+              <span className="tickets-stat__label">Progresso</span>
+            </div>
+            <div className="tickets-stat tickets-stat--scheduled" title="Agendados">
+              <span className="tickets-stat__value">{stats.scheduled}</span>
+              <span className="tickets-stat__label">Agend.</span>
+            </div>
+            <div className="tickets-stat tickets-stat--closed" title="Finalizados">
+              <span className="tickets-stat__value">{stats.closed}</span>
+              <span className="tickets-stat__label">Fim</span>
+            </div>
+            {stats.urgent > 0 && (
+              <div className="tickets-stat tickets-stat--urgent" title="Urgentes">
+                <Zap size={12} />
+                <span className="tickets-stat__value">{stats.urgent}</span>
+              </div>
+            )}
+          </div>
+
+          <button
+            type="button"
+            className="tickets-hero__refresh"
+            onClick={() => fetchTickets()}
+            title="Atualizar agora"
+          >
+            <RefreshCw size={14} />
+          </button>
+        </div>
+      </header>
+
       <div className="tickets-toolbar">
-        <div className="tickets-toolbar-search">
-          <Search size={16} />
+        <div className="tickets-toolbar__search">
+          <Search size={18} />
           <input
             type="text"
-            className="input"
-            placeholder="Buscar por título, descrição, formulário…"
+            placeholder="Buscar título, ID, formulário ou solicitante…"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-        <div className="tickets-toolbar-filters">
-          <div className="tickets-toolbar-group">
-            <Filter size={14} />
-            <select
-              className="input"
-              value={priorityFilter}
-              onChange={(e) => setPriorityFilter(e.target.value)}
+
+        <div className="tickets-toolbar__priority">
+          {PRIORITY_FILTERS.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              className={`tickets-priority-pill ${priorityFilter === p.id ? 'tickets-priority-pill--active' : ''} ${p.id !== 'all' ? `tickets-priority-pill--${p.id}` : ''}`}
+              onClick={() => setPriorityFilter(p.id)}
             >
-              <option value="all">Todas prioridades</option>
-              <option value="urgent">Urgente</option>
-              <option value="high">Alta</option>
-              <option value="medium">Média</option>
-              <option value="low">Baixa</option>
-            </select>
-          </div>
-          <div className="tickets-toolbar-group">
+              {p.id === 'urgent' && <Zap size={12} />}
+              {p.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="tickets-toolbar__actions">
+          <div className="tickets-toolbar__select-wrap">
             <RefreshCw size={14} />
-            <select
-              className="input"
-              value={autoRefresh}
-              onChange={(e) => setAutoRefresh(e.target.value)}
-            >
-              <option value="0">Atualizar manual</option>
-              <option value="10">10 s</option>
-              <option value="30">30 s</option>
+            <select value={autoRefresh} onChange={(e) => setAutoRefresh(e.target.value)}>
+              <option value="0">0s</option>
+              <option value="10">10s</option>
+              <option value="30">30s</option>
               <option value="60">1 min</option>
               <option value="120">2 min</option>
             </select>
           </div>
           {canEditTickets && (
-            <div className="tickets-toolbar-group">
-              <label className="tickets-toolbar-my">
-                <input
-                  type="checkbox"
-                  checked={onlyMyTickets}
-                  onChange={(e) => setOnlyMyTickets(e.target.checked)}
-                />
-                <User size={14} />
-                <span>Meus tickets</span>
-              </label>
-            </div>
+            <button
+              type="button"
+              className={`tickets-toolbar__mine ${onlyMyTickets ? 'tickets-toolbar__mine--on' : ''}`}
+              onClick={() => setOnlyMyTickets((v) => !v)}
+            >
+              <User size={14} />
+              Meus tickets
+            </button>
           )}
         </div>
       </div>
@@ -323,119 +443,128 @@ export default function Tickets() {
           const Icon = col.icon;
 
           return (
-            <div
+            <section
               key={col.id}
-              className={`tickets-column ${canEditTickets && isOver ? 'tickets-column--over' : ''}`}
-              style={{
-                borderColor: canEditTickets && isOver ? col.color : undefined,
-                '--col-color': col.color,
-                '--col-bg': col.bgColor,
-              } as React.CSSProperties}
+              className={`tickets-column ${isOver ? 'tickets-column--over' : ''}`}
+              style={{ '--col-accent': col.accent } as React.CSSProperties}
               onDragOver={canEditTickets ? (e) => handleDragOver(e, col.id) : undefined}
               onDragLeave={canEditTickets ? handleDragLeave : undefined}
               onDrop={canEditTickets ? (e) => handleDrop(e, col) : undefined}
             >
-              <div className="tickets-column-header">
-                <div className="tickets-column-title">
-                  <span className="tickets-column-dot" style={{ background: col.color }} />
-                  <Icon size={16} style={{ color: col.color }} />
-                  <span>{col.title}</span>
+              <header className="tickets-column__head">
+                <div className="tickets-column__head-left">
+                  <span className="tickets-column__icon" style={{ color: col.color }}>
+                    <Icon size={18} />
+                  </span>
+                  <h2 className="tickets-column__title">{col.title}</h2>
                 </div>
-                <span className="tickets-column-count" style={{ background: col.bgColor, color: col.color }}>
+                <span className="tickets-column__count" style={{ background: col.bgColor, color: col.color }}>
                   {list.length}
                 </span>
-              </div>
+              </header>
 
-              <div className="tickets-column-cards">
+              <div className="tickets-column__cards">
                 {list.length === 0 ? (
-                  <div className="tickets-empty">
-                    {canEditTickets && isOver ? (
+                  <div className={`tickets-empty ${isOver ? 'tickets-empty--drop' : ''}`}>
+                    {isOver ? (
                       <>
-                        <div className="tickets-empty-icon">Solte aqui</div>
-                        <span>Solte o ticket nesta coluna</span>
+                        <ArrowUpRight size={28} />
+                        <span>Solte o ticket aqui</span>
                       </>
                     ) : (
                       <>
-                        <Inbox size={32} />
+                        <Icon size={32} strokeWidth={1.25} />
                         <span>Nenhum ticket</span>
                       </>
                     )}
                   </div>
                 ) : (
-                  list.map((ticket) => {
+                  list.map((ticket, idx) => {
                     const hours = getHoursSince(ticket);
                     const overdue = isScheduledOverdue(ticket);
                     const ageAlert = col.id === 'open' || col.id === 'in_progress';
-                    const borderHint =
+                    const ageClass =
                       overdue
-                        ? 'var(--purple)'
+                        ? 'tickets-card--overdue'
                         : ageAlert && hours >= 48
-                        ? 'var(--red)'
-                        : ageAlert && hours >= 24
-                        ? 'var(--orange)'
-                        : undefined;
+                          ? 'tickets-card--stale-critical'
+                          : ageAlert && hours >= 24
+                            ? 'tickets-card--stale-warn'
+                            : '';
+                    const priority = PRIORITY_META[ticket.priority];
 
                     return (
-                      <div
+                      <article
                         key={ticket.id}
-                        className={`tickets-card ${draggedTicket?.id === ticket.id ? 'tickets-card--dragging' : ''}`}
-                        style={{ borderColor: borderHint }}
+                        className={`tickets-card ${priority.class} ${ageClass} ${draggedTicket?.id === ticket.id ? 'tickets-card--dragging' : ''}`}
+                        style={{ animationDelay: `${Math.min(idx, 8) * 40}ms` }}
                         draggable={canEditTickets}
                         onClick={() => handleTicketClick(ticket.id)}
                         onDragStart={canEditTickets ? (e) => handleDragStart(e, ticket) : undefined}
                       >
-                        <div className="tickets-card-top">
-                          <span
-                            className="tickets-card-priority"
-                            style={{ background: PRIORITY_COLORS[ticket.priority] }}
-                          >
-                            {PRIORITY_LABELS[ticket.priority]}
-                          </span>
-                          {ticket.status === 'in_progress' && !!ticket.is_paused && (
-                            <span className="tickets-card-paused" title="Em pausa (tempo não conta no tempo médio)">
-                              <Pause size={10} />
-                              Em pausa
+                        <div className="tickets-card__stripe" style={{ background: priority.color }} />
+
+                        <div className="tickets-card__body">
+                          <div className="tickets-card__top">
+                            <span className={`tickets-card__priority ${priority.class}`}>
+                              {ticket.priority === 'urgent' && <Zap size={10} />}
+                              {priority.label}
                             </span>
-                          )}
-                          {ticket.ticket_number && ticket.created_at && (
-                            <span className="tickets-card-id">{formatTicketId(ticket)}</span>
-                          )}
-                          {ticket.form_name && (
-                            <span className="tickets-card-form">
-                              <FileText size={10} />
-                              Form
-                            </span>
-                          )}
-                        </div>
-                        <h4 className="tickets-card-title">{formatTicketTitle(ticket.title)}</h4>
-                        <p className="tickets-card-desc">{ticket.description}</p>
-                        <div className="tickets-card-meta">
-                          {ticket.assigned_name && (
-                            <span className="tickets-card-assignee">
-                              <User size={10} />
-                              {ticket.assigned_name}
-                            </span>
-                          )}
-                          <span className="tickets-card-date">
-                            {ticket.status === 'scheduled' && ticket.scheduled_at ? (
-                              <>
-                                <Clock size={10} />
-                                Agendado: {formatScheduledDate(ticket.scheduled_at)}
-                              </>
-                            ) : (
-                              <>
-                                <Clock size={10} />
-                                {formatDate(ticket.created_at)}
-                              </>
+                            {ticket.ticket_number && ticket.created_at && (
+                              <code className="tickets-card__id">{formatTicketId(ticket)}</code>
                             )}
-                          </span>
+                            <span className="tickets-card__age">{formatRelativeAge(ticket.created_at)}</span>
+                          </div>
+
+                          <h3 className="tickets-card__title">{formatTicketTitle(ticket.title)}</h3>
+                          {ticket.description?.trim() && (
+                            <p className="tickets-card__desc">{ticket.description}</p>
+                          )}
+
+                          <div className="tickets-card__tags">
+                            {ticket.status === 'in_progress' && !!ticket.is_paused && (
+                              <span className="tickets-card__tag tickets-card__tag--pause">
+                                <Pause size={10} />
+                                Pausado
+                              </span>
+                            )}
+                            {overdue && (
+                              <span className="tickets-card__tag tickets-card__tag--overdue">
+                                <Clock size={10} />
+                                Atrasado
+                              </span>
+                            )}
+                            {ticket.form_name && (
+                              <span className="tickets-card__tag tickets-card__tag--form">
+                                <FileText size={10} />
+                                {ticket.form_name}
+                              </span>
+                            )}
+                          </div>
+
+                          <footer className="tickets-card__foot">
+                            {ticket.assigned_name ? (
+                              <div className="tickets-card__assignee" title={ticket.assigned_name}>
+                                <span className="tickets-card__avatar">{getInitials(ticket.assigned_name)}</span>
+                                <span className="tickets-card__assignee-name">{ticket.assigned_name}</span>
+                              </div>
+                            ) : (
+                              <span className="tickets-card__unassigned">Sem agente</span>
+                            )}
+                            <time className="tickets-card__time">
+                              <Clock size={11} />
+                              {ticket.status === 'scheduled' && ticket.scheduled_at
+                                ? formatScheduledDate(ticket.scheduled_at)
+                                : formatDate(ticket.created_at)}
+                            </time>
+                          </footer>
                         </div>
-                      </div>
+                      </article>
                     );
                   })
                 )}
               </div>
-            </div>
+            </section>
           );
         })}
       </div>
@@ -461,371 +590,6 @@ export default function Tickets() {
           </div>
         </div>
       )}
-
-      <style>{`
-        .tickets-loading {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          min-height: 50vh;
-          color: var(--text-secondary);
-          gap: 1rem;
-        }
-        .tickets-loading-spinner {
-          width: 40px;
-          height: 40px;
-          border: 3px solid var(--border-primary);
-          border-top-color: var(--purple);
-          border-radius: 50%;
-          animation: tickets-spin 0.8s linear infinite;
-        }
-        @keyframes tickets-spin { to { transform: rotate(360deg); } }
-
-        .tickets-kanban {
-          padding: var(--spacing-lg);
-          max-width: 1600px;
-          margin: 0 auto;
-        }
-
-        .tickets-toolbar {
-          display: flex;
-          flex-wrap: wrap;
-          align-items: center;
-          gap: var(--spacing-md);
-          margin-bottom: var(--spacing-lg);
-          padding: var(--spacing-md);
-          background: var(--bg-secondary);
-          border: 1px solid var(--border-primary);
-          border-radius: var(--radius-md);
-        }
-        .tickets-toolbar-search {
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-          flex: 1;
-          min-width: 200px;
-        }
-        .tickets-toolbar-search .input {
-          flex: 1;
-          padding: 0.5rem 0.75rem;
-          font-size: 0.875rem;
-          height: 36px;
-        }
-        .tickets-toolbar-search svg {
-          color: var(--text-tertiary);
-          flex-shrink: 0;
-        }
-        .tickets-toolbar-filters {
-          display: grid;
-          grid-auto-flow: column;
-          grid-auto-columns: max-content;
-          align-items: center;
-          gap: var(--spacing-sm);
-        }
-        .tickets-toolbar-group {
-          display: flex;
-          align-items: center;
-          gap: 0.375rem;
-          height: 36px;
-          margin: 0;
-        }
-        .tickets-toolbar-group .input {
-          padding: 0.5rem 0.75rem;
-          font-size: 0.8125rem;
-          height: 36px;
-          min-width: 140px;
-          box-sizing: border-box;
-        }
-        .tickets-toolbar-group svg {
-          color: var(--text-tertiary);
-          flex-shrink: 0;
-          display: block;
-        }
-        .tickets-toolbar-my {
-          display: flex;
-          align-items: center;
-          gap: 0.375rem;
-          height: 36px;
-          padding: 0 0.75rem;
-          margin: 0;
-          box-sizing: border-box;
-          border-radius: var(--radius-sm);
-          border: 1px solid var(--border-primary);
-          background: var(--bg-tertiary);
-          font-size: 0.8125rem;
-          line-height: 1;
-          color: var(--text-secondary);
-          cursor: pointer;
-          user-select: none;
-          transition: var(--transition-base);
-        }
-        .tickets-toolbar-my:hover { background: var(--bg-hover); color: var(--text-primary); }
-        .tickets-toolbar-my input[type="checkbox"] {
-          width: 14px;
-          height: 14px;
-          margin: 0;
-          padding: 0;
-          display: block;
-          cursor: pointer;
-          accent-color: var(--purple);
-          flex-shrink: 0;
-          vertical-align: middle;
-        }
-        .tickets-toolbar-my span {
-          line-height: 1;
-          display: block;
-        }
-        .tickets-toolbar-my:has(input:checked) {
-          background: var(--purple-light);
-          border-color: var(--purple);
-          color: var(--purple);
-        }
-
-        .tickets-board {
-          display: grid;
-          grid-template-columns: repeat(4, minmax(280px, 1fr));
-          gap: var(--spacing-lg);
-          align-items: start;
-        }
-        @media (max-width: 1280px) {
-          .tickets-board { grid-template-columns: repeat(2, 1fr); }
-        }
-        @media (max-width: 768px) {
-          .tickets-board { grid-template-columns: 1fr; }
-        }
-
-        .tickets-column {
-          display: flex;
-          flex-direction: column;
-          background: var(--bg-secondary);
-          border: 2px solid var(--border-primary);
-          border-radius: var(--radius-lg);
-          padding: var(--spacing-md);
-          min-height: 400px;
-          max-height: calc(100vh - 320px);
-          transition: border-color var(--transition-base), box-shadow var(--transition-base);
-        }
-        .tickets-column--over {
-          border-style: dashed;
-          box-shadow: 0 0 0 2px var(--col-color);
-          background: rgba(145, 71, 255, 0.06);
-        }
-
-        .tickets-column-header {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          margin-bottom: var(--spacing-md);
-          padding-bottom: var(--spacing-sm);
-          border-bottom: 2px solid var(--col-color, var(--border-primary));
-        }
-        .tickets-column-title {
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-          font-size: 0.9375rem;
-          font-weight: 600;
-          color: var(--text-primary);
-        }
-        .tickets-column-dot {
-          width: 6px;
-          height: 6px;
-          border-radius: 50%;
-        }
-        .tickets-column-count {
-          font-size: 0.75rem;
-          font-weight: 700;
-          padding: 0.2rem 0.5rem;
-          border-radius: var(--radius-full);
-        }
-
-        .tickets-column-cards {
-          display: flex;
-          flex-direction: column;
-          gap: var(--spacing-sm);
-          overflow-y: auto;
-          flex: 1;
-          padding-right: 2px;
-        }
-        .tickets-column-cards::-webkit-scrollbar {
-          width: 6px;
-        }
-        .tickets-column-cards::-webkit-scrollbar-track {
-          background: var(--bg-tertiary);
-          border-radius: 3px;
-        }
-        .tickets-column-cards::-webkit-scrollbar-thumb {
-          background: var(--border-secondary);
-          border-radius: 3px;
-        }
-
-        .tickets-empty {
-          flex: 1;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          gap: 0.5rem;
-          padding: var(--spacing-xl);
-          color: var(--text-tertiary);
-          font-size: 0.875rem;
-          text-align: center;
-        }
-        .tickets-empty-icon {
-          font-size: 0.75rem;
-          font-weight: 600;
-          color: var(--col-color, var(--purple));
-        }
-
-        .tickets-card {
-          padding: var(--spacing-md);
-          background: var(--bg-tertiary);
-          border: 1px solid var(--border-primary);
-          border-radius: var(--radius-md);
-          cursor: pointer;
-          transition: border-color var(--transition-base), box-shadow var(--transition-base), transform var(--transition-base);
-        }
-        .tickets-card:hover {
-          border-color: var(--border-secondary);
-          box-shadow: var(--shadow-md);
-          transform: translateY(-1px);
-        }
-        .tickets-card--dragging {
-          opacity: 0.5;
-          cursor: grabbing;
-        }
-        .tickets-card:active { cursor: grab; }
-
-        .tickets-card-top {
-          display: flex;
-          align-items: center;
-          gap: 0.375rem;
-          flex-wrap: wrap;
-          margin-bottom: 0.5rem;
-        }
-        .tickets-card-priority {
-          font-size: 0.625rem;
-          font-weight: 700;
-          color: #fff;
-          padding: 0.15rem 0.4rem;
-          border-radius: var(--radius-sm);
-          text-transform: uppercase;
-          letter-spacing: 0.04em;
-        }
-        .tickets-card-paused {
-          display: inline-flex;
-          align-items: center;
-          gap: 0.2rem;
-          font-size: 0.6rem;
-          font-weight: 600;
-          color: var(--bg-primary);
-          background: var(--warning);
-          padding: 0.15rem 0.35rem;
-          border-radius: var(--radius-sm);
-        }
-        .tickets-card-id {
-          font-size: 0.7rem;
-          font-family: ui-monospace, monospace;
-          color: var(--text-tertiary);
-        }
-        .tickets-card-form {
-          display: inline-flex;
-          align-items: center;
-          gap: 0.2rem;
-          font-size: 0.65rem;
-          color: var(--purple);
-          background: var(--purple-light);
-          padding: 0.15rem 0.35rem;
-          border-radius: var(--radius-sm);
-          margin-left: auto;
-        }
-        .tickets-card-title {
-          font-size: 0.875rem;
-          font-weight: 600;
-          color: var(--text-primary);
-          line-height: 1.3;
-          margin-bottom: 0.25rem;
-          display: -webkit-box;
-          -webkit-line-clamp: 2;
-          -webkit-box-orient: vertical;
-          overflow: hidden;
-        }
-        .tickets-card-desc {
-          font-size: 0.75rem;
-          color: var(--text-secondary);
-          line-height: 1.4;
-          margin-bottom: 0.5rem;
-          display: -webkit-box;
-          -webkit-line-clamp: 4;
-          -webkit-box-orient: vertical;
-          overflow: hidden;
-        }
-        .tickets-card-meta {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 0.5rem;
-          padding-top: 0.5rem;
-          border-top: 1px solid var(--border-primary);
-          font-size: 0.7rem;
-          color: var(--text-tertiary);
-        }
-        .tickets-card-assignee {
-          display: flex;
-          align-items: center;
-          gap: 0.25rem;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-        }
-        .tickets-card-date {
-          display: flex;
-          align-items: center;
-          gap: 0.25rem;
-          flex-shrink: 0;
-        }
-
-        .tickets-modal-overlay {
-          position: fixed;
-          inset: 0;
-          z-index: 1000;
-          background: rgba(0, 0, 0, 0.5);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: var(--spacing-lg);
-          box-sizing: border-box;
-          animation: tickets-modal-fade 0.2s ease;
-        }
-        @keyframes tickets-modal-fade {
-          from { opacity: 0; }
-          to { opacity: 1; }
-        }
-        .tickets-modal-content {
-          width: 100%;
-          max-width: 1200px;
-          height: 90vh;
-          max-height: 900px;
-          background: var(--bg-primary);
-          border-radius: var(--radius-lg);
-          border: 1px solid var(--border-primary);
-          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-          overflow: hidden;
-          display: flex;
-          flex-direction: column;
-          animation: tickets-modal-scale 0.2s ease;
-        }
-        @keyframes tickets-modal-scale {
-          from { opacity: 0; transform: scale(0.98); }
-          to { opacity: 1; transform: scale(1); }
-        }
-        .tickets-modal-content .ticket-detail {
-          height: 100%;
-          flex: 1;
-          min-height: 0;
-        }
-      `}</style>
     </div>
   );
 }

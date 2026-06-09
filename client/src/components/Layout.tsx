@@ -3,21 +3,46 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { usePermissions } from '../hooks/usePermissions';
 import {
-  LogOut, Ticket, Home, Plus, FileText, FileEdit, ChevronDown, ChevronRight,
-  Settings, Shield, User, FileBarChart, PanelLeftClose, PanelLeft,
-  Calendar, CalendarDays, Eye, CheckCircle, Users, History, Webhook, FolderKanban,
-  Palette, LayoutDashboard, Database, RefreshCw
+  LogOut,
+  Ticket,
+  Home,
+  Plus,
+  FileText,
+  FileEdit,
+  ChevronDown,
+  ChevronRight,
+  Settings,
+  Shield,
+  User,
+  FileBarChart,
+  PanelLeftClose,
+  PanelLeft,
+  Calendar,
+  CalendarDays,
+  Eye,
+  CheckCircle,
+  Users,
+  History,
+  Webhook,
+  FolderKanban,
+  Palette,
+  LayoutDashboard,
+  Database,
+  RefreshCw,
+  Pin,
 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { APP_VERSION_LABEL } from '../constants/appVersion';
+
+type NavChild = { path: string; label: string; icon: LucideIcon; permission?: string };
 
 type NavItem = {
   path: string;
   label: string;
   icon: LucideIcon;
   permission?: string;
-  children?: { path: string; label: string; icon: LucideIcon; permission?: string }[];
+  children?: NavChild[];
 };
 
 const MENU_STRUCTURE: { label: string; items: NavItem[] }[] = [
@@ -70,22 +95,25 @@ const MENU_STRUCTURE: { label: string; items: NavItem[] }[] = [
   },
   {
     label: 'Sistema',
-    items: [
-      {
-        path: '/config',
-        label: 'Configurações',
-        icon: Settings,
-        children: [
-          { path: '/config/perfil-de-acesso', label: 'Perfil de Acesso', icon: Shield, permission: '/config/perfil-de-acesso' },
-          { path: '/config/usuarios', label: 'Usuários', icon: User, permission: '/config/usuarios' },
-          { path: '/config/grupos', label: 'Grupos', icon: Users, permission: '/config/grupos' },
-          { path: '/config/backup', label: 'Backup', icon: Database, permission: '/config/backup' },
-          { path: '/config/atualizar', label: 'Atualizar', icon: RefreshCw, permission: '/config/atualizar' },
-        ],
-      },
-    ],
+    items: [{
+      path: '/config',
+      label: 'Configurações',
+      icon: Settings,
+      children: [
+        { path: '/config/perfil-de-acesso', label: 'Perfil de Acesso', icon: Shield, permission: '/config/perfil-de-acesso' },
+        { path: '/config/usuarios', label: 'Usuários', icon: User, permission: '/config/usuarios' },
+        { path: '/config/grupos', label: 'Grupos', icon: Users, permission: '/config/grupos' },
+        { path: '/config/backup', label: 'Backup', icon: Database, permission: '/config/backup' },
+        { path: '/config/atualizar', label: 'Atualizar', icon: RefreshCw, permission: '/config/atualizar' },
+      ],
+    }],
   },
 ];
+
+function pathActive(pathname: string, path: string) {
+  if (path === '/') return pathname === '/';
+  return pathname === path || pathname.startsWith(path + '/');
+}
 
 export default function Layout() {
   const { user, logout } = useAuth();
@@ -93,7 +121,11 @@ export default function Layout() {
   const { hasPageAccess } = usePermissions();
   const navigate = useNavigate();
   const location = useLocation();
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    const saved = localStorage.getItem('sidebarCollapsed');
+    return saved !== 'false';
+  });
   const [themeMenuOpen, setThemeMenuOpen] = useState(false);
   const themeMenuRef = useRef<HTMLDivElement>(null);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
@@ -108,6 +140,14 @@ export default function Layout() {
     navigate('/login');
   };
 
+  const toggleSidebar = () => {
+    setSidebarCollapsed((c) => {
+      const next = !c;
+      localStorage.setItem('sidebarCollapsed', String(next));
+      return next;
+    });
+  };
+
   const toggleGroup = (key: string) => {
     setOpenGroups((prev) => ({ ...prev, [key]: !prev[key] }));
   };
@@ -118,9 +158,7 @@ export default function Layout() {
         setThemeMenuOpen(false);
       }
     };
-    if (themeMenuOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
+    if (themeMenuOpen) document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [themeMenuOpen]);
 
@@ -138,7 +176,7 @@ export default function Layout() {
     }
   }, [sidebarCollapsed, location.pathname]);
 
-  const hasAnyAccess = (permission?: string, children?: { permission?: string }[]) => {
+  const hasAnyAccess = (permission?: string, children?: NavChild[]) => {
     if (permission && hasPageAccess(permission)) return true;
     return children?.some((c) => c.permission && hasPageAccess(c.permission)) ?? false;
   };
@@ -148,161 +186,179 @@ export default function Layout() {
     return name.split(' ').map((n) => n[0]).slice(0, 2).join('').toUpperCase();
   };
 
-  return (
-    <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: 'var(--bg-primary)' }}>
-      <aside
-        className={`sidebar ${sidebarCollapsed ? 'sidebar--collapsed' : 'sidebar--expanded'}`}
-      >
-        {/* Header */}
-        <div className={`sidebar-header ${sidebarCollapsed ? 'sidebar-header--collapsed' : ''}`}>
-          {sidebarCollapsed ? (
-           <button
-              className="sidebar-toggle sidebar-toggle--expand"
-              onClick={() => setSidebarCollapsed(false)}
-              title="Expandir menu"
-            >
-              <PanelLeft size={20} />
-           </button>
-          ) : (
-            <>
-              <div className="sidebar-logo">
-                <LayoutDashboard size={18} color="#FFF" strokeWidth={2.5} />
-         </div>
-              <div className="sidebar-logo-text">
-                TIDESK<span className="sidebar-logo-badge">{APP_VERSION_LABEL}</span>
-              </div>
-              <button
-                className="sidebar-toggle"
-                onClick={() => setSidebarCollapsed(true)}
-                title="Recolher menu"
-              >
-                <PanelLeftClose size={18} />
-              </button>
-            </>
-                  )}
-                </div>
+  const renderNavLink = (path: string, label: string, Icon: LucideIcon, active: boolean) => (
+    <Link
+      key={path}
+      to={path}
+      className={`sidebar-rail-item ${active ? 'sidebar-rail-item--active' : ''}`}
+      title={sidebarCollapsed ? label : undefined}
+      data-tooltip={sidebarCollapsed ? label : undefined}
+    >
+      <span className="sidebar-rail-item__icon-wrap">
+        <Icon size={18} strokeWidth={active ? 2.5 : 2} />
+      </span>
+      {!sidebarCollapsed && <span className="sidebar-rail-item__label">{label}</span>}
+      {active && <span className="sidebar-rail-item__glow" aria-hidden />}
+    </Link>
+  );
 
-        {/* Navigation */}
-        <nav className="sidebar-nav">
-          {MENU_STRUCTURE.map((section) => (
-            <div key={section.label} className="sidebar-section">
-              <div className="sidebar-section-label">{section.label}</div>
-              {section.items.map((item) => {
-                if (item.children) {
-                  const groupKey = item.path.replace('/', '');
-                  const hasAccess = hasAnyAccess(item.permission, item.children);
-                  if (!hasAccess) return null;
+  const renderFlyoutGroup = (item: NavItem) => {
+    const groupKey = item.path.replace('/', '');
+    const children = (item.children || []).filter((c) => c.permission && hasPageAccess(c.permission));
+    if (!children.length) return null;
 
-                  const isOpen = openGroups[groupKey];
-                  const isActive = item.children.some((c) => location.pathname === c.path || location.pathname.startsWith(c.path + '/'));
+    const isActive = children.some((c) => pathActive(location.pathname, c.path));
+    const isOpen = openGroups[groupKey];
 
-                  if (sidebarCollapsed) {
-                    return (
-                      <div key={item.path} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                        {item.children
-                          .filter((c) => c.permission && hasPageAccess(c.permission))
-                          .map((child) => (
-                <Link
-                              key={child.path}
-                              to={child.path}
-                              className={`sidebar-item tooltip ${location.pathname === child.path ? 'sidebar-item--active' : ''}`}
-                              data-tooltip={child.label}
-                              title={child.label}
-                            >
-                              <child.icon size={18} strokeWidth={location.pathname === child.path ? 2.5 : 2} className="sidebar-item-icon" />
-                              <span className="sidebar-item-text">{child.label}</span>
-                </Link>
-                          ))}
-            </div>
-                    );
-                  }
-
-                  return (
-                    <div key={item.path}>
-              <button
-                        type="button"
-                        className={`sidebar-group-btn ${isActive ? 'sidebar-group-btn--active' : ''}`}
-                        onClick={() => toggleGroup(groupKey)}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                          <item.icon size={18} strokeWidth={isActive ? 2.5 : 2} className="sidebar-item-icon" />
-                          <span className="sidebar-item-text">{item.label}</span>
-                </div>
-                        {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-              </button>
-                      {isOpen && (
-                        <div className="sidebar-submenu">
-                          {item.children
-                            .filter((c) => c.permission && hasPageAccess(c.permission))
-                            .map((child) => (
-                  <Link
-                                key={child.path}
-                                to={child.path}
-                                className={`sidebar-subitem ${location.pathname === child.path ? 'sidebar-subitem--active' : ''}`}
-                              >
-                                <child.icon size={14} strokeWidth={location.pathname === child.path ? 2.5 : 2} className="sidebar-subitem-icon" />
-                                {child.label}
-                  </Link>
-                            ))}
-                </div>
-              )}
-            </div>
-                  );
-                }
-
-                if (!item.permission || !hasPageAccess(item.permission)) return null;
-
-                const isActive = location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(item.path));
-
+    if (sidebarCollapsed) {
+      return (
+        <div key={item.path} className="sidebar-flyout-wrap">
+          <button
+            type="button"
+            className={`sidebar-rail-item sidebar-rail-item--group ${isActive ? 'sidebar-rail-item--active' : ''}`}
+            title={item.label}
+          >
+            <span className="sidebar-rail-item__icon-wrap">
+              <item.icon size={18} strokeWidth={isActive ? 2.5 : 2} />
+            </span>
+            {isActive && <span className="sidebar-rail-item__glow" aria-hidden />}
+          </button>
+          <div className="sidebar-flyout">
+            <div className="sidebar-flyout__head">{item.label}</div>
+            <div className="sidebar-flyout__links">
+              {children.map((child) => {
+                const childActive = pathActive(location.pathname, child.path);
                 return (
                   <Link
-                    key={item.path}
-                    to={item.path}
-                    className={`sidebar-item tooltip ${isActive ? 'sidebar-item--active' : ''}`}
-                    data-tooltip={sidebarCollapsed ? item.label : ''}
-                    title={sidebarCollapsed ? item.label : ''}
+                    key={child.path}
+                    to={child.path}
+                    className={`sidebar-flyout__link ${childActive ? 'sidebar-flyout__link--active' : ''}`}
                   >
-                    <item.icon size={18} strokeWidth={isActive ? 2.5 : 2} className="sidebar-item-icon" />
-                    <span className="sidebar-item-text">{item.label}</span>
+                    <child.icon size={15} strokeWidth={childActive ? 2.5 : 2} />
+                    {child.label}
                   </Link>
                 );
               })}
-                </div>
-          ))}
-        </nav>
-
-        {/* Footer */}
-        <div className="sidebar-footer">
-          <div className="sidebar-user">
-            <div className="sidebar-user-avatar">{getInitials(user?.name)}</div>
-            <div className="sidebar-user-info">
-              <div className="sidebar-user-name">{user?.name}</div>
-              <div className="sidebar-user-role">{user?.role}</div>
             </div>
           </div>
-          <div className="sidebar-actions">
-            <div className="sidebar-theme-select-wrapper" ref={themeMenuRef}>
+        </div>
+      );
+    }
+
+    return (
+      <div key={item.path} className="sidebar-group">
+        <button
+          type="button"
+          className={`sidebar-rail-item sidebar-rail-item--group ${isActive ? 'sidebar-rail-item--active' : ''}`}
+          onClick={() => toggleGroup(groupKey)}
+        >
+          <span className="sidebar-rail-item__icon-wrap">
+            <item.icon size={18} strokeWidth={isActive ? 2.5 : 2} />
+          </span>
+          <span className="sidebar-rail-item__label">{item.label}</span>
+          <span className="sidebar-rail-item__chevron">
+            {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          </span>
+        </button>
+        {isOpen && (
+          <div className="sidebar-submenu">
+            {children.map((child) => {
+              const childActive = pathActive(location.pathname, child.path);
+              return (
+                <Link
+                  key={child.path}
+                  to={child.path}
+                  className={`sidebar-submenu__link ${childActive ? 'sidebar-submenu__link--active' : ''}`}
+                >
+                  <child.icon size={14} strokeWidth={childActive ? 2.5 : 2} />
+                  {child.label}
+                </Link>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div className="app-shell">
+      <aside className={`sidebar-rail ${sidebarCollapsed ? 'sidebar-rail--collapsed' : 'sidebar-rail--expanded'}`}>
+        <div className="sidebar-rail__accent" aria-hidden />
+
+        <header className="sidebar-rail__header">
+          <div className="sidebar-rail__brand">
+            <div className="sidebar-rail__logo">
+              <LayoutDashboard size={sidebarCollapsed ? 18 : 16} color="#fff" strokeWidth={2.5} />
+            </div>
+            {!sidebarCollapsed && (
+              <div className="sidebar-rail__brand-text">
+                <span className="sidebar-rail__brand-name">TIDESK</span>
+                <span className="sidebar-rail__brand-ver">{APP_VERSION_LABEL}</span>
+              </div>
+            )}
+          </div>
+          <button
+            type="button"
+            className="sidebar-rail__pin"
+            onClick={toggleSidebar}
+            title={sidebarCollapsed ? 'Expandir menu' : 'Recolher menu'}
+          >
+            {sidebarCollapsed ? <PanelLeft size={16} /> : <PanelLeftClose size={16} />}
+          </button>
+        </header>
+
+        <nav className="sidebar-rail__nav">
+          {MENU_STRUCTURE.map((section, sIdx) => {
+            const visibleItems = section.items.filter((item) => hasAnyAccess(item.permission, item.children));
+            if (!visibleItems.length) return null;
+
+            return (
+              <div key={section.label} className="sidebar-rail__section">
+                {!sidebarCollapsed && (
+                  <div className="sidebar-rail__section-label">{section.label}</div>
+                )}
+                {sidebarCollapsed && sIdx > 0 && <div className="sidebar-rail__divider" />}
+                <div className="sidebar-rail__section-items">
+                  {visibleItems.map((item) => {
+                    if (item.children) return renderFlyoutGroup(item);
+                    if (!item.permission || !hasPageAccess(item.permission)) return null;
+                    const active = pathActive(location.pathname, item.path);
+                    return renderNavLink(item.path, item.label, item.icon, active);
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </nav>
+
+        <footer className="sidebar-rail__footer">
+          <div className={`sidebar-rail__user ${sidebarCollapsed ? 'sidebar-rail__user--compact' : ''}`}>
+            <div className="sidebar-rail__avatar">{getInitials(user?.name)}</div>
+            {!sidebarCollapsed && (
+              <div className="sidebar-rail__user-info">
+                <span className="sidebar-rail__user-name">{user?.name}</span>
+                <span className="sidebar-rail__user-role">{user?.role}</span>
+              </div>
+            )}
+          </div>
+
+          <div className={`sidebar-rail__actions ${sidebarCollapsed ? 'sidebar-rail__actions--compact' : ''}`}>
+            <div className="sidebar-rail__theme-wrap" ref={themeMenuRef}>
               <button
                 type="button"
-                className="sidebar-action-btn sidebar-theme-trigger tooltip"
+                className="sidebar-rail__action"
                 onClick={() => setThemeMenuOpen(!themeMenuOpen)}
                 title="Tema"
-                data-tooltip="Tema"
               >
                 <Palette size={16} />
                 {!sidebarCollapsed && (
-                  <>
-                    <span className="sidebar-theme-label">
-                      {theme === 'light' ? 'Claro' : theme === 'dark' ? 'Escuro' : 'Sistema'}
-                    </span>
-                    <ChevronDown size={14} style={{ marginLeft: 'auto' }} />
-                  </>
+                  <span>{theme === 'light' ? 'Claro' : theme === 'dark' ? 'Escuro' : 'Sistema'}</span>
                 )}
               </button>
               {themeMenuOpen && (
-                <div className="sidebar-theme-dropdown">
+                <div className="sidebar-rail__theme-menu">
                   <select
-                    className="sidebar-theme-select"
                     value={theme}
                     onChange={(e) => {
                       setTheme(e.target.value as 'light' | 'dark' | 'system');
@@ -312,35 +368,36 @@ export default function Layout() {
                   >
                     <option value="light">Claro</option>
                     <option value="dark">Escuro</option>
-                    <option value="system">Padrão do sistema</option>
+                    <option value="system">Sistema</option>
                   </select>
                 </div>
               )}
-              </div>
-              <button
+            </div>
+            <button
               type="button"
-              className="sidebar-action-btn sidebar-action-btn--logout tooltip"
-                onClick={handleLogout}
+              className="sidebar-rail__action sidebar-rail__action--logout"
+              onClick={handleLogout}
               title="Sair"
-              data-tooltip="Sair"
-              style={{ color: 'var(--red)' }}
             >
               <LogOut size={16} />
               {!sidebarCollapsed && <span>Sair</span>}
             </button>
           </div>
-        </div>
+
+          {sidebarCollapsed && (
+            <button
+              type="button"
+              className="sidebar-rail__expand-hint"
+              onClick={toggleSidebar}
+              title="Fixar menu expandido"
+            >
+              <Pin size={12} />
+            </button>
+          )}
+        </footer>
       </aside>
 
-      <main
-        style={{
-        flex: 1, 
-        padding: 'var(--spacing-2xl)', 
-        overflow: 'auto',
-        backgroundColor: 'var(--bg-primary)',
-          minWidth: 0,
-        }}
-      >
+      <main className="app-main">
         <div className="fade-in">
           <Outlet />
         </div>
