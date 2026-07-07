@@ -512,7 +512,7 @@ router.put('/:id', [
   requirePermission(RESOURCES.TICKETS, ACTIONS.EDIT),
   body('status').optional().isIn(['open', 'in_progress', 'resolved', 'closed', 'pending_approval', 'scheduled', 'rejected']),
   body('priority').optional().isIn(['low', 'medium', 'high', 'urgent']),
-  body('assigned_to').optional().isInt({ min: 1 })
+  body('assigned_to').optional({ nullable: true }).isInt({ min: 1 })
 ], async (req: AuthRequest, res: Response) => {
   try {
     const errors = validationResult(req);
