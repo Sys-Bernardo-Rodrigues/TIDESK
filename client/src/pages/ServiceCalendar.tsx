@@ -1,23 +1,33 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type CSSProperties, type MouseEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
-import { 
-  Calendar, 
-  Plus, 
-  ChevronLeft, 
-  ChevronRight, 
-  Clock, 
-  Users, 
-  Edit, 
+import { toast } from 'sonner';
+import {
+  Calendar,
+  Plus,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  Users,
+  Edit,
   Trash2,
-  X,
   Ticket,
   FolderKanban,
   ListTodo,
-  Flag
+  Flag,
 } from 'lucide-react';
 import { usePermissions, RESOURCES, ACTIONS } from '../hooks/usePermissions';
 import { getHolidayName } from '../utils/brazilianHolidays';
+import { cn } from '@/lib/utils';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 
 interface CalendarEvent {
   id: number | string;
@@ -42,10 +52,30 @@ interface CalendarEvent {
 
 type ViewMode = 'month' | 'week' | 'day';
 
+const WEEK_DAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+
+function EventTypeIcon({
+  type,
+  size = 12,
+  className,
+  style,
+}: {
+  type: CalendarEvent['type'];
+  size?: number;
+  className?: string;
+  style?: CSSProperties;
+}) {
+  if (type === 'ticket') return <Ticket size={size} className={className} style={style} />;
+  if (type === 'project_task') return <ListTodo size={size} className={className} style={style} />;
+  if (type === 'project_sprint') return <Flag size={size} className={className} style={style} />;
+  return null;
+}
+
 export default function ServiceCalendar() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { hasPermission } = usePermissions();
+  const confirm = useConfirm();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [viewMode, setViewMode] = useState<ViewMode>('month');
   const [events, setEvents] = useState<CalendarEvent[]>([]);
@@ -58,7 +88,7 @@ export default function ServiceCalendar() {
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [, setSelectedDate] = useState<Date | null>(null);
   const [allUsers, setAllUsers] = useState<any[]>([]);
-  
+
   const canCreate = hasPermission(RESOURCES.AGENDA, ACTIONS.CREATE);
   const canEdit = hasPermission(RESOURCES.AGENDA, ACTIONS.EDIT);
   const canDelete = hasPermission(RESOURCES.AGENDA, ACTIONS.DELETE);
@@ -81,13 +111,13 @@ export default function ServiceCalendar() {
   const getPeriodRange = () => {
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
-    
+
     if (viewMode === 'month') {
       const start = new Date(year, month, 1);
       const end = new Date(year, month + 1, 0, 23, 59, 59);
       return {
         start: start.toISOString().split('T')[0] + 'T00:00:00',
-        end: end.toISOString().split('T')[0] + 'T23:59:59'
+        end: end.toISOString().split('T')[0] + 'T23:59:59',
       };
     } else if (viewMode === 'week') {
       const day = currentDate.getDay();
@@ -100,17 +130,16 @@ export default function ServiceCalendar() {
       end.setHours(23, 59, 59, 59);
       return {
         start: start.toISOString(),
-        end: end.toISOString()
+        end: end.toISOString(),
       };
     } else {
-      // Visualização diária - buscar eventos do dia atual
       const start = new Date(currentDate);
       start.setHours(0, 0, 0, 0);
       const end = new Date(currentDate);
       end.setHours(23, 59, 59, 59);
       return {
         start: start.toISOString(),
-        end: end.toISOString()
+        end: end.toISOString(),
       };
     }
   };
@@ -126,7 +155,7 @@ export default function ServiceCalendar() {
   // Buscar lista de projetos (para filtro e formulário)
   useEffect(() => {
     if (canViewProjects) {
-      axios.get('/api/projects').then(res => setProjects(res.data)).catch(() => setProjects([]));
+      axios.get('/api/projects').then((res) => setProjects(res.data)).catch(() => setProjects([]));
     }
   }, [canViewProjects]);
 
@@ -140,7 +169,7 @@ export default function ServiceCalendar() {
 
       const promises: Promise<any>[] = [
         axios.get(`/api/calendar?${calendarParams.toString()}`),
-        axios.get(`/api/calendar/tickets?start=${start}&end=${end}`)
+        axios.get(`/api/calendar/tickets?start=${start}&end=${end}`),
       ];
       if (canViewUsers) {
         promises.push(axios.get('/api/users'));
@@ -175,38 +204,28 @@ export default function ServiceCalendar() {
   // Navegação do calendário
   const goToPrevious = () => {
     const newDate = new Date(currentDate);
-    if (viewMode === 'month') {
-      newDate.setMonth(newDate.getMonth() - 1);
-    } else if (viewMode === 'week') {
-      newDate.setDate(newDate.getDate() - 7);
-    } else {
-      newDate.setDate(newDate.getDate() - 1);
-    }
+    if (viewMode === 'month') newDate.setMonth(newDate.getMonth() - 1);
+    else if (viewMode === 'week') newDate.setDate(newDate.getDate() - 7);
+    else newDate.setDate(newDate.getDate() - 1);
     setCurrentDate(newDate);
   };
 
   const goToNext = () => {
     const newDate = new Date(currentDate);
-    if (viewMode === 'month') {
-      newDate.setMonth(newDate.getMonth() + 1);
-    } else if (viewMode === 'week') {
-      newDate.setDate(newDate.getDate() + 7);
-    } else {
-      newDate.setDate(newDate.getDate() + 1);
-    }
+    if (viewMode === 'month') newDate.setMonth(newDate.getMonth() + 1);
+    else if (viewMode === 'week') newDate.setDate(newDate.getDate() + 7);
+    else newDate.setDate(newDate.getDate() + 1);
     setCurrentDate(newDate);
   };
 
-  const goToToday = () => {
-    setCurrentDate(new Date());
-  };
+  const goToToday = () => setCurrentDate(new Date());
 
   // Abrir modal para criar evento
   const openCreateModal = (date?: Date) => {
     const targetDate = date || new Date();
     const dateStr = targetDate.toISOString().split('T')[0];
     const timeStr = targetDate.toTimeString().slice(0, 5);
-    
+
     setSelectedEvent(null);
     setSelectedDate(targetDate);
     setEventTitle('');
@@ -230,10 +249,10 @@ export default function ServiceCalendar() {
     }
     setSelectedEvent(event);
     setSelectedDate(null);
-    
+
     const start = new Date(event.start_time);
     const end = new Date(event.end_time);
-    
+
     setEventTitle(event.title);
     setEventDescription(event.description || '');
     setEventStartDate(start.toISOString().split('T')[0]);
@@ -252,7 +271,7 @@ export default function ServiceCalendar() {
     try {
       const startDateTime = `${eventStartDate}T${eventStartTime}:00`;
       const endDateTime = `${eventEndDate}T${eventEndTime}:00`;
-      
+
       const eventData = {
         title: eventTitle,
         description: eventDescription,
@@ -261,62 +280,68 @@ export default function ServiceCalendar() {
         type: eventType,
         color: eventColor,
         user_ids: selectedUserIds,
-        project_id: eventProjectId || undefined
+        project_id: eventProjectId || undefined,
       };
-      
+
       if (selectedEvent) {
         await axios.put(`/api/calendar/${selectedEvent.id}`, eventData);
       } else {
         await axios.post('/api/calendar', eventData);
       }
-      
+
       setShowEventModal(false);
       fetchData();
     } catch (error) {
       console.error('Erro ao salvar evento:', error);
-      alert('Erro ao salvar evento');
+      toast.error('Erro ao salvar evento');
     }
   };
 
   // Deletar evento
   const deleteEvent = async (eventId: number | string) => {
-    if (!confirm('Tem certeza que deseja excluir este evento?')) return;
-    
+    const ok = await confirm({
+      title: 'Excluir evento',
+      description: 'Tem certeza que deseja excluir este evento?',
+      confirmLabel: 'Excluir',
+      variant: 'destructive',
+    });
+    if (!ok) return;
+
     try {
       await axios.delete(`/api/calendar/${eventId}`);
+      setShowEventModal(false);
       fetchData();
     } catch (error) {
       console.error('Erro ao deletar evento:', error);
-      alert('Erro ao deletar evento');
+      toast.error('Erro ao deletar evento');
     }
   };
 
   // Obter eventos para um dia específico
   const getEventsForDay = (date: Date) => {
-    // Normalizar a data para início do dia (00:00:00)
     const startOfDay = new Date(date);
     startOfDay.setHours(0, 0, 0, 0);
-    
-    // Fim do dia (23:59:59)
     const endOfDay = new Date(date);
     endOfDay.setHours(23, 59, 59, 999);
-    
+
     const allItems: CalendarEvent[] = [...events, ...tickets, ...projectItems.tasks, ...projectItems.sprints];
-    
-    return allItems.filter(item => {
+
+    return allItems.filter((item) => {
       if (!item.start_time) return false;
-      
       const eventStart = new Date(item.start_time);
       const eventEnd = item.end_time ? new Date(item.end_time) : eventStart;
-      
-      // Incluir eventos que:
-      // 1. Começam no dia (entre início e fim do dia)
-      // 2. Terminam no dia (entre início e fim do dia)
-      // 3. Passam pelo dia (começam antes e terminam depois)
-      return (eventStart >= startOfDay && eventStart <= endOfDay) ||
-             (eventEnd >= startOfDay && eventEnd <= endOfDay) ||
-             (eventStart <= startOfDay && eventEnd >= endOfDay);
+      return (
+        (eventStart >= startOfDay && eventStart <= endOfDay) ||
+        (eventEnd >= startOfDay && eventEnd <= endOfDay) ||
+        (eventStart <= startOfDay && eventEnd >= endOfDay)
+      );
     });
+  };
+
+  const handleEventClick = (e: MouseEvent, event: CalendarEvent) => {
+    e.stopPropagation();
+    if (event.type === 'ticket') navigate(`/tickets/${event.ticket_number || event.id}`);
+    else openEditModal(event);
   };
 
   // Renderizar calendário mensal
@@ -327,62 +352,26 @@ export default function ServiceCalendar() {
     const lastDay = new Date(year, month + 1, 0);
     const daysInMonth = lastDay.getDate();
     const startingDayOfWeek = firstDay.getDay();
-    
-    const days = [];
-    const weekDays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-    
-    // Dias do mês anterior (para preencher primeira semana)
-    // Corrigido: calcular corretamente o último dia do mês anterior
-    const prevMonthLastDay = new Date(year, month, 0); // Último dia do mês anterior
+
+    const days: { date: Date; isCurrentMonth: boolean }[] = [];
+    const prevMonthLastDay = new Date(year, month, 0);
     const prevMonthDaysCount = prevMonthLastDay.getDate();
-    
-    // Preencher dias do mês anterior começando do último dia
+
     for (let i = startingDayOfWeek - 1; i >= 0; i--) {
-      const dayNumber = prevMonthDaysCount - i;
-      days.push({
-        date: new Date(year, month - 1, dayNumber),
-        isCurrentMonth: false
-      });
+      days.push({ date: new Date(year, month - 1, prevMonthDaysCount - i), isCurrentMonth: false });
     }
-    
-    // Dias do mês atual
     for (let day = 1; day <= daysInMonth; day++) {
-      days.push({
-        date: new Date(year, month, day),
-        isCurrentMonth: true
-      });
+      days.push({ date: new Date(year, month, day), isCurrentMonth: true });
     }
-    
-    // Dias do próximo mês (para completar última semana)
     const remainingDays = 42 - days.length;
     for (let day = 1; day <= remainingDays; day++) {
-      days.push({
-        date: new Date(year, month + 1, day),
-        isCurrentMonth: false
-      });
+      days.push({ date: new Date(year, month + 1, day), isCurrentMonth: false });
     }
-    
+
     return (
-      <div style={{ 
-        display: 'grid', 
-        gridTemplateColumns: 'repeat(7, 1fr)', 
-        gap: '2px', 
-        backgroundColor: 'var(--border-primary)',
-        borderRadius: 'var(--radius-md)',
-        overflow: 'hidden',
-        border: '1px solid var(--border-primary)'
-      }}>
-        {weekDays.map(day => (
-          <div key={day} style={{
-            padding: 'var(--spacing-md)',
-            backgroundColor: 'var(--bg-secondary)',
-            fontWeight: '600',
-            fontSize: '0.875rem',
-            textAlign: 'center',
-            color: 'var(--text-secondary)',
-            textTransform: 'uppercase',
-            letterSpacing: '0.05em'
-          }}>
+      <div className="grid grid-cols-7 gap-px overflow-hidden rounded-lg border border-border bg-border">
+        {WEEK_DAYS.map((day) => (
+          <div key={day} className="bg-muted px-2 py-2.5 text-center text-xs font-semibold tracking-wide text-muted-foreground uppercase">
             {day}
           </div>
         ))}
@@ -391,144 +380,52 @@ export default function ServiceCalendar() {
           const isToday = day.date.toDateString() === new Date().toDateString();
           const holidayName = getHolidayName(day.date);
           const isWeekend = day.date.getDay() === 0 || day.date.getDay() === 6;
-          
+
           return (
             <div
               key={index}
               onClick={() => canCreate && openCreateModal(day.date)}
-              style={{
-                cursor: canCreate ? 'pointer' : 'default',
-                minHeight: '140px',
-                padding: 'var(--spacing-sm)',
-                backgroundColor: day.isCurrentMonth ? 'var(--bg-primary)' : 'var(--bg-tertiary)',
-                border: isToday ? '2px solid var(--purple)' : '1px solid transparent',
-                borderRadius: isToday ? 'var(--radius-sm)' : '0',
-                position: 'relative',
-                opacity: day.isCurrentMonth ? 1 : 0.35,
-                transition: 'all var(--transition-base)',
-                display: 'flex',
-                flexDirection: 'column'
-              }}
-              onMouseEnter={(e) => {
-                if (canCreate && day.isCurrentMonth) {
-                  e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
-                  e.currentTarget.style.transform = 'scale(1.02)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (day.isCurrentMonth) {
-                  e.currentTarget.style.backgroundColor = 'var(--bg-primary)';
-                  e.currentTarget.style.transform = 'scale(1)';
-                }
-              }}
+              className={cn(
+                'flex min-h-[140px] flex-col gap-1 bg-background p-1.5 transition-colors',
+                canCreate && 'cursor-pointer hover:bg-muted/60',
+                !day.isCurrentMonth && 'bg-muted/40 opacity-40',
+                isToday && 'ring-2 ring-inset ring-[var(--purple)]'
+              )}
             >
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                marginBottom: 'var(--spacing-xs)'
-              }}>
-                <div style={{
-                  fontWeight: isToday ? '700' : '600',
-                  fontSize: isToday ? '1rem' : '0.875rem',
-                  color: isToday 
-                    ? 'var(--purple)' 
-                    : isWeekend && day.isCurrentMonth
-                    ? 'var(--text-secondary)'
-                    : 'var(--text-primary)',
-                  backgroundColor: isToday ? 'var(--purple-light)' : 'transparent',
-                  borderRadius: 'var(--radius-full)',
-                  width: isToday ? '28px' : '24px',
-                  height: isToday ? '28px' : '24px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}>
+              <div className="flex items-center justify-between">
+                <div
+                  className={cn(
+                    'flex h-6 w-6 items-center justify-center rounded-full text-[0.8125rem] font-semibold text-foreground',
+                    isToday && 'h-7 w-7 bg-[var(--purple-light)] text-base font-bold text-[var(--purple)]',
+                    !isToday && isWeekend && day.isCurrentMonth && 'text-muted-foreground'
+                  )}
+                >
                   {day.date.getDate()}
                 </div>
                 {dayEvents.length > 0 && (
-                  <div style={{
-                    fontSize: '0.7rem',
-                    color: 'var(--text-tertiary)',
-                    backgroundColor: 'var(--bg-secondary)',
-                    borderRadius: 'var(--radius-full)',
-                    padding: '2px 6px',
-                    fontWeight: '600'
-                  }}>
+                  <span className="rounded-full bg-muted px-1.5 py-0.5 text-[0.7rem] font-semibold text-muted-foreground">
                     {dayEvents.length}
-                  </div>
+                  </span>
                 )}
               </div>
               {holidayName && day.isCurrentMonth && (
-                <div style={{
-                  fontSize: '0.65rem',
-                  color: 'var(--purple)',
-                  fontStyle: 'italic',
-                  marginBottom: '4px',
-                  lineHeight: '1.2',
-                  fontWeight: '500'
-                }}>
-                  {holidayName}
-                </div>
+                <div className="text-[0.65rem] leading-tight font-medium text-[var(--purple)] italic">{holidayName}</div>
               )}
-              <div style={{ 
-                display: 'flex', 
-                flexDirection: 'column', 
-                gap: '3px',
-                flex: 1,
-                overflow: 'hidden'
-              }}>
-                {dayEvents.slice(0, 3).map(event => (
+              <div className="flex flex-1 flex-col gap-[3px] overflow-hidden">
+                {dayEvents.slice(0, 3).map((event) => (
                   <div
                     key={event.id}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (event.type === 'ticket') {
-                        navigate(`/tickets/${event.ticket_number || event.id}`);
-                      } else {
-                        openEditModal(event);
-                      }
-                    }}
-                    style={{
-                      fontSize: '0.7rem',
-                      padding: '4px 6px',
-                      borderRadius: 'var(--radius-sm)',
-                      backgroundColor: event.color || '#8a2be2',
-                      color: 'white',
-                      cursor: 'pointer',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                      fontWeight: '500',
-                      transition: 'all var(--transition-base)',
-                      boxShadow: '0 1px 3px rgba(0, 0, 0, 0.3)'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.transform = 'translateX(2px)';
-                      e.currentTarget.style.boxShadow = '0 2px 6px rgba(0, 0, 0, 0.4)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.transform = 'translateX(0)';
-                      e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.3)';
-                    }}
+                    onClick={(e) => handleEventClick(e, event)}
+                    className="flex items-center gap-1 truncate rounded px-1.5 py-0.5 text-[0.7rem] font-medium text-white shadow-sm transition-transform hover:translate-x-0.5"
+                    style={{ backgroundColor: event.color || '#8a2be2' }}
                     title={event.project_name ? `${event.title} · ${event.project_name}` : event.title}
                   >
-                    {event.type === 'ticket' && <Ticket size={10} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />}
-                    {event.type === 'project_task' && <ListTodo size={10} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />}
-                    {event.type === 'project_sprint' && <Flag size={10} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />}
-                    {event.title}
+                    <EventTypeIcon type={event.type} size={10} className="shrink-0" />
+                    <span className="truncate">{event.title}</span>
                   </div>
                 ))}
                 {dayEvents.length > 3 && (
-                  <div style={{
-                    fontSize: '0.7rem',
-                    color: 'var(--text-secondary)',
-                    padding: '4px 6px',
-                    fontStyle: 'italic',
-                    textAlign: 'center'
-                  }}>
-                    +{dayEvents.length - 3} mais
-                  </div>
+                  <div className="text-center text-[0.7rem] text-muted-foreground italic">+{dayEvents.length - 3} mais</div>
                 )}
               </div>
             </div>
@@ -561,112 +458,48 @@ export default function ServiceCalendar() {
     const diff = currentDate.getDate() - day;
     const start = new Date(currentDate);
     start.setDate(diff);
-    
-    const weekDays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-    const days = [];
-    
+
+    const days: Date[] = [];
     for (let i = 0; i < 7; i++) {
       const date = new Date(start);
       date.setDate(start.getDate() + i);
       days.push(date);
     }
-    
+
     return (
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '1px', backgroundColor: 'var(--border-primary)', minHeight: '600px' }}>
+      <div className="grid min-h-[600px] grid-cols-7 gap-px bg-border">
         {days.map((date, index) => {
           const dayEvents = getEventsForDay(date);
           const isToday = date.toDateString() === new Date().toDateString();
-          const dayName = weekDays[index];
-          const dayNumber = date.getDate();
           const isWeekend = index === 0 || index === 6;
           const holidayName = getHolidayName(date);
-          
+
           return (
-            <div
-              key={index}
-              style={{
-                backgroundColor: 'var(--bg-primary)',
-                padding: 'var(--spacing-sm)',
-                border: isToday ? '2px solid var(--purple)' : 'none',
-                minHeight: '100%'
-              }}
-            >
+            <div key={index} className={cn('min-h-full bg-background p-1.5', isToday && 'ring-2 ring-inset ring-[var(--purple)]')}>
               <div
                 onClick={() => canCreate && openCreateModal(date)}
-                style={{
-                  cursor: canCreate ? 'pointer' : 'default',
-                  padding: 'var(--spacing-xs)',
-                  marginBottom: 'var(--spacing-sm)',
-                  borderRadius: 'var(--radius-sm)',
-                  backgroundColor: isToday ? 'var(--purple-light)' : 'transparent'
-                }}
+                className={cn('mb-2 rounded-md p-1.5', canCreate && 'cursor-pointer', isToday && 'bg-[var(--purple-light)]')}
               >
-                <div style={{
-                  fontSize: '0.75rem',
-                  color: isWeekend ? 'var(--text-secondary)' : 'var(--text-primary)',
-                  fontWeight: '500',
-                  marginBottom: '2px'
-                }}>
-                  {dayName}
-                </div>
-                <div style={{
-                  fontSize: '1.25rem',
-                  fontWeight: isToday ? '700' : '600',
-                  color: isToday ? 'var(--purple)' : 'var(--text-primary)'
-                }}>
-                  {dayNumber}
-                </div>
-                {holidayName && (
-                  <div style={{
-                    fontSize: '0.65rem',
-                    color: 'var(--text-tertiary)',
-                    fontStyle: 'italic',
-                    marginTop: '2px',
-                    opacity: 0.7,
-                    lineHeight: '1.2'
-                  }}>
-                    {holidayName}
-                  </div>
-                )}
+                <div className={cn('text-xs font-medium', isWeekend ? 'text-muted-foreground' : 'text-foreground')}>{WEEK_DAYS[index]}</div>
+                <div className={cn('text-xl font-semibold text-foreground', isToday && 'font-bold text-[var(--purple)]')}>{date.getDate()}</div>
+                {holidayName && <div className="mt-0.5 text-[0.65rem] leading-tight text-muted-foreground italic opacity-80">{holidayName}</div>}
               </div>
-              
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                {dayEvents.map(event => (
+
+              <div className="flex flex-col gap-1">
+                {dayEvents.map((event) => (
                   <div
                     key={event.id}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (event.type === 'ticket') {
-                        navigate(`/tickets/${event.ticket_number || event.id}`);
-                      } else {
-                        openEditModal(event);
-                      }
-                    }}
-                    style={{
-                      fontSize: '0.75rem',
-                      padding: '6px 8px',
-                      borderRadius: 'var(--radius-sm)',
-                      backgroundColor: event.color || '#8a2be2',
-                      color: 'white',
-                      cursor: 'pointer',
-                      transition: 'all var(--transition-base)'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.opacity = '0.9';
-                      e.currentTarget.style.transform = 'scale(1.02)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.opacity = '1';
-                      e.currentTarget.style.transform = 'scale(1)';
-                    }}
+                    onClick={(e) => handleEventClick(e, event)}
+                    className="cursor-pointer rounded-md px-2 py-1.5 text-white transition-[opacity,transform] hover:scale-[1.02] hover:opacity-90"
+                    style={{ backgroundColor: event.color || '#8a2be2' }}
                     title={event.title}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px' }}>
-                      {event.type === 'ticket' && <Ticket size={12} />}
-                      <span style={{ fontWeight: '600' }}>{event.title}</span>
+                    <div className="mb-0.5 flex items-center gap-1">
+                      <EventTypeIcon type={event.type} size={12} />
+                      <span className="text-xs font-semibold">{event.title}</span>
                     </div>
                     {event.start_time && (
-                      <div style={{ fontSize: '0.7rem', opacity: 0.9 }}>
+                      <div className="text-[0.7rem] opacity-90">
                         {new Date(event.start_time).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                       </div>
                     )}
@@ -675,15 +508,7 @@ export default function ServiceCalendar() {
                 {dayEvents.length === 0 && canCreate && (
                   <div
                     onClick={() => openCreateModal(date)}
-                    style={{
-                      fontSize: '0.75rem',
-                      color: 'var(--text-tertiary)',
-                      padding: 'var(--spacing-xs)',
-                      textAlign: 'center',
-                      cursor: 'pointer',
-                      borderRadius: 'var(--radius-sm)',
-                      border: '1px dashed var(--border-primary)'
-                    }}
+                    className="cursor-pointer rounded-md border border-dashed border-border p-1.5 text-center text-xs text-muted-foreground"
                   >
                     Clique para adicionar
                   </div>
@@ -701,162 +526,71 @@ export default function ServiceCalendar() {
     const dayEvents = getEventsForDay(currentDate);
     const isToday = currentDate.toDateString() === new Date().toDateString();
     const holidayName = getHolidayName(currentDate);
-    
-    // Ordenar eventos por hora
-    const sortedEvents = [...dayEvents].sort((a, b) => {
-      const timeA = new Date(a.start_time).getTime();
-      const timeB = new Date(b.start_time).getTime();
-      return timeA - timeB;
-    });
-    
+
+    const sortedEvents = [...dayEvents].sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
+
     return (
-      <div style={{ padding: 'var(--spacing-lg)' }}>
-        <div style={{
-          marginBottom: 'var(--spacing-lg)',
-          padding: 'var(--spacing-md)',
-          backgroundColor: isToday ? 'var(--purple-light)' : 'var(--bg-secondary)',
-          borderRadius: 'var(--radius-md)',
-          border: isToday ? '2px solid var(--purple)' : '1px solid var(--border-primary)'
-        }}>
-          <div style={{
-            fontSize: '1.5rem',
-            fontWeight: '700',
-            color: 'var(--text-primary)',
-            marginBottom: 'var(--spacing-xs)'
-          }}>
+      <div>
+        <Card className={cn('mb-6 gap-1 px-4 py-3.5', isToday && 'bg-[var(--purple-light)] ring-1 ring-[var(--purple)]')}>
+          <div className="text-xl font-bold text-foreground capitalize">
             {currentDate.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
           </div>
-          <div style={{
-            fontSize: '0.875rem',
-            color: 'var(--text-secondary)'
-          }}>
+          <div className="text-sm text-muted-foreground">
             {sortedEvents.length} {sortedEvents.length === 1 ? 'evento' : 'eventos'} agendado{sortedEvents.length !== 1 ? 's' : ''}
           </div>
-          {holidayName && (
-            <div style={{
-              fontSize: '0.75rem',
-              color: 'var(--text-tertiary)',
-              fontStyle: 'italic',
-              marginTop: 'var(--spacing-xs)',
-              opacity: 0.8
-            }}>
-              🎉 {holidayName}
-            </div>
-          )}
-        </div>
-        
+          {holidayName && <div className="mt-0.5 text-xs text-muted-foreground italic opacity-80">🎉 {holidayName}</div>}
+        </Card>
+
         {sortedEvents.length === 0 ? (
-          <div style={{
-            textAlign: 'center',
-            padding: 'var(--spacing-2xl)',
-            color: 'var(--text-secondary)'
-          }}>
-            <Calendar size={48} style={{ marginBottom: 'var(--spacing-md)', opacity: 0.5 }} />
-            <p style={{ marginBottom: 'var(--spacing-md)' }}>
-              Nenhum evento agendado para este dia
-            </p>
+          <div className="py-16 text-center text-muted-foreground">
+            <Calendar size={48} strokeWidth={1.5} className="mx-auto mb-4 opacity-50" />
+            <p className="mb-4">Nenhum evento agendado para este dia</p>
             {canCreate && (
-              <button
-                onClick={() => openCreateModal(currentDate)}
-                className="btn btn-primary"
-              >
-                <Plus size={18} />
-                Criar Evento
-              </button>
+              <Button onClick={() => openCreateModal(currentDate)}>
+                <Plus size={18} /> Criar Evento
+              </Button>
             )}
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
-            {sortedEvents.map(event => {
+          <div className="flex flex-col gap-3">
+            {sortedEvents.map((event) => {
               const startTime = new Date(event.start_time);
               const endTime = new Date(event.end_time);
-              
+
               return (
-                <div
+                <Card
                   key={event.id}
                   onClick={() => {
-                    if (event.type === 'ticket') {
-                      navigate(`/tickets/${event.ticket_number || event.id}`);
-                    } else if (canEdit) {
-                      openEditModal(event);
-                    }
+                    if (event.type === 'ticket') navigate(`/tickets/${event.ticket_number || event.id}`);
+                    else if (canEdit) openEditModal(event);
                   }}
-                  className="card"
-                  style={{
-                    padding: 'var(--spacing-md)',
-                    cursor: 'pointer',
-                    borderLeft: `4px solid ${event.color || '#8a2be2'}`,
-                    transition: 'all var(--transition-base)'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = 'translateX(4px)';
-                    e.currentTarget.style.boxShadow = 'var(--shadow-md)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = 'translateX(0)';
-                    e.currentTarget.style.boxShadow = 'var(--shadow)';
-                  }}
+                  className="cursor-pointer gap-0 border-l-4 px-4 py-3.5 transition-transform hover:translate-x-1"
+                  style={{ borderLeftColor: event.color || '#8a2be2' }}
                 >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 'var(--spacing-md)' }}>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)', marginBottom: 'var(--spacing-xs)' }}>
-                        {event.type === 'ticket' && <Ticket size={18} color={event.color || '#8a2be2'} />}
-                        {event.type === 'project_task' && <ListTodo size={18} color={event.color || '#6366f1'} />}
-                        {event.type === 'project_sprint' && <Flag size={18} color={event.color || '#10b981'} />}
-                        <h3 style={{
-                          fontSize: '1.125rem',
-                          fontWeight: '600',
-                          color: 'var(--text-primary)',
-                          margin: 0
-                        }}>
-                          {event.title}
-                        </h3>
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0 flex-1">
+                      <div className="mb-1 flex flex-wrap items-center gap-2">
+                        <EventTypeIcon type={event.type} size={18} className="shrink-0" style={{ color: event.color || '#8a2be2' }} />
+                        <h3 className="text-[1.0625rem] font-semibold text-foreground">{event.title}</h3>
                         {event.type === 'ticket' && (
-                          <span style={{
-                            fontSize: '0.75rem',
-                            padding: '2px 6px',
-                            borderRadius: 'var(--radius-sm)',
-                            backgroundColor: 'var(--bg-secondary)',
-                            color: 'var(--text-secondary)'
-                          }}>
+                          <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
                             Ticket #{event.ticket_number || event.id}
                           </span>
                         )}
                         {(event.type === 'project_task' || event.type === 'project_sprint') && event.project_name && (
-                          <span style={{
-                            fontSize: '0.75rem',
-                            padding: '2px 6px',
-                            borderRadius: 'var(--radius-sm)',
-                            backgroundColor: 'var(--bg-secondary)',
-                            color: 'var(--text-secondary)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '4px'
-                          }}>
-                            <FolderKanban size={12} />
-                            {event.project_name}
+                          <span className="flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
+                            <FolderKanban size={12} /> {event.project_name}
                           </span>
                         )}
                         {event.project_name && event.type !== 'ticket' && event.type !== 'project_task' && event.type !== 'project_sprint' && (
-                          <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
-                            · {event.project_name}
-                          </span>
+                          <span className="text-xs text-muted-foreground">· {event.project_name}</span>
                         )}
                       </div>
-                      
-                      {event.description && (
-                        <p style={{
-                          fontSize: '0.875rem',
-                          color: 'var(--text-secondary)',
-                          marginBottom: 'var(--spacing-xs)',
-                          lineHeight: '1.5'
-                        }}>
-                          {event.description}
-                        </p>
-                      )}
-                      
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-md)', flexWrap: 'wrap', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+
+                      {event.description && <p className="mb-1 text-sm leading-relaxed text-muted-foreground">{event.description}</p>}
+
+                      <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
+                        <span className="flex items-center gap-1">
                           <Clock size={14} />
                           {startTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                           {startTime.toDateString() !== endTime.toDateString() && (
@@ -866,51 +600,49 @@ export default function ServiceCalendar() {
                             <> - {endTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</>
                           )}
                         </span>
-                        
                         {event.user_names && event.user_names.length > 0 && (
-                          <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <Users size={14} />
-                            {event.user_names.join(', ')}
+                          <span className="flex items-center gap-1">
+                            <Users size={14} /> {event.user_names.join(', ')}
                           </span>
                         )}
-                        
                         {event.type === 'ticket' && event.assigned_name && (
-                          <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <Users size={14} />
-                            Atribuído a: {event.assigned_name}
+                          <span className="flex items-center gap-1">
+                            <Users size={14} /> Atribuído a: {event.assigned_name}
                           </span>
                         )}
                       </div>
                     </div>
-                    
+
                     {event.type !== 'ticket' && (canEdit || canDelete) && (
-                      <div style={{ display: 'flex', gap: 'var(--spacing-xs)' }}>
+                      <div className="flex shrink-0 gap-1.5">
                         {canEdit && (
-                          <button
+                          <Button
+                            variant="secondary"
+                            size="icon-sm"
                             onClick={(e) => {
                               e.stopPropagation();
                               openEditModal(event);
                             }}
-                            className="btn btn-secondary btn-sm"
                           >
-                            <Edit size={16} />
-                          </button>
+                            <Edit size={15} />
+                          </Button>
                         )}
                         {canDelete && (
-                          <button
+                          <Button
+                            variant="destructive"
+                            size="icon-sm"
                             onClick={(e) => {
                               e.stopPropagation();
                               deleteEvent(event.id);
                             }}
-                            className="btn btn-danger btn-sm"
                           >
-                            <Trash2 size={16} />
-                          </button>
+                            <Trash2 size={15} />
+                          </Button>
                         )}
                       </div>
                     )}
                   </div>
-                </div>
+                </Card>
               );
             })}
           </div>
@@ -920,361 +652,200 @@ export default function ServiceCalendar() {
   };
 
   return (
-    <div style={{ padding: 'var(--spacing-lg)' }}>
+    <div>
       {/* Controles */}
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center', 
-        marginBottom: 'var(--spacing-lg)',
-        flexWrap: 'wrap',
-        gap: 'var(--spacing-md)'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)' }}>
-          <button
-            onClick={goToPrevious}
-            className="btn btn-secondary"
-            style={{ padding: 'var(--spacing-xs) var(--spacing-sm)' }}
-          >
-            <ChevronLeft size={20} />
-          </button>
-          <button
-            onClick={goToToday}
-            className="btn btn-secondary"
-            style={{ padding: 'var(--spacing-xs) var(--spacing-md)' }}
-          >
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="icon" onClick={goToPrevious}>
+            <ChevronLeft size={18} />
+          </Button>
+          <Button variant="outline" onClick={goToToday}>
             Hoje
-          </button>
-          <button
-            onClick={goToNext}
-            className="btn btn-secondary"
-            style={{ padding: 'var(--spacing-xs) var(--spacing-sm)' }}
-          >
-            <ChevronRight size={20} />
-          </button>
-          <h2 style={{
-            margin: 0,
-            marginLeft: 'var(--spacing-md)',
-            fontSize: '1.25rem',
-            fontWeight: '600',
-            color: 'var(--text-primary)',
-            textTransform: 'capitalize'
-          }}>
-            {getPeriodName()}
-          </h2>
+          </Button>
+          <Button variant="outline" size="icon" onClick={goToNext}>
+            <ChevronRight size={18} />
+          </Button>
+          <h2 className="ml-2 text-lg font-semibold text-foreground capitalize">{getPeriodName()}</h2>
         </div>
-        
-        <div style={{ display: 'flex', gap: 'var(--spacing-sm)', alignItems: 'center', flexWrap: 'wrap' }}>
+
+        <div className="flex flex-wrap items-center gap-1.5">
           {canViewProjects && projects.length > 0 && (
-            <select
-              className="input"
-              value={selectedProjectId ?? ''}
-              onChange={(e) => {
-                const v = e.target.value || null;
-                setSelectedProjectId(v);
-                if (v) setSearchParams({ project: v });
+            <Select
+              value={selectedProjectId ?? '__all'}
+              onValueChange={(v) => {
+                const value = v === '__all' ? null : v;
+                setSelectedProjectId(value);
+                if (value) setSearchParams({ project: value });
                 else setSearchParams({});
               }}
-              style={{ minWidth: '180px', padding: 'var(--spacing-xs) var(--spacing-sm)' }}
             >
-              <option value="">Todos os projetos</option>
-              {projects.map(p => (
-                <option key={p.id} value={String(p.id)}>{p.name}</option>
-              ))}
-            </select>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all">Todos os projetos</SelectItem>
+                {projects.map((p) => (
+                  <SelectItem key={p.id} value={String(p.id)}>
+                    {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           )}
-          <button
-            onClick={() => setViewMode('month')}
-            className={viewMode === 'month' ? 'btn btn-primary' : 'btn btn-secondary'}
-            style={{ padding: 'var(--spacing-xs) var(--spacing-md)' }}
-          >
+          <Button variant={viewMode === 'month' ? 'default' : 'outline'} onClick={() => setViewMode('month')}>
             Mês
-          </button>
-          <button
-            onClick={() => setViewMode('week')}
-            className={viewMode === 'week' ? 'btn btn-primary' : 'btn btn-secondary'}
-            style={{ padding: 'var(--spacing-xs) var(--spacing-md)' }}
-          >
+          </Button>
+          <Button variant={viewMode === 'week' ? 'default' : 'outline'} onClick={() => setViewMode('week')}>
             Semana
-          </button>
-          <button
-            onClick={() => setViewMode('day')}
-            className={viewMode === 'day' ? 'btn btn-primary' : 'btn btn-secondary'}
-            style={{ padding: 'var(--spacing-xs) var(--spacing-md)' }}
-          >
+          </Button>
+          <Button variant={viewMode === 'day' ? 'default' : 'outline'} onClick={() => setViewMode('day')}>
             Dia
-          </button>
+          </Button>
           {canCreate && (
-            <button
-              onClick={() => openCreateModal()}
-              className="btn btn-primary"
-              style={{ padding: 'var(--spacing-xs) var(--spacing-md)' }}
-            >
-              <Plus size={18} />
-              Novo Evento
-            </button>
+            <Button onClick={() => openCreateModal()}>
+              <Plus size={18} /> Novo Evento
+            </Button>
           )}
         </div>
       </div>
 
       {/* Calendário */}
       {loading ? (
-        <div style={{ textAlign: 'center', padding: 'var(--spacing-2xl)' }}>
-          <div style={{
-            width: '48px',
-            height: '48px',
-            border: '4px solid var(--border-primary)',
-            borderTopColor: 'var(--purple)',
-            borderRadius: '50%',
-            animation: 'spin 1s linear infinite',
-            margin: '0 auto'
-          }} />
-          <p style={{ marginTop: 'var(--spacing-md)', color: 'var(--text-secondary)' }}>
-            Carregando calendário...
-          </p>
+        <div className="flex flex-col items-center gap-3 py-24 text-muted-foreground">
+          <div className="h-10 w-10 animate-spin rounded-full border-2 border-border border-t-[var(--purple)]" />
+          <p>Carregando calendário…</p>
         </div>
+      ) : viewMode === 'day' ? (
+        renderDayView()
       ) : (
-        <>
-          {viewMode === 'day' ? (
-            renderDayView()
-          ) : (
-            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-              {viewMode === 'month' && renderMonthView()}
-              {viewMode === 'week' && renderWeekView()}
-            </div>
-          )}
-        </>
+        <Card className="overflow-hidden p-0">
+          {viewMode === 'month' && renderMonthView()}
+          {viewMode === 'week' && renderWeekView()}
+        </Card>
       )}
 
       {/* Modal de Evento */}
-      {showEventModal && (
-        <div style={{ 
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000
-        }}>
-          <div className="card" style={{
-            width: '90%',
-            maxWidth: '600px',
-            maxHeight: '90vh',
-            overflow: 'auto',
-            position: 'relative'
-          }}>
-            <button
-              onClick={() => setShowEventModal(false)}
-            style={{ 
-              position: 'absolute', 
-                top: 'var(--spacing-md)',
-                right: 'var(--spacing-md)',
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                padding: 'var(--spacing-xs)',
-                color: 'var(--text-secondary)'
-              }}
-            >
-              <X size={24} />
-            </button>
-            
-            <h2 style={{ marginBottom: 'var(--spacing-lg)' }}>
-              {selectedEvent ? 'Editar Evento' : 'Novo Evento'}
-            </h2>
-            
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
-              <div>
-                <label style={{ display: 'block', marginBottom: 'var(--spacing-xs)', fontWeight: '500' }}>
-                  Título *
-                </label>
-          <input
-            type="text"
-            className="input"
-                  value={eventTitle}
-                  onChange={(e) => setEventTitle(e.target.value)}
-                  placeholder="Nome do evento"
-                />
-              </div>
-              
-              <div>
-                <label style={{ display: 'block', marginBottom: 'var(--spacing-xs)', fontWeight: '500' }}>
-                  Descrição
-                </label>
-                <textarea
-                  className="input"
-                  value={eventDescription}
-                  onChange={(e) => setEventDescription(e.target.value)}
-                  placeholder="Descrição do evento"
-                  rows={3}
-                />
-              </div>
-              
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--spacing-md)' }}>
-                <div>
-                  <label style={{ display: 'block', marginBottom: 'var(--spacing-xs)', fontWeight: '500' }}>
-                    Data Início *
-                  </label>
-                  <input
-                    type="date"
-                    className="input"
-                    value={eventStartDate}
-                    onChange={(e) => setEventStartDate(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', marginBottom: 'var(--spacing-xs)', fontWeight: '500' }}>
-                    Hora Início *
-                  </label>
-                  <input
-                    type="time"
-                    className="input"
-                    value={eventStartTime}
-                    onChange={(e) => setEventStartTime(e.target.value)}
-          />
-        </div>
-              </div>
-              
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--spacing-md)' }}>
-                <div>
-                  <label style={{ display: 'block', marginBottom: 'var(--spacing-xs)', fontWeight: '500' }}>
-                    Data Término *
-                  </label>
-          <input
-            type="date"
-            className="input"
-                    value={eventEndDate}
-                    onChange={(e) => setEventEndDate(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', marginBottom: 'var(--spacing-xs)', fontWeight: '500' }}>
-                    Hora Término *
-                  </label>
-                  <input
-                    type="time"
-                    className="input"
-                    value={eventEndTime}
-                    onChange={(e) => setEventEndTime(e.target.value)}
-                  />
-        </div>
-      </div>
+      <Dialog open={showEventModal} onOpenChange={setShowEventModal}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{selectedEvent ? 'Editar Evento' : 'Novo Evento'}</DialogTitle>
+          </DialogHeader>
 
+          <div className="flex flex-col gap-4">
+            <div>
+              <Label className="mb-1.5">Título *</Label>
+              <Input value={eventTitle} onChange={(e) => setEventTitle(e.target.value)} placeholder="Nome do evento" />
+            </div>
+
+            <div>
+              <Label className="mb-1.5">Descrição</Label>
+              <Textarea value={eventDescription} onChange={(e) => setEventDescription(e.target.value)} placeholder="Descrição do evento" rows={3} />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <label style={{ display: 'block', marginBottom: 'var(--spacing-xs)', fontWeight: '500' }}>
-                  Tipo
-                </label>
-                <select
-                  className="input"
-                  value={eventType}
-                  onChange={(e) => setEventType(e.target.value as 'event' | 'work')}
-                >
-                  <option value="event">Evento</option>
-                  <option value="work">Trabalho</option>
-                </select>
+                <Label className="mb-1.5">Data início *</Label>
+                <Input type="date" value={eventStartDate} onChange={(e) => setEventStartDate(e.target.value)} />
               </div>
-              
               <div>
-                <label style={{ display: 'block', marginBottom: 'var(--spacing-xs)', fontWeight: '500' }}>
-                  Cor
-                </label>
+                <Label className="mb-1.5">Hora início *</Label>
+                <Input type="time" value={eventStartTime} onChange={(e) => setEventStartTime(e.target.value)} />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="mb-1.5">Data término *</Label>
+                <Input type="date" value={eventEndDate} onChange={(e) => setEventEndDate(e.target.value)} />
+              </div>
+              <div>
+                <Label className="mb-1.5">Hora término *</Label>
+                <Input type="time" value={eventEndTime} onChange={(e) => setEventEndTime(e.target.value)} />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="mb-1.5">Tipo</Label>
+                <Select value={eventType} onValueChange={(v) => setEventType(v as 'event' | 'work')}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="event">Evento</SelectItem>
+                    <SelectItem value="work">Trabalho</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="mb-1.5">Cor</Label>
                 <input
                   type="color"
                   value={eventColor}
                   onChange={(e) => setEventColor(e.target.value)}
-                  style={{ width: '100%', height: '40px', borderRadius: 'var(--radius-md)' }}
+                  className="h-8 w-full cursor-pointer rounded-lg border border-input bg-transparent p-0.5"
                 />
               </div>
+            </div>
 
-              {canViewProjects && projects.length > 0 && (
-                <div>
-                  <label style={{ display: 'block', marginBottom: 'var(--spacing-xs)', fontWeight: '500' }}>
-                    Projeto
-                  </label>
-                  <select
-                    className="input"
-                    value={eventProjectId === '' ? '' : String(eventProjectId)}
-                    onChange={(e) => setEventProjectId(e.target.value === '' ? '' : Number(e.target.value))}
-                  >
-                    <option value="">Nenhum</option>
-                    {projects.map(p => (
-                      <option key={p.id} value={String(p.id)}>{p.name}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-              
+            {canViewProjects && projects.length > 0 && (
               <div>
-                <label style={{ display: 'block', marginBottom: 'var(--spacing-xs)', fontWeight: '500' }}>
-                  Participantes
-                </label>
-                <div style={{
-                border: '1px solid var(--border-primary)',
-                  borderRadius: 'var(--radius-md)',
-                  padding: 'var(--spacing-sm)',
-                  maxHeight: '200px',
-                  overflow: 'auto'
-                }}>
-                  {allUsers.map(userItem => (
-                    <label
-                      key={userItem.id}
-                      style={{
-                display: 'flex',
-                alignItems: 'center',
-                        gap: 'var(--spacing-sm)',
-                        padding: 'var(--spacing-xs)',
-                        cursor: 'pointer'
+                <Label className="mb-1.5">Projeto</Label>
+                <Select
+                  value={eventProjectId === '' ? '__none' : String(eventProjectId)}
+                  onValueChange={(v) => setEventProjectId(v === '__none' ? '' : Number(v))}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none">Nenhum</SelectItem>
+                    {projects.map((p) => (
+                      <SelectItem key={p.id} value={String(p.id)}>
+                        {p.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            <div>
+              <Label className="mb-1.5">Participantes</Label>
+              <div className="flex max-h-[200px] flex-col gap-0.5 overflow-auto rounded-lg border border-input p-2">
+                {allUsers.map((userItem) => (
+                  <label key={userItem.id} className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-sm hover:bg-muted">
+                    <Checkbox
+                      checked={selectedUserIds.includes(userItem.id)}
+                      onCheckedChange={(checked) => {
+                        if (checked) setSelectedUserIds([...selectedUserIds, userItem.id]);
+                        else setSelectedUserIds(selectedUserIds.filter((id) => id !== userItem.id));
                       }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedUserIds.includes(userItem.id)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setSelectedUserIds([...selectedUserIds, userItem.id]);
-                          } else {
-                            setSelectedUserIds(selectedUserIds.filter(id => id !== userItem.id));
-                          }
-                        }}
-                      />
-                      <span>{userItem.name} ({userItem.email})</span>
-                    </label>
-                  ))}
-                  </div>
-                </div>
-              
-              <div style={{ display: 'flex', gap: 'var(--spacing-sm)', justifyContent: 'flex-end', marginTop: 'var(--spacing-md)' }}>
-                <button
-                  onClick={() => setShowEventModal(false)}
-                  className="btn btn-secondary"
-                >
-                  Cancelar
-                  </button>
-                {selectedEvent && canDelete && (
-                  <button
-                    onClick={() => deleteEvent(selectedEvent.id)}
-                    className="btn btn-danger"
-                  >
-                    <Trash2 size={18} />
-                    Excluir
-                  </button>
-                )}
-                <button
-                  onClick={saveEvent}
-                  className="btn btn-primary"
-                  disabled={!eventTitle || !eventStartDate || !eventEndDate}
-                >
-                  Salvar
-                </button>
+                    />
+                    <span className="text-foreground">
+                      {userItem.name} <span className="text-muted-foreground">({userItem.email})</span>
+                    </span>
+                  </label>
+                ))}
               </div>
             </div>
-                </div>
-              </div>
-        )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowEventModal(false)}>
+              Cancelar
+            </Button>
+            {selectedEvent && canDelete && (
+              <Button variant="destructive" onClick={() => deleteEvent(selectedEvent.id)}>
+                <Trash2 size={16} /> Excluir
+              </Button>
+            )}
+            <Button onClick={saveEvent} disabled={!eventTitle || !eventStartDate || !eventEndDate}>
+              Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

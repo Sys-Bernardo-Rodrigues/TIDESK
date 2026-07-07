@@ -4,6 +4,19 @@ import TicketDetail from './TicketDetail';
 import { useAuth } from '../contexts/AuthContext';
 import { usePermissions, RESOURCES, ACTIONS } from '../hooks/usePermissions';
 import { formatDateList, formatTicketTitle } from '../utils/dateUtils';
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Card } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   Search,
   Clock,
@@ -102,7 +115,6 @@ interface Column {
   status: Ticket['status'][];
   color: string;
   bgColor: string;
-  accent: string;
   icon: typeof Inbox;
 }
 
@@ -114,7 +126,6 @@ const COLUMNS: Column[] = [
     status: ['open'],
     color: 'var(--red)',
     bgColor: 'var(--red-light)',
-    accent: '#EF4444',
     icon: Inbox,
   },
   {
@@ -124,7 +135,6 @@ const COLUMNS: Column[] = [
     status: ['in_progress'],
     color: 'var(--blue)',
     bgColor: 'var(--blue-light)',
-    accent: '#3B82F6',
     icon: LayoutGrid,
   },
   {
@@ -134,7 +144,6 @@ const COLUMNS: Column[] = [
     status: ['scheduled'],
     color: 'var(--purple)',
     bgColor: 'var(--purple-light)',
-    accent: '#9147FF',
     icon: CalendarClock,
   },
   {
@@ -144,19 +153,15 @@ const COLUMNS: Column[] = [
     status: ['closed'],
     color: 'var(--green)',
     bgColor: 'var(--green-light)',
-    accent: '#10B981',
     icon: CheckCircle,
   },
 ];
 
-const PRIORITY_META: Record<
-  Ticket['priority'],
-  { label: string; color: string; class: string }
-> = {
-  low: { label: 'Baixa', color: 'var(--text-tertiary)', class: 'tickets-priority--low' },
-  medium: { label: 'Média', color: 'var(--blue)', class: 'tickets-priority--medium' },
-  high: { label: 'Alta', color: 'var(--orange)', class: 'tickets-priority--high' },
-  urgent: { label: 'Urgente', color: 'var(--red)', class: 'tickets-priority--urgent' },
+const PRIORITY_META: Record<Ticket['priority'], { label: string; color: string }> = {
+  low: { label: 'Baixa', color: 'var(--text-tertiary)' },
+  medium: { label: 'Média', color: 'var(--blue)' },
+  high: { label: 'Alta', color: 'var(--orange)' },
+  urgent: { label: 'Urgente', color: 'var(--red)' },
 };
 
 const PRIORITY_FILTERS = [
@@ -313,6 +318,7 @@ export default function Tickets() {
       closed: base.filter((t) => t.status === 'closed').length,
       urgent: base.filter((t) => t.priority === 'urgent' && t.status !== 'closed').length,
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tickets, searchTerm, priorityFilter, onlyMyTickets, user]);
 
   const handleTicketClick = (id: number) => {
@@ -328,268 +334,299 @@ export default function Tickets() {
 
   const formatDate = formatDateList;
 
+  const closeTicketDialog = () => {
+    setSelectedTicketId(null);
+    fetchTickets();
+  };
+
   if (loading) {
     return (
-      <div className="tickets-page">
-        <div className="tickets-loading">
-          <div className="tickets-loading__orb" />
-          <p>Carregando fila de atendimento…</p>
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center justify-between">
+          <Skeleton className="h-8 w-40" />
+          <Skeleton className="h-8 w-64" />
+        </div>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {COLUMNS.map((col) => (
+            <div key={col.id} className="flex flex-col gap-3">
+              <Skeleton className="h-9 w-full" />
+              <Skeleton className="h-32 w-full" />
+              <Skeleton className="h-32 w-full" />
+            </div>
+          ))}
         </div>
       </div>
     );
   }
 
   return (
-    <div className="tickets-page">
-      <header className="tickets-hero">
-        <div className="tickets-hero__glow" aria-hidden />
-        <div className="tickets-hero__row">
-          <div className="tickets-hero__title-row">
-            <div className="tickets-hero__icon">
-              <Sparkles size={18} />
-            </div>
-            <h1 className="tickets-hero__title">Tickets</h1>
+    <div className="flex flex-col gap-4">
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          <div className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <Sparkles size={18} />
           </div>
+          <h1 className="text-xl font-semibold text-foreground">Tickets</h1>
+        </div>
 
-          <div className="tickets-stats">
-            <div className="tickets-stat tickets-stat--open" title="Abertos">
-              <span className="tickets-stat__value">{stats.open}</span>
-              <span className="tickets-stat__label">Abertos</span>
-            </div>
-            <div className="tickets-stat tickets-stat--progress" title="Em progresso">
-              <span className="tickets-stat__value">{stats.inProgress}</span>
-              <span className="tickets-stat__label">Progresso</span>
-            </div>
-            <div className="tickets-stat tickets-stat--scheduled" title="Agendados">
-              <span className="tickets-stat__value">{stats.scheduled}</span>
-              <span className="tickets-stat__label">Agend.</span>
-            </div>
-            <div className="tickets-stat tickets-stat--closed" title="Finalizados">
-              <span className="tickets-stat__value">{stats.closed}</span>
-              <span className="tickets-stat__label">Fim</span>
-            </div>
-            {stats.urgent > 0 && (
-              <div className="tickets-stat tickets-stat--urgent" title="Urgentes">
-                <Zap size={12} />
-                <span className="tickets-stat__value">{stats.urgent}</span>
-              </div>
-            )}
-          </div>
-
-          <button
-            type="button"
-            className="tickets-hero__refresh"
-            onClick={() => fetchTickets()}
-            title="Atualizar agora"
-          >
+        <div className="flex flex-wrap items-center gap-2">
+          <StatChip label="Abertos" value={stats.open} colorVar="var(--red)" />
+          <StatChip label="Progresso" value={stats.inProgress} colorVar="var(--blue)" />
+          <StatChip label="Agend." value={stats.scheduled} colorVar="var(--purple)" />
+          <StatChip label="Fim" value={stats.closed} colorVar="var(--green)" />
+          {stats.urgent > 0 && (
+            <span
+              className="flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold"
+              style={{ background: 'var(--red-light)', color: 'var(--red)' }}
+            >
+              <Zap size={12} />
+              {stats.urgent}
+            </span>
+          )}
+          <Button variant="outline" size="icon-sm" onClick={() => fetchTickets()} title="Atualizar agora">
             <RefreshCw size={14} />
-          </button>
+          </Button>
         </div>
       </header>
 
-      <div className="tickets-toolbar">
-        <div className="tickets-toolbar__search">
-          <Search size={18} />
-          <input
-            type="text"
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative min-w-[240px] flex-1">
+          <Search size={16} className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
             placeholder="Buscar título, ID, formulário ou solicitante…"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-8"
           />
         </div>
 
-        <div className="tickets-toolbar__priority">
+        <div className="flex flex-wrap items-center gap-1.5">
           {PRIORITY_FILTERS.map((p) => (
-            <button
+            <Button
               key={p.id}
               type="button"
-              className={`tickets-priority-pill ${priorityFilter === p.id ? 'tickets-priority-pill--active' : ''} ${p.id !== 'all' ? `tickets-priority-pill--${p.id}` : ''}`}
+              variant={priorityFilter === p.id ? 'default' : 'outline'}
+              size="sm"
               onClick={() => setPriorityFilter(p.id)}
             >
               {p.id === 'urgent' && <Zap size={12} />}
               {p.label}
-            </button>
+            </Button>
           ))}
         </div>
 
-        <div className="tickets-toolbar__actions">
-          <div className="tickets-toolbar__select-wrap">
-            <RefreshCw size={14} />
-            <select value={autoRefresh} onChange={(e) => setAutoRefresh(e.target.value)}>
-              <option value="0">0s</option>
-              <option value="10">10s</option>
-              <option value="30">30s</option>
-              <option value="60">1 min</option>
-              <option value="120">2 min</option>
-            </select>
-          </div>
+        <div className="flex items-center gap-2">
+          <Select value={autoRefresh} onValueChange={setAutoRefresh}>
+            <SelectTrigger size="sm" className="w-[90px]">
+              <RefreshCw size={13} />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="0">0s</SelectItem>
+              <SelectItem value="10">10s</SelectItem>
+              <SelectItem value="30">30s</SelectItem>
+              <SelectItem value="60">1 min</SelectItem>
+              <SelectItem value="120">2 min</SelectItem>
+            </SelectContent>
+          </Select>
           {canEditTickets && (
-            <button
+            <Button
               type="button"
-              className={`tickets-toolbar__mine ${onlyMyTickets ? 'tickets-toolbar__mine--on' : ''}`}
+              variant={onlyMyTickets ? 'default' : 'outline'}
+              size="sm"
               onClick={() => setOnlyMyTickets((v) => !v)}
             >
               <User size={14} />
               Meus tickets
-            </button>
+            </Button>
           )}
         </div>
       </div>
 
-      <div className="tickets-board">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         {COLUMNS.map((col) => {
           const list = getTicketsForColumn(col);
           const isOver = draggedOverColumn === col.id;
           const Icon = col.icon;
 
           return (
-            <section
+            <Card
               key={col.id}
-              className={`tickets-column ${isOver ? 'tickets-column--over' : ''}`}
-              style={{ '--col-accent': col.accent } as React.CSSProperties}
+              className={cn(
+                'gap-3 py-3 transition-colors',
+                isOver && 'ring-2 ring-primary/50'
+              )}
               onDragOver={canEditTickets ? (e) => handleDragOver(e, col.id) : undefined}
               onDragLeave={canEditTickets ? handleDragLeave : undefined}
               onDrop={canEditTickets ? (e) => handleDrop(e, col) : undefined}
             >
-              <header className="tickets-column__head">
-                <div className="tickets-column__head-left">
-                  <span className="tickets-column__icon" style={{ color: col.color }}>
-                    <Icon size={18} />
+              <header className="flex items-center justify-between px-4">
+                <div className="flex items-center gap-2">
+                  <span style={{ color: col.color }}>
+                    <Icon size={17} />
                   </span>
-                  <h2 className="tickets-column__title">{col.title}</h2>
+                  <h2 className="text-sm font-semibold text-foreground">{col.title}</h2>
                 </div>
-                <span className="tickets-column__count" style={{ background: col.bgColor, color: col.color }}>
+                <span
+                  className="flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-xs font-semibold"
+                  style={{ background: col.bgColor, color: col.color }}
+                >
                   {list.length}
                 </span>
               </header>
 
-              <div className="tickets-column__cards">
+              <div className="flex flex-col gap-2 px-3">
                 {list.length === 0 ? (
-                  <div className={`tickets-empty ${isOver ? 'tickets-empty--drop' : ''}`}>
+                  <div
+                    className={cn(
+                      'flex flex-col items-center gap-2 rounded-lg border border-dashed border-border py-10 text-xs text-muted-foreground',
+                      isOver && 'border-primary/50 bg-primary/5 text-primary'
+                    )}
+                  >
                     {isOver ? (
                       <>
-                        <ArrowUpRight size={28} />
+                        <ArrowUpRight size={26} />
                         <span>Solte o ticket aqui</span>
                       </>
                     ) : (
                       <>
-                        <Icon size={32} strokeWidth={1.25} />
+                        <Icon size={28} strokeWidth={1.25} />
                         <span>Nenhum ticket</span>
                       </>
                     )}
                   </div>
                 ) : (
-                  list.map((ticket, idx) => {
+                  list.map((ticket) => {
                     const hours = getHoursSince(ticket);
                     const overdue = isScheduledOverdue(ticket);
                     const ageAlert = col.id === 'open' || col.id === 'in_progress';
-                    const ageClass =
-                      overdue
-                        ? 'tickets-card--overdue'
-                        : ageAlert && hours >= 48
-                          ? 'tickets-card--stale-critical'
-                          : ageAlert && hours >= 24
-                            ? 'tickets-card--stale-warn'
-                            : '';
+                    const stale = overdue || (ageAlert && hours >= 24);
+                    const staleCritical = ageAlert && hours >= 48;
                     const priority = PRIORITY_META[ticket.priority];
 
                     return (
                       <article
                         key={ticket.id}
-                        className={`tickets-card ${priority.class} ${ageClass} ${draggedTicket?.id === ticket.id ? 'tickets-card--dragging' : ''}`}
-                        style={{ animationDelay: `${Math.min(idx, 8) * 40}ms` }}
+                        className={cn(
+                          'group relative flex cursor-pointer flex-col gap-2 overflow-hidden rounded-lg border border-border bg-background/50 p-3 pl-3.5 transition-shadow hover:shadow-md',
+                          draggedTicket?.id === ticket.id && 'opacity-50',
+                          overdue && 'ring-1 ring-destructive/40',
+                          staleCritical && 'ring-1 ring-destructive/30',
+                          !staleCritical && stale && 'ring-1 ring-amber-500/30'
+                        )}
                         draggable={canEditTickets}
                         onClick={() => handleTicketClick(ticket.id)}
                         onDragStart={canEditTickets ? (e) => handleDragStart(e, ticket) : undefined}
                       >
-                        <div className="tickets-card__stripe" style={{ background: priority.color }} />
+                        <span
+                          className="absolute top-0 left-0 h-full w-1"
+                          style={{ background: priority.color }}
+                        />
 
-                        <div className="tickets-card__body">
-                          <div className="tickets-card__top">
-                            <span className={`tickets-card__priority ${priority.class}`}>
-                              {ticket.priority === 'urgent' && <Zap size={10} />}
-                              {priority.label}
-                            </span>
-                            {ticket.ticket_number && ticket.created_at && (
-                              <code className="tickets-card__id">{formatTicketId(ticket)}</code>
-                            )}
-                            <span className="tickets-card__age">{formatRelativeAge(ticket.created_at)}</span>
-                          </div>
-
-                          <h3 className="tickets-card__title">{formatTicketTitle(ticket.title)}</h3>
-                          {ticket.description?.trim() && (
-                            <p className="tickets-card__desc">{ticket.description}</p>
+                        <div className="flex items-center justify-between gap-2">
+                          <span
+                            className="flex items-center gap-1 text-[11px] font-semibold"
+                            style={{ color: priority.color }}
+                          >
+                            {ticket.priority === 'urgent' && <Zap size={10} />}
+                            {priority.label}
+                          </span>
+                          {ticket.ticket_number && ticket.created_at && (
+                            <code className="text-[11px] text-muted-foreground">{formatTicketId(ticket)}</code>
                           )}
+                          <span className="ml-auto text-[11px] text-muted-foreground">
+                            {formatRelativeAge(ticket.created_at)}
+                          </span>
+                        </div>
 
-                          <div className="tickets-card__tags">
+                        <h3 className="text-sm font-medium text-foreground">{formatTicketTitle(ticket.title)}</h3>
+                        {ticket.description?.trim() && (
+                          <p className="line-clamp-2 text-xs text-muted-foreground">{ticket.description}</p>
+                        )}
+
+                        {(ticket.status === 'in_progress' && ticket.is_paused) || overdue || ticket.form_name ? (
+                          <div className="flex flex-wrap gap-1.5">
                             {ticket.status === 'in_progress' && !!ticket.is_paused && (
-                              <span className="tickets-card__tag tickets-card__tag--pause">
-                                <Pause size={10} />
-                                Pausado
-                              </span>
+                              <MiniTag icon={Pause} label="Pausado" colorVar="var(--orange)" />
                             )}
-                            {overdue && (
-                              <span className="tickets-card__tag tickets-card__tag--overdue">
-                                <Clock size={10} />
-                                Atrasado
-                              </span>
-                            )}
+                            {overdue && <MiniTag icon={Clock} label="Atrasado" colorVar="var(--red)" />}
                             {ticket.form_name && (
-                              <span className="tickets-card__tag tickets-card__tag--form">
-                                <FileText size={10} />
-                                {ticket.form_name}
-                              </span>
+                              <MiniTag icon={FileText} label={ticket.form_name} colorVar="var(--blue)" />
                             )}
                           </div>
+                        ) : null}
 
-                          <footer className="tickets-card__foot">
-                            {ticket.assigned_name ? (
-                              <div className="tickets-card__assignee" title={ticket.assigned_name}>
-                                <span className="tickets-card__avatar">{getInitials(ticket.assigned_name)}</span>
-                                <span className="tickets-card__assignee-name">{ticket.assigned_name}</span>
-                              </div>
-                            ) : (
-                              <span className="tickets-card__unassigned">Sem agente</span>
-                            )}
-                            <time className="tickets-card__time">
-                              <Clock size={11} />
-                              {ticket.status === 'scheduled' && ticket.scheduled_at
-                                ? formatScheduledDate(ticket.scheduled_at)
-                                : formatDate(ticket.created_at)}
-                            </time>
-                          </footer>
-                        </div>
+                        <footer className="flex items-center justify-between gap-2 border-t border-border/60 pt-2">
+                          {ticket.assigned_name ? (
+                            <div className="flex min-w-0 items-center gap-1.5" title={ticket.assigned_name}>
+                              <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[9px] font-semibold text-primary">
+                                {getInitials(ticket.assigned_name)}
+                              </span>
+                              <span className="truncate text-xs text-muted-foreground">{ticket.assigned_name}</span>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground/70 italic">Sem agente</span>
+                          )}
+                          <time className="flex shrink-0 items-center gap-1 text-[11px] text-muted-foreground">
+                            <Clock size={11} />
+                            {ticket.status === 'scheduled' && ticket.scheduled_at
+                              ? formatScheduledDate(ticket.scheduled_at)
+                              : formatDate(ticket.created_at)}
+                          </time>
+                        </footer>
                       </article>
                     );
                   })
                 )}
               </div>
-            </section>
+            </Card>
           );
         })}
       </div>
 
-      {selectedTicketId && (
-        <div
-          className="tickets-modal-overlay"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              setSelectedTicketId(null);
-              fetchTickets();
-            }
-          }}
+      <Dialog
+        open={!!selectedTicketId}
+        onOpenChange={(open) => {
+          if (!open) closeTicketDialog();
+        }}
+      >
+        <DialogContent
+          showCloseButton={false}
+          className="h-[90vh] max-w-6xl overflow-hidden p-0 sm:max-w-6xl"
+          onPointerDownOutside={(e) => e.preventDefault()}
+          onInteractOutside={(e) => e.preventDefault()}
+          onEscapeKeyDown={(e) => e.preventDefault()}
         >
-          <div className="tickets-modal-content">
-            <TicketDetail
-              ticketId={selectedTicketId}
-              onClose={() => {
-                setSelectedTicketId(null);
-                fetchTickets();
-              }}
-            />
-          </div>
-        </div>
-      )}
+          {selectedTicketId && (
+            <TicketDetail ticketId={selectedTicketId} onClose={closeTicketDialog} />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
+  );
+}
+
+function StatChip({ label, value, colorVar }: { label: string; value: number; colorVar: string }) {
+  return (
+    <span
+      className="flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-foreground"
+    >
+      <span className="font-semibold" style={{ color: colorVar }}>
+        {value}
+      </span>
+      {label}
+    </span>
+  );
+}
+
+function MiniTag({ icon: Icon, label, colorVar }: { icon: typeof Clock; label: string; colorVar: string }) {
+  return (
+    <span
+      className="flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium"
+      style={{ background: `color-mix(in srgb, ${colorVar} 15%, transparent)`, color: colorVar }}
+    >
+      <Icon size={10} />
+      {label}
+    </span>
   );
 }

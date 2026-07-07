@@ -30,6 +30,9 @@ import DocsRepo from './pages/DocsRepo';
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
 import { RESOURCES, ACTIONS } from './hooks/usePermissions';
+import { Toaster } from './components/ui/sonner';
+import { ConfirmDialogProvider } from './components/ui/confirm-dialog';
+import { TooltipProvider } from './components/ui/tooltip';
 
 const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, loading } = useAuth();
@@ -45,6 +48,9 @@ function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
+        <TooltipProvider delayDuration={300}>
+        <ConfirmDialogProvider>
+        <Toaster position="top-right" richColors />
         <Router>
           <Routes>
           <Route path="/login" element={<Login />} />
@@ -253,6 +259,8 @@ function App() {
           </Route>
           </Routes>
         </Router>
+        </ConfirmDialogProvider>
+        </TooltipProvider>
       </AuthProvider>
     </ThemeProvider>
   );

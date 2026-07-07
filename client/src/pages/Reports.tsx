@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
+import type { LucideIcon } from 'lucide-react';
 import {
   TrendingUp,
   Clock,
@@ -18,14 +19,24 @@ import {
   AlertCircle,
   Info,
 } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 // ——— Tooltip de informação ———
 function InfoTooltip({ text }: { text: string }) {
   return (
-    <span className="reports__info-wrap" title={text}>
-      <Info size={14} className="reports__info-icon" aria-hidden />
-      <span className="reports__info-tooltip">{text}</span>
-    </span>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Info size={13} className="shrink-0 cursor-help align-[-2px] text-muted-foreground/60" />
+      </TooltipTrigger>
+      <TooltipContent className="max-w-[260px] text-xs">{text}</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -141,13 +152,6 @@ const PRIORITY_LABELS: Record<string, string> = {
   urgent: 'Urgente',
 };
 
-const PRIORITY_COLORS: Record<string, string> = {
-  low: 'var(--blue)',
-  medium: 'var(--orange)',
-  high: 'var(--red)',
-  urgent: 'var(--red)',
-};
-
 const PERIOD_LABELS: Record<string, string> = {
   today: 'Hoje',
   week: 'Semana',
@@ -157,11 +161,135 @@ const PERIOD_LABELS: Record<string, string> = {
   custom: 'Personalizado',
 };
 
+type Accent = 'purple' | 'red' | 'green' | 'blue' | 'orange';
+
+const STATUS_ACCENT: Record<string, Accent> = {
+  open: 'red',
+  in_progress: 'blue',
+  resolved: 'green',
+  closed: 'purple',
+  scheduled: 'orange',
+  pending_approval: 'orange',
+  rejected: 'red',
+};
+
+const PRIORITY_ACCENT: Record<string, Accent> = { urgent: 'red', high: 'red', medium: 'orange', low: 'blue' };
+
+const ACCENT: Record<Accent, { text: string; solid: string; soft: string; softText: string }> = {
+  purple: { text: 'text-[var(--purple)]', solid: 'bg-[var(--purple)]', soft: 'bg-[var(--purple-light)]', softText: 'text-[var(--purple)]' },
+  red: { text: 'text-[var(--red)]', solid: 'bg-[var(--red)]', soft: 'bg-[var(--red-light)]', softText: 'text-[var(--red)]' },
+  green: { text: 'text-[var(--green)]', solid: 'bg-[var(--green)]', soft: 'bg-[var(--green-light)]', softText: 'text-[var(--green)]' },
+  blue: { text: 'text-[var(--blue)]', solid: 'bg-[var(--blue)]', soft: 'bg-[var(--blue-light)]', softText: 'text-[var(--blue)]' },
+  orange: { text: 'text-[var(--orange)]', solid: 'bg-[var(--orange)]', soft: 'bg-[var(--orange-light)]', softText: 'text-[var(--orange)]' },
+};
+
+const SECTION_HEAD = 'mb-3.5 flex items-center gap-1.5';
+const SECTION_TITLE = 'text-sm font-semibold text-foreground';
+
 function buildPeriodParam(period: string, customStart: string, customEnd: string): string {
   if (period === 'custom' && customStart && customEnd) {
     return `custom&start=${customStart}&end=${customEnd}`;
   }
   return period;
+}
+
+// ——— KPI card ———
+function KpiCard({
+  icon: Icon,
+  accent,
+  label,
+  value,
+  sub,
+  tooltip,
+}: {
+  icon: LucideIcon;
+  accent: Accent;
+  label: string;
+  value: string | number;
+  sub?: string;
+  tooltip?: string;
+}) {
+  return (
+    <Card className={cn('gap-0 px-4 py-3.5', ACCENT[accent].soft)}>
+      <div className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-white', ACCENT[accent].solid)}>
+        <Icon size={16} strokeWidth={2.25} />
+      </div>
+      <span className="mt-2.5 flex items-center gap-1 text-[0.7rem] font-medium text-muted-foreground">
+        {label}
+        {tooltip && <InfoTooltip text={tooltip} />}
+      </span>
+      <span className="block text-3xl leading-tight font-bold text-foreground">{value}</span>
+      {sub && <span className="mt-0.5 block truncate text-[0.7rem] text-muted-foreground">{sub}</span>}
+    </Card>
+  );
+}
+
+// ——— Card com tabela ———
+function TableCard({
+  title,
+  tooltip,
+  icon: Icon,
+  accent,
+  empty,
+  children,
+}: {
+  title: string;
+  tooltip?: string;
+  icon?: LucideIcon;
+  accent: Accent;
+  empty?: string;
+  children?: React.ReactNode;
+}) {
+  return (
+    <section className="mb-6">
+      <div className={SECTION_HEAD}>
+        {Icon && <Icon size={16} className={cn('shrink-0', ACCENT[accent].text)} />}
+        <h2 className={SECTION_TITLE}>{title}</h2>
+        {tooltip && <InfoTooltip text={tooltip} />}
+      </div>
+      <Card className="px-4 py-4">
+        {empty ? <p className="text-sm text-muted-foreground italic">{empty}</p> : <div className="-mx-4 -mb-4">{children}</div>}
+      </Card>
+    </section>
+  );
+}
+
+// ——— Loading skeleton ———
+function ReportsSkeleton() {
+  return (
+    <div className="mx-auto max-w-[1400px] pb-12">
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <Skeleton className="h-7 w-[160px]" />
+          <Skeleton className="mt-2 h-[18px] w-[220px]" />
+        </div>
+        <Skeleton className="h-8 w-[420px]" />
+      </div>
+      <div className="mb-6 grid grid-cols-2 gap-3.5 lg:grid-cols-4">
+        {[1, 2, 3, 4].map((i) => (
+          <Skeleton key={i} className="h-[104px]" />
+        ))}
+      </div>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Skeleton className="h-52" />
+        <Skeleton className="h-52" />
+      </div>
+    </div>
+  );
+}
+
+// ——— Error state ———
+function ReportsError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className="flex min-h-[60vh] items-center justify-center p-12">
+      <div className="max-w-[360px] text-center">
+        <AlertCircle size={48} strokeWidth={1.5} className="mx-auto mb-6 text-muted-foreground opacity-60" />
+        <h2 className="mb-2 text-lg font-bold text-foreground">Não foi possível carregar os relatórios</h2>
+        <p className="mb-6 text-[0.9375rem] leading-relaxed text-muted-foreground">{message}</p>
+        <Button onClick={onRetry}>Tentar novamente</Button>
+      </div>
+    </div>
+  );
 }
 
 export default function Reports() {
@@ -253,13 +381,10 @@ export default function Reports() {
       const green = [16, 185, 129] as [number, number, number];
       const blue = [59, 130, 246] as [number, number, number];
       const orange = [245, 158, 11] as [number, number, number];
-      const red = [239, 68, 68] as [number, number, number];
       const dark = [26, 26, 31] as [number, number, number];
-      const textPrimary = [245, 245, 247] as [number, number, number];
       const textSecondary = [184, 184, 192] as [number, number, number];
       const textDark = [26, 26, 31] as [number, number, number];
       const border = [42, 42, 46] as [number, number, number];
-      const bgRow = [26, 26, 29] as [number, number, number];
       const bgLight = [248, 248, 250] as [number, number, number];
 
       const addPageIfNeeded = (need: number) => {
@@ -567,144 +692,162 @@ export default function Reports() {
     }
   };
 
-  if (loading && !overview) {
-    return (
-      <div className="reports reports--loading">
-        <div className="reports__spinner" />
-        <p>Carregando relatórios…</p>
-      </div>
-    );
-  }
-
-  if (error && !overview) {
-    return (
-      <div className="reports reports--error">
-        <AlertCircle size={48} className="reports__error-icon" />
-        <h2>Não foi possível carregar os relatórios</h2>
-        <p>{error}</p>
-        <button type="button" className="btn btn-primary" onClick={fetchAll}>Tentar novamente</button>
-      </div>
-    );
-  }
+  if (loading && !overview) return <ReportsSkeleton />;
+  if (error && !overview) return <ReportsError message={error} onRetry={fetchAll} />;
 
   const maxTimeline = Math.max(...timeline.map((t) => t.total), 1);
+  const totalStatus = overview ? overview.ticketsByStatus.reduce((s, x) => s + x.count, 0) : 0;
+  const totalPriority = overview ? overview.ticketsByPriority.reduce((s, x) => s + x.count, 0) : 0;
 
   return (
-    <div className="reports">
-      <header className="reports__header">
+    <div className="mx-auto max-w-[1400px] pb-12">
+      {/* Header */}
+      <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="reports__title">Relatórios</h1>
-          <p className="reports__subtitle">Métricas do sistema · {periodLabel}</p>
+          <h1 className="text-[1.65rem] font-extrabold tracking-tight text-foreground">Relatórios</h1>
+          <p className="text-sm text-muted-foreground">Métricas do sistema · {periodLabel}</p>
         </div>
-        <div className="reports__toolbar">
-          <select
-            className="reports__select"
+        <div className="flex flex-wrap items-center gap-2">
+          <Select
             value={useCustomDates ? 'custom' : period}
-            onChange={(e) => {
-              if (e.target.value === 'custom') setUseCustomDates(true);
-              else { setUseCustomDates(false); setPeriod(e.target.value); }
+            onValueChange={(v) => {
+              if (v === 'custom') setUseCustomDates(true);
+              else { setUseCustomDates(false); setPeriod(v); }
             }}
           >
-            <option value="today">Hoje</option>
-            <option value="week">Semana</option>
-            <option value="month">Mês</option>
-            <option value="quarter">Trimestre</option>
-            <option value="year">Ano</option>
-            <option value="custom">Personalizado</option>
-          </select>
+            <SelectTrigger className="w-[150px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="today">Hoje</SelectItem>
+              <SelectItem value="week">Semana</SelectItem>
+              <SelectItem value="month">Mês</SelectItem>
+              <SelectItem value="quarter">Trimestre</SelectItem>
+              <SelectItem value="year">Ano</SelectItem>
+              <SelectItem value="custom">Personalizado</SelectItem>
+            </SelectContent>
+          </Select>
           {useCustomDates && (
-            <div className="reports__dates">
-              <input type="date" className="reports__input" value={customStart} onChange={(e) => setCustomDateStart(e.target.value)} />
-              <span>até</span>
-              <input type="date" className="reports__input" value={customEnd} onChange={(e) => setCustomDateEnd(e.target.value)} />
+            <div className="flex items-center gap-1.5">
+              <Input type="date" className="w-[145px]" value={customStart} onChange={(e) => setCustomDateStart(e.target.value)} />
+              <span className="text-xs text-muted-foreground">até</span>
+              <Input type="date" className="w-[145px]" value={customEnd} onChange={(e) => setCustomDateEnd(e.target.value)} />
             </div>
           )}
-          <select className="reports__select" value={autoRefresh} onChange={(e) => setAutoRefresh(e.target.value)}>
-            <option value="0">Atualização manual</option>
-            <option value="30">30 s</option>
-            <option value="60">1 min</option>
-            <option value="120">2 min</option>
-          </select>
-          <button type="button" className="btn" onClick={fetchAll} disabled={loading} title="Atualizar dados">
-            <RefreshCw size={18} className={loading ? 'reports__spin' : ''} />
-          </button>
-          <button type="button" className="btn btn-primary reports__btn-pdf" onClick={generatePDF} disabled={!overview}>
-            <FileDown size={18} /> Exportar PDF
-          </button>
+          <Select value={autoRefresh} onValueChange={setAutoRefresh}>
+            <SelectTrigger className="w-[168px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="0">Atualização manual</SelectItem>
+              <SelectItem value="30">30 s</SelectItem>
+              <SelectItem value="60">1 min</SelectItem>
+              <SelectItem value="120">2 min</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button variant="outline" size="icon" onClick={fetchAll} disabled={loading} title="Atualizar dados">
+            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+          </Button>
+          <Button onClick={generatePDF} disabled={!overview}>
+            <FileDown size={16} /> Exportar PDF
+          </Button>
         </div>
       </header>
 
       {/* KPIs do período */}
       {overview && (
-        <section className="reports__kpis">
-          <div className="reports__kpi">
-            <div className="reports__kpi-icon reports__kpi-icon--blue"><Ticket size={22} /></div>
-            <div className="reports__kpi-body">
-              <span className="reports__kpi-label">Total de tickets <InfoTooltip text="Quantidade total de tickets criados no período selecionado (hoje, semana, mês, etc.)." /></span>
-              <span className="reports__kpi-value">{overview.totalTickets}</span>
-            </div>
-          </div>
-          <div className="reports__kpi">
-            <div className="reports__kpi-icon reports__kpi-icon--green"><CheckCircle size={22} /></div>
-            <div className="reports__kpi-body">
-              <span className="reports__kpi-label">Resolvidos no período <InfoTooltip text="Tickets marcados como Resolvido ou Fechado cuja última atualização (conclusão) ocorreu dentro do período selecionado." /></span>
-              <span className="reports__kpi-value">{overview.resolvedTickets}</span>
-            </div>
-          </div>
-          <div className="reports__kpi">
-            <div className="reports__kpi-icon reports__kpi-icon--purple"><TrendingUp size={22} /></div>
-            <div className="reports__kpi-body">
-              <span className="reports__kpi-label">Taxa do lote <InfoTooltip text="Entre os tickets criados no período, qual percentual já está Resolvido ou Fechado hoje. Não usa o total de conclusões do período (que pode incluir tickets antigos)." /></span>
-              <span className="reports__kpi-value">{overview.resolutionRate.toFixed(1)}%</span>
-            </div>
-          </div>
-          <div className="reports__kpi">
-            <div className="reports__kpi-icon reports__kpi-icon--orange"><Clock size={22} /></div>
-            <div className="reports__kpi-body">
-              <span className="reports__kpi-label">Tempo médio <InfoTooltip text="Média de horas entre o agente assumir o ticket e a conclusão, descontando pausas. Considera apenas tickets concluídos no período (data de conclusão)." /></span>
-              <span className="reports__kpi-value">{formatHours(overview.avgResolutionTimeHours)}</span>
-            </div>
-          </div>
+        <section className="mb-6 grid grid-cols-2 gap-3.5 lg:grid-cols-4" aria-label="Indicadores do período">
+          <KpiCard
+            icon={Ticket}
+            accent="blue"
+            label="Total de tickets"
+            value={overview.totalTickets}
+            tooltip="Quantidade total de tickets criados no período selecionado (hoje, semana, mês, etc.)."
+          />
+          <KpiCard
+            icon={CheckCircle}
+            accent="green"
+            label="Resolvidos no período"
+            value={overview.resolvedTickets}
+            tooltip="Tickets marcados como Resolvido ou Fechado cuja última atualização (conclusão) ocorreu dentro do período selecionado."
+          />
+          <KpiCard
+            icon={TrendingUp}
+            accent="purple"
+            label="Taxa do lote"
+            value={`${overview.resolutionRate.toFixed(1)}%`}
+            tooltip="Entre os tickets criados no período, qual percentual já está Resolvido ou Fechado hoje. Não usa o total de conclusões do período (que pode incluir tickets antigos)."
+          />
+          <KpiCard
+            icon={Clock}
+            accent="orange"
+            label="Tempo médio"
+            value={formatHours(overview.avgResolutionTimeHours)}
+            tooltip="Média de horas entre o agente assumir o ticket e a conclusão, descontando pausas. Considera apenas tickets concluídos no período (data de conclusão)."
+          />
         </section>
       )}
 
       {/* Visão do sistema */}
       {systemData && (
-        <section className="reports__section">
-          <h2 className="reports__section-title">Visão do sistema <InfoTooltip text="Contagens atuais do sistema (não filtradas pelo período do relatório)." /></h2>
-          <div className="reports__system-grid">
-            <div className="reports__system-card">
-              <Users size={20} className="reports__system-icon" />
-              <span className="reports__system-label">Usuários <InfoTooltip text="Total de usuários cadastrados no sistema." /></span>
-              <span className="reports__system-value">{systemData.users}</span>
-            </div>
-            <div className="reports__system-card">
-              <FileText size={20} className="reports__system-icon" />
-              <span className="reports__system-label">Formulários <InfoTooltip text="Formulários criados. São usados para captar demandas e gerar tickets." /></span>
-              <span className="reports__system-value">{systemData.forms}</span>
-            </div>
-            <div className="reports__system-card">
-              <Layers size={20} className="reports__system-icon" />
-              <span className="reports__system-label">Páginas <InfoTooltip text="Páginas públicas publicadas no sistema." /></span>
-              <span className="reports__system-value">{systemData.pages}</span>
-            </div>
-            <div className="reports__system-card">
-              <UserCheck size={20} className="reports__system-icon" />
-              <span className="reports__system-label">Grupos <InfoTooltip text="Grupos de usuários para organização e permissões." /></span>
-              <span className="reports__system-value">{systemData.groups}</span>
-            </div>
-            <div className="reports__system-card">
-              <FolderKanban size={20} className="reports__system-icon" />
-              <span className="reports__system-label">Projetos <InfoTooltip text="Projetos ativos. O número entre parênteses são tarefas ainda não concluídas." /></span>
-              <span className="reports__system-value">{systemData.projects}</span>
-              <span className="reports__system-sub">{systemData.projectTasksOpen} tarefas em aberto</span>
-            </div>
-            {systemData.ticketsPendingApproval > 0 && (
-              <div className="reports__system-card reports__system-card--alert">
-                <AlertCircle size={20} className="reports__system-icon" />
-                <span className="reports__system-label">Pendentes aprovação <InfoTooltip text="Tickets que aguardam aprovação antes de serem finalizados." /></span>
-                <span className="reports__system-value">{systemData.ticketsPendingApproval}</span>
+        <section className="mb-6">
+          <div className={SECTION_HEAD}>
+            <h2 className={SECTION_TITLE}>Visão do sistema</h2>
+            <InfoTooltip text="Contagens atuais do sistema (não filtradas pelo período do relatório)." />
+          </div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            <Card className="flex-row items-center gap-3 px-4 py-3">
+              <div className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-md', ACCENT.blue.soft, ACCENT.blue.softText)}>
+                <Users size={16} />
               </div>
+              <div className="min-w-0 flex-1">
+                <span className="block truncate text-[0.7rem] font-medium text-muted-foreground">Usuários</span>
+                <span className="block text-base leading-tight font-bold text-foreground">{systemData.users}</span>
+              </div>
+            </Card>
+            <Card className="flex-row items-center gap-3 px-4 py-3">
+              <div className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-md', ACCENT.purple.soft, ACCENT.purple.softText)}>
+                <FileText size={16} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <span className="block truncate text-[0.7rem] font-medium text-muted-foreground">Formulários</span>
+                <span className="block text-base leading-tight font-bold text-foreground">{systemData.forms}</span>
+              </div>
+            </Card>
+            <Card className="flex-row items-center gap-3 px-4 py-3">
+              <div className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-md', ACCENT.green.soft, ACCENT.green.softText)}>
+                <Layers size={16} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <span className="block truncate text-[0.7rem] font-medium text-muted-foreground">Páginas</span>
+                <span className="block text-base leading-tight font-bold text-foreground">{systemData.pages}</span>
+              </div>
+            </Card>
+            <Card className="flex-row items-center gap-3 px-4 py-3">
+              <div className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-md', ACCENT.orange.soft, ACCENT.orange.softText)}>
+                <UserCheck size={16} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <span className="block truncate text-[0.7rem] font-medium text-muted-foreground">Grupos</span>
+                <span className="block text-base leading-tight font-bold text-foreground">{systemData.groups}</span>
+              </div>
+            </Card>
+            <Card className="flex-row items-center gap-3 px-4 py-3">
+              <div className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-md', ACCENT.red.soft, ACCENT.red.softText)}>
+                <FolderKanban size={16} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <span className="block truncate text-[0.7rem] font-medium text-muted-foreground">Projetos</span>
+                <span className="block text-base leading-tight font-bold text-foreground">{systemData.projects}</span>
+                <span className="block truncate text-[0.65rem] text-muted-foreground">{systemData.projectTasksOpen} tarefas em aberto</span>
+              </div>
+            </Card>
+            {systemData.ticketsPendingApproval > 0 && (
+              <Card className={cn('flex-row items-center gap-3 px-4 py-3 ring-1 ring-[rgba(245,158,11,0.45)]')}>
+                <div className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-white', ACCENT.orange.solid)}>
+                  <AlertCircle size={16} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <span className="block truncate text-[0.7rem] font-medium text-muted-foreground">Pendentes aprovação</span>
+                  <span className="block text-base leading-tight font-bold text-foreground">{systemData.ticketsPendingApproval}</span>
+                </div>
+              </Card>
             )}
           </div>
         </section>
@@ -712,267 +855,313 @@ export default function Reports() {
 
       {/* Grid: Status + Prioridade */}
       {overview && (
-        <div className="reports__grid">
-          <section className="reports__card">
-            <h3 className="reports__card-title"><PieChart size={18} /> Por status <InfoTooltip text="Distribuição dos tickets do período por status atual (Aberto, Em progresso, Resolvido, Fechado, etc.)." /></h3>
-            <ul className="reports__list">
-              {overview.ticketsByStatus.map((s) => (
-                <li key={s.status} className="reports__list-row">
-                  <span>{STATUS_LABELS[s.status] || s.status}</span>
-                  <strong>{s.count}</strong>
-                </li>
-              ))}
-            </ul>
-          </section>
-          <section className="reports__card">
-            <h3 className="reports__card-title"><BarChart3 size={18} /> Por prioridade <InfoTooltip text="Quantidade de tickets por nível de prioridade (Baixa, Média, Alta, Urgente) no período." /></h3>
-            <ul className="reports__list">
-              {overview.ticketsByPriority.map((p) => (
-                <li key={p.priority} className="reports__list-row">
-                  <span><i className="reports__dot" style={{ backgroundColor: PRIORITY_COLORS[p.priority] }} /> {PRIORITY_LABELS[p.priority] || p.priority}</span>
-                  <strong>{p.count}</strong>
-                </li>
-              ))}
-            </ul>
-          </section>
+        <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <Card className="gap-3 px-4 py-4">
+            <div className={SECTION_HEAD}>
+              <PieChart size={16} className={cn('shrink-0', ACCENT.purple.text)} />
+              <h3 className={SECTION_TITLE}>Por status</h3>
+              <InfoTooltip text="Distribuição dos tickets do período por status atual (Aberto, Em progresso, Resolvido, Fechado, etc.)." />
+            </div>
+            {overview.ticketsByStatus.length === 0 ? (
+              <p className="text-sm text-muted-foreground italic">Nenhum ticket no período</p>
+            ) : (
+              <div className="flex flex-col gap-3">
+                {overview.ticketsByStatus.map((s) => {
+                  const pct = totalStatus > 0 ? (s.count / totalStatus) * 100 : 0;
+                  const accent = STATUS_ACCENT[s.status] || 'purple';
+                  return (
+                    <div key={s.status} className="flex flex-col gap-1.5">
+                      <div className="flex items-center justify-between text-[0.8125rem]">
+                        <span className="flex items-center gap-1.5 font-medium text-foreground">
+                          <span className={cn('h-1.5 w-1.5 rounded-full', ACCENT[accent].solid)} />
+                          {STATUS_LABELS[s.status] || s.status}
+                        </span>
+                        <span className="font-semibold text-foreground tabular-nums">{s.count} <span className="font-normal text-muted-foreground">({pct.toFixed(0)}%)</span></span>
+                      </div>
+                      <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                        <div className={cn('h-full rounded-full transition-[width] duration-300', ACCENT[accent].solid)} style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </Card>
+          <Card className="gap-3 px-4 py-4">
+            <div className={SECTION_HEAD}>
+              <BarChart3 size={16} className={cn('shrink-0', ACCENT.blue.text)} />
+              <h3 className={SECTION_TITLE}>Por prioridade</h3>
+              <InfoTooltip text="Quantidade de tickets por nível de prioridade (Baixa, Média, Alta, Urgente) no período." />
+            </div>
+            {overview.ticketsByPriority.length === 0 ? (
+              <p className="text-sm text-muted-foreground italic">Nenhum ticket no período</p>
+            ) : (
+              <div className="flex flex-col gap-3">
+                {overview.ticketsByPriority.map((p) => {
+                  const pct = totalPriority > 0 ? (p.count / totalPriority) * 100 : 0;
+                  const accent = PRIORITY_ACCENT[p.priority] || 'purple';
+                  return (
+                    <div key={p.priority} className="flex flex-col gap-1.5">
+                      <div className="flex items-center justify-between text-[0.8125rem]">
+                        <span className="flex items-center gap-1.5 font-medium text-foreground">
+                          <span className={cn('h-1.5 w-1.5 rounded-full', ACCENT[accent].solid)} />
+                          {PRIORITY_LABELS[p.priority] || p.priority}
+                        </span>
+                        <span className="font-semibold text-foreground tabular-nums">{p.count} <span className="font-normal text-muted-foreground">({pct.toFixed(0)}%)</span></span>
+                      </div>
+                      <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                        <div className={cn('h-full rounded-full transition-[width] duration-300', ACCENT[accent].solid)} style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </Card>
         </div>
       )}
 
       {/* Por formulário */}
-      <section className="reports__section">
-        <h2 className="reports__section-title">Tickets por formulário <InfoTooltip text="Quantidade de tickets gerados por cada formulário no período, com totais resolvidos e tempo médio de resolução." /></h2>
-        <div className="reports__card reports__table-wrap">
-          {formsData.length === 0 ? (
-            <p className="reports__empty">Nenhum ticket por formulário no período.</p>
-          ) : (
-            <table className="reports__table">
-              <thead>
-                <tr>
-                  <th>Formulário</th>
-                  <th>Total</th>
-                  <th>Resolvidos</th>
-                  <th>Taxa</th>
-                  <th>Tempo médio</th>
-                </tr>
-              </thead>
-              <tbody>
-                {formsData.map((f) => {
-                  const rate = f.ticket_count > 0 ? (f.resolved_count / f.ticket_count) * 100 : 0;
-                  return (
-                    <tr key={f.id}>
-                      <td><strong>{f.name}</strong></td>
-                      <td>{f.ticket_count}</td>
-                      <td>{f.resolved_count}</td>
-                      <td>{rate.toFixed(1)}%</td>
-                      <td>{formatHours(f.avg_resolution_hours)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </section>
+      <TableCard
+        title="Tickets por formulário"
+        tooltip="Quantidade de tickets gerados por cada formulário no período, com totais resolvidos e tempo médio de resolução."
+        accent="purple"
+        empty={formsData.length === 0 ? 'Nenhum ticket por formulário no período.' : undefined}
+      >
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Formulário</TableHead>
+              <TableHead>Total</TableHead>
+              <TableHead>Resolvidos</TableHead>
+              <TableHead>Taxa</TableHead>
+              <TableHead>Tempo médio</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {formsData.map((f) => {
+              const rate = f.ticket_count > 0 ? (f.resolved_count / f.ticket_count) * 100 : 0;
+              return (
+                <TableRow key={f.id}>
+                  <TableCell className="font-semibold whitespace-normal">{f.name}</TableCell>
+                  <TableCell className="tabular-nums">{f.ticket_count}</TableCell>
+                  <TableCell className="tabular-nums">{f.resolved_count}</TableCell>
+                  <TableCell className="tabular-nums">{rate.toFixed(1)}%</TableCell>
+                  <TableCell className="tabular-nums">{formatHours(f.avg_resolution_hours)}</TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </TableCard>
 
       {/* Por categoria */}
       {categoryData.length > 0 && (
-        <section className="reports__section">
-          <h2 className="reports__section-title">Tickets por categoria <InfoTooltip text="Tickets do período agrupados por categoria de atendimento." /></h2>
-          <div className="reports__card reports__table-wrap">
-            <table className="reports__table">
-              <thead>
-                <tr>
-                  <th>Categoria</th>
-                  <th>Total</th>
-                  <th>Resolvidos</th>
-                  <th>Taxa</th>
-                </tr>
-              </thead>
-              <tbody>
-                {categoryData.map((c) => {
-                  const rate = c.ticket_count > 0 ? (c.resolved_count / c.ticket_count) * 100 : 0;
-                  return (
-                    <tr key={c.id}>
-                      <td><strong>{c.name}</strong></td>
-                      <td>{c.ticket_count}</td>
-                      <td>{c.resolved_count}</td>
-                      <td>{rate.toFixed(1)}%</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </section>
+        <TableCard
+          title="Tickets por categoria"
+          tooltip="Tickets do período agrupados por categoria de atendimento."
+          accent="blue"
+        >
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Categoria</TableHead>
+                <TableHead>Total</TableHead>
+                <TableHead>Resolvidos</TableHead>
+                <TableHead>Taxa</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {categoryData.map((c) => {
+                const rate = c.ticket_count > 0 ? (c.resolved_count / c.ticket_count) * 100 : 0;
+                return (
+                  <TableRow key={c.id}>
+                    <TableCell className="font-semibold whitespace-normal">{c.name}</TableCell>
+                    <TableCell className="tabular-nums">{c.ticket_count}</TableCell>
+                    <TableCell className="tabular-nums">{c.resolved_count}</TableCell>
+                    <TableCell className="tabular-nums">{rate.toFixed(1)}%</TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </TableCard>
       )}
 
       {/* Performance de agentes */}
       {agentsData.length > 0 && (
-        <section className="reports__section">
-          <h2 className="reports__section-title">Performance de agentes <InfoTooltip text="Tickets atribuídos ao agente no período (data de atribuição ou criação). Resolvidos = concluídos no período. Taxa = resolvidos no período ÷ atribuídos no período." /></h2>
-          <div className="reports__card reports__table-wrap">
-            <table className="reports__table">
-              <thead>
-                <tr>
-                  <th>Agente</th>
-                  <th>Total</th>
-                  <th>Resolvidos</th>
-                  <th>Taxa</th>
-                  <th>Tempo médio</th>
-                  <th>Mín / Máx</th>
-                </tr>
-              </thead>
-              <tbody>
-                {agentsData.map((a) => {
-                  const rate = a.total_tickets > 0 ? (a.resolved_tickets / a.total_tickets) * 100 : 0;
-                  return (
-                    <tr key={a.id}>
-                      <td>
-                        <strong>{a.name}</strong>
-                        <div className="reports__meta">{a.email}</div>
-                      </td>
-                      <td>{a.total_tickets}</td>
-                      <td>{a.resolved_tickets}</td>
-                      <td>{rate.toFixed(1)}%</td>
-                      <td>{formatHours(a.avg_resolution_hours)}</td>
-                      <td>{formatHours(a.min_resolution_hours)} / {formatHours(a.max_resolution_hours)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </section>
+        <TableCard
+          title="Performance de agentes"
+          tooltip="Tickets atribuídos ao agente no período (data de atribuição ou criação). Resolvidos = concluídos no período. Taxa = resolvidos no período ÷ atribuídos no período."
+          accent="green"
+        >
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Agente</TableHead>
+                <TableHead>Total</TableHead>
+                <TableHead>Resolvidos</TableHead>
+                <TableHead>Taxa</TableHead>
+                <TableHead>Tempo médio</TableHead>
+                <TableHead>Mín / Máx</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {agentsData.map((a) => {
+                const rate = a.total_tickets > 0 ? (a.resolved_tickets / a.total_tickets) * 100 : 0;
+                return (
+                  <TableRow key={a.id}>
+                    <TableCell className="whitespace-normal">
+                      <span className="block font-semibold text-foreground">{a.name}</span>
+                      <span className="block text-xs text-muted-foreground">{a.email}</span>
+                    </TableCell>
+                    <TableCell className="tabular-nums">{a.total_tickets}</TableCell>
+                    <TableCell className="tabular-nums">{a.resolved_tickets}</TableCell>
+                    <TableCell className="tabular-nums">{rate.toFixed(1)}%</TableCell>
+                    <TableCell className="tabular-nums">{formatHours(a.avg_resolution_hours)}</TableCell>
+                    <TableCell className="tabular-nums">{formatHours(a.min_resolution_hours)} / {formatHours(a.max_resolution_hours)}</TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </TableCard>
       )}
 
       {/* Tempo por prioridade */}
       {responseTime.length > 0 && (
-        <section className="reports__section">
-          <h2 className="reports__section-title">Tempo de resolução por prioridade <InfoTooltip text="Tempo médio (e mínimo/máximo) para resolver tickets por nível de prioridade no período. Ajuda a ver se prioridades altas são atendidas mais rápido." /></h2>
-          <div className="reports__card reports__table-wrap">
-            <table className="reports__table">
-              <thead>
-                <tr>
-                  <th>Prioridade</th>
-                  <th>Total</th>
-                  <th>Médio</th>
-                  <th>Mín</th>
-                  <th>Máx</th>
-                </tr>
-              </thead>
-              <tbody>
-                {responseTime.map((r) => (
-                  <tr key={r.priority}>
-                    <td><i className="reports__dot" style={{ backgroundColor: PRIORITY_COLORS[r.priority] }} /> {PRIORITY_LABELS[r.priority] || r.priority}</td>
-                    <td>{r.total_tickets}</td>
-                    <td>{formatHours(r.avg_hours)}</td>
-                    <td>{formatHours(r.min_hours)}</td>
-                    <td>{formatHours(r.max_hours)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
+        <TableCard
+          title="Tempo de resolução por prioridade"
+          tooltip="Tempo médio (e mínimo/máximo) para resolver tickets por nível de prioridade no período. Ajuda a ver se prioridades altas são atendidas mais rápido."
+          accent="orange"
+        >
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Prioridade</TableHead>
+                <TableHead>Total</TableHead>
+                <TableHead>Médio</TableHead>
+                <TableHead>Mín</TableHead>
+                <TableHead>Máx</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {responseTime.map((r) => {
+                const accent = PRIORITY_ACCENT[r.priority] || 'purple';
+                return (
+                  <TableRow key={r.priority}>
+                    <TableCell>
+                      <span className="flex items-center gap-1.5 font-semibold text-foreground">
+                        <span className={cn('h-1.5 w-1.5 rounded-full', ACCENT[accent].solid)} />
+                        {PRIORITY_LABELS[r.priority] || r.priority}
+                      </span>
+                    </TableCell>
+                    <TableCell className="tabular-nums">{r.total_tickets}</TableCell>
+                    <TableCell className="tabular-nums">{formatHours(r.avg_hours)}</TableCell>
+                    <TableCell className="tabular-nums">{formatHours(r.min_hours)}</TableCell>
+                    <TableCell className="tabular-nums">{formatHours(r.max_hours)}</TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </TableCard>
       )}
 
       {/* Evolução (timeline) */}
       {timeline.length > 0 && (
-        <section className="reports__section">
-          <h2 className="reports__section-title">Evolução no período <InfoTooltip text="Barras = tickets criados em cada dia/semana. O rótulo mostra criados / resolvidos naquele intervalo (resolvidos usam data de conclusão)." /></h2>
-          <div className="reports__card">
-            <div className="reports__chart-bars">
+        <section className="mb-6">
+          <div className={SECTION_HEAD}>
+            <TrendingUp size={16} className={cn('shrink-0', ACCENT.green.text)} />
+            <h2 className={SECTION_TITLE}>Evolução no período</h2>
+            <InfoTooltip text="Barras = tickets criados em cada dia/semana. O rótulo mostra criados / resolvidos naquele intervalo (resolvidos usam data de conclusão)." />
+          </div>
+          <Card className="gap-2 px-4 py-4">
+            <div className="flex h-[160px] items-end justify-between gap-[3px]">
               {timeline.map((t) => {
                 const pct = (t.total / maxTimeline) * 100;
                 return (
                   <div
                     key={t.period}
-                    className="reports__chart-bar"
+                    className={cn('relative mx-auto max-w-[26px] min-w-[4px] flex-1 rounded-t transition-[height] duration-300', ACCENT.purple.solid)}
                     style={{ height: `${Math.max(pct, t.total > 0 ? 8 : 0)}%` }}
                     title={`${t.period}: ${t.total} criados, ${t.resolved} resolvidos`}
                   >
                     {t.total > 0 && (
-                      <span className="reports__chart-bar-label">
-                        {t.total}
-                        {t.resolved > 0 ? ` / ${t.resolved}` : ''}
+                      <span className="pointer-events-none absolute -top-4 left-1/2 -translate-x-1/2 text-[0.625rem] font-bold whitespace-nowrap text-muted-foreground">
+                        {t.total}{t.resolved > 0 ? ` / ${t.resolved}` : ''}
                       </span>
                     )}
                   </div>
                 );
               })}
             </div>
-            <div className="reports__chart-axis">
+            <div className="flex justify-between text-[0.7rem] text-muted-foreground">
               <span>{timeline[0]?.period}</span>
               <span>{timeline[timeline.length - 1]?.period}</span>
             </div>
-          </div>
+          </Card>
         </section>
       )}
 
       {/* Webhooks */}
       {webhooksData && (
-        <section className="reports__section">
-          <h2 className="reports__section-title"><Webhook size={20} /> Webhooks <InfoTooltip text="Chamadas recebidas pelos webhooks no período, taxa de sucesso e quantos tickets foram criados a partir deles." /></h2>
-          <div className="reports__kpis reports__kpis--compact">
-            <div className="reports__kpi reports__kpi--small">
-              <span className="reports__kpi-label">Webhooks <InfoTooltip text="Total de webhooks configurados e quantos estão ativos no momento." /></span>
-              <span className="reports__kpi-value">{webhooksData.totalWebhooks}</span>
-              <span className="reports__kpi-sub">{webhooksData.activeWebhooks} ativos</span>
-            </div>
-            <div className="reports__kpi reports__kpi--small">
-              <span className="reports__kpi-label">Chamadas <InfoTooltip text="Número total de requisições recebidas pelos webhooks no período." /></span>
-              <span className="reports__kpi-value">{webhooksData.totalCalls}</span>
-            </div>
-            <div className="reports__kpi reports__kpi--small">
-              <span className="reports__kpi-label">Taxa sucesso <InfoTooltip text="Percentual de chamadas que foram processadas com sucesso (sem erro)." /></span>
-              <span className="reports__kpi-value" style={{ color: 'var(--green)' }}>{webhooksData.successRate.toFixed(1)}%</span>
-            </div>
-            <div className="reports__kpi reports__kpi--small">
-              <span className="reports__kpi-label">Tickets criados <InfoTooltip text="Quantidade de tickets criados a partir das chamadas de webhook no período." /></span>
-              <span className="reports__kpi-value">{webhooksData.ticketsCreated}</span>
-            </div>
+        <section className="mb-6">
+          <div className={SECTION_HEAD}>
+            <Webhook size={16} className={cn('shrink-0', ACCENT.purple.text)} />
+            <h2 className={SECTION_TITLE}>Webhooks</h2>
+            <InfoTooltip text="Chamadas recebidas pelos webhooks no período, taxa de sucesso e quantos tickets foram criados a partir deles." />
+          </div>
+          <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <Card className="gap-0 px-4 py-3">
+              <span className="block text-[0.7rem] font-medium text-muted-foreground">Webhooks</span>
+              <span className="block text-xl font-bold text-foreground">{webhooksData.totalWebhooks}</span>
+              <span className="block text-[0.7rem] text-muted-foreground">{webhooksData.activeWebhooks} ativos</span>
+            </Card>
+            <Card className="gap-0 px-4 py-3">
+              <span className="block text-[0.7rem] font-medium text-muted-foreground">Chamadas</span>
+              <span className="block text-xl font-bold text-foreground">{webhooksData.totalCalls}</span>
+            </Card>
+            <Card className="gap-0 px-4 py-3">
+              <span className="block text-[0.7rem] font-medium text-muted-foreground">Taxa sucesso</span>
+              <span className={cn('block text-xl font-bold', ACCENT.green.text)}>{webhooksData.successRate.toFixed(1)}%</span>
+            </Card>
+            <Card className="gap-0 px-4 py-3">
+              <span className="block text-[0.7rem] font-medium text-muted-foreground">Tickets criados</span>
+              <span className="block text-xl font-bold text-foreground">{webhooksData.ticketsCreated}</span>
+            </Card>
           </div>
           {webhooksData.topWebhooks && webhooksData.topWebhooks.length > 0 && (
-            <div className="reports__card reports__table-wrap" style={{ marginTop: 'var(--spacing-md)' }}>
-              <h4 className="reports__card-title">Mais utilizados</h4>
-              <table className="reports__table">
-                <thead>
-                  <tr>
-                    <th>Webhook</th>
-                    <th>Chamadas</th>
-                    <th>Sucessos</th>
-                    <th>Erros</th>
-                    <th>Tickets</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {webhooksData.topWebhooks.map((w) => (
-                    <tr key={w.id}>
-                      <td><strong>{w.name}</strong></td>
-                      <td>{w.total_calls}</td>
-                      <td style={{ color: 'var(--green)' }}>{w.success_calls}</td>
-                      <td style={{ color: 'var(--red)' }}>{w.error_calls}</td>
-                      <td>{w.tickets_created ?? 0}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <Card className="px-4 py-4">
+              <h4 className="mb-3 text-sm font-semibold text-foreground">Mais utilizados</h4>
+              <div className="-mx-4 -mb-4">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Webhook</TableHead>
+                      <TableHead>Chamadas</TableHead>
+                      <TableHead>Sucessos</TableHead>
+                      <TableHead>Erros</TableHead>
+                      <TableHead>Tickets</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {webhooksData.topWebhooks.map((wh) => (
+                      <TableRow key={wh.id}>
+                        <TableCell className="font-semibold whitespace-normal">{wh.name}</TableCell>
+                        <TableCell className="tabular-nums">{wh.total_calls}</TableCell>
+                        <TableCell className={cn('tabular-nums', ACCENT.green.text)}>{wh.success_calls}</TableCell>
+                        <TableCell className={cn('tabular-nums', ACCENT.red.text)}>{wh.error_calls}</TableCell>
+                        <TableCell className="tabular-nums">{wh.tickets_created ?? 0}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </Card>
           )}
         </section>
       )}
-
-      <style>{`
-        .reports__spinner {
-          width: 48px; height: 48px;
-          border: 3px solid var(--border-primary);
-          border-top-color: var(--purple);
-          border-radius: 50%;
-          animation: reports-spin 0.8s linear infinite;
-        }
-        .reports__spin { animation: reports-spin 0.8s linear infinite; }
-        @keyframes reports-spin { to { transform: rotate(360deg); } }
-      `}</style>
     </div>
   );
 }

@@ -1,7 +1,24 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { User, Plus, Search, Edit, Trash2, Mail, Shield, X, Link as LinkIcon, Unlink, Save } from 'lucide-react';
+import { toast } from 'sonner';
+import { User, Plus, Search, Edit, Trash2, Mail, Shield, Link as LinkIcon, Unlink, Save } from 'lucide-react';
 import { formatDateBR } from '../utils/dateUtils';
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Card } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useConfirm } from '@/components/ui/confirm-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
 
 interface AccessProfile {
   id: number;
@@ -19,6 +36,7 @@ interface UserData {
 }
 
 export default function Users() {
+  const confirm = useConfirm();
   const [searchTerm, setSearchTerm] = useState('');
   const [users, setUsers] = useState<UserData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -32,7 +50,7 @@ export default function Users() {
     name: '',
     email: '',
     password: '',
-    access_profile_ids: [] as number[]
+    access_profile_ids: [] as number[],
   });
 
   useEffect(() => {
@@ -45,7 +63,7 @@ export default function Users() {
       setUsers(response.data);
     } catch (error) {
       console.error('Erro ao buscar usuários:', error);
-      alert('Erro ao buscar usuários');
+      toast.error('Erro ao buscar usuários');
     } finally {
       setLoading(false);
     }
@@ -58,7 +76,7 @@ export default function Users() {
       setAvailableProfiles(response.data);
     } catch (error) {
       console.error('Erro ao buscar perfis:', error);
-      alert('Erro ao buscar perfis de acesso');
+      toast.error('Erro ao buscar perfis de acesso');
     } finally {
       setLoadingProfiles(false);
     }
@@ -72,68 +90,53 @@ export default function Users() {
 
   const handleLinkProfile = async (profileId: number) => {
     if (!selectedUser) return;
-
     try {
-      await axios.post(`/api/users/${selectedUser.id}/access-profiles`, {
-        access_profile_id: profileId
-      });
-      
-      alert('Perfil vinculado com sucesso!');
-      
-      // Buscar usuário atualizado
+      await axios.post(`/api/users/${selectedUser.id}/access-profiles`, { access_profile_id: profileId });
+      toast.success('Perfil vinculado com sucesso!');
       const response = await axios.get(`/api/users/${selectedUser.id}`);
       setSelectedUser(response.data);
-      
-      // Atualizar lista de usuários
       await fetchUsers();
     } catch (error: any) {
       console.error('Erro ao vincular perfil:', error);
-      alert(error.response?.data?.error || 'Erro ao vincular perfil');
+      toast.error(error.response?.data?.error || 'Erro ao vincular perfil');
     }
   };
 
   const handleUnlinkProfile = async (profileId: number) => {
     if (!selectedUser) return;
-
-    if (!window.confirm('Tem certeza que deseja desvincular este perfil?')) {
-      return;
-    }
+    const ok = await confirm({
+      title: 'Desvincular perfil',
+      description: 'Tem certeza que deseja desvincular este perfil?',
+      confirmLabel: 'Desvincular',
+      variant: 'destructive',
+    });
+    if (!ok) return;
 
     try {
       await axios.delete(`/api/users/${selectedUser.id}/access-profiles/${profileId}`);
-      
-      alert('Perfil desvinculado com sucesso!');
-      
-      // Buscar usuário atualizado
+      toast.success('Perfil desvinculado com sucesso!');
       const response = await axios.get(`/api/users/${selectedUser.id}`);
       setSelectedUser(response.data);
-      
-      // Atualizar lista de usuários
       await fetchUsers();
     } catch (error: any) {
       console.error('Erro ao desvincular perfil:', error);
-      alert(error.response?.data?.error || 'Erro ao desvincular perfil');
+      toast.error(error.response?.data?.error || 'Erro ao desvincular perfil');
     }
   };
 
-
-  const filteredUsers = users.filter(user =>
-    user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.email.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredUsers = users.filter(
+    (user) =>
+      user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.email.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const isProfileLinked = (profileId: number): boolean => {
     if (!selectedUser || !selectedUser.access_profiles) return false;
-    return selectedUser.access_profiles.some(p => p.id === profileId);
+    return selectedUser.access_profiles.some((p) => p.id === profileId);
   };
 
   const handleCreate = async () => {
-    setFormData({
-      name: '',
-      email: '',
-      password: '',
-      access_profile_ids: []
-    });
+    setFormData({ name: '', email: '', password: '', access_profile_ids: [] });
     setEditingUser(null);
     await fetchAvailableProfiles();
     setShowUserModal(true);
@@ -144,7 +147,7 @@ export default function Users() {
       name: user.name,
       email: user.email,
       password: '',
-      access_profile_ids: user.access_profiles?.map(p => p.id) || []
+      access_profile_ids: user.access_profiles?.map((p) => p.id) || [],
     });
     setEditingUser(user);
     await fetchAvailableProfiles();
@@ -152,33 +155,35 @@ export default function Users() {
   };
 
   const handleDelete = async (userId: number) => {
-    if (!window.confirm('Tem certeza que deseja excluir este usuário? Esta ação não pode ser desfeita.')) {
-      return;
-    }
+    const ok = await confirm({
+      title: 'Excluir usuário',
+      description: 'Tem certeza que deseja excluir este usuário? Esta ação não pode ser desfeita.',
+      confirmLabel: 'Excluir',
+      variant: 'destructive',
+    });
+    if (!ok) return;
 
     try {
       await axios.delete(`/api/users/${userId}`);
-      setUsers(users.filter(u => u.id !== userId));
-      alert('Usuário excluído com sucesso!');
+      setUsers(users.filter((u) => u.id !== userId));
+      toast.success('Usuário excluído com sucesso!');
     } catch (error: any) {
       console.error('Erro ao excluir usuário:', error);
-      alert(error.response?.data?.error || 'Erro ao excluir usuário');
+      toast.error(error.response?.data?.error || 'Erro ao excluir usuário');
     }
   };
 
   const handleSaveUser = async () => {
     if (!formData.name.trim() || !formData.email.trim()) {
-      alert('Nome e email são obrigatórios');
+      toast.error('Nome e email são obrigatórios');
       return;
     }
-
     if (!editingUser && !formData.password) {
-      alert('Senha é obrigatória para novos usuários');
+      toast.error('Senha é obrigatória para novos usuários');
       return;
     }
-
     if (formData.access_profile_ids.length === 0) {
-      alert('Selecione pelo menos um perfil de acesso');
+      toast.error('Selecione pelo menos um perfil de acesso');
       return;
     }
 
@@ -186,19 +191,16 @@ export default function Users() {
       const payload: any = {
         name: formData.name,
         email: formData.email,
-        access_profile_ids: formData.access_profile_ids
+        access_profile_ids: formData.access_profile_ids,
       };
-
-      if (formData.password) {
-        payload.password = formData.password;
-      }
+      if (formData.password) payload.password = formData.password;
 
       if (editingUser) {
         await axios.put(`/api/users/${editingUser.id}`, payload);
-        alert('Usuário atualizado com sucesso!');
+        toast.success('Usuário atualizado com sucesso!');
       } else {
         await axios.post('/api/users', payload);
-        alert('Usuário criado com sucesso!');
+        toast.success('Usuário criado com sucesso!');
       }
 
       setShowUserModal(false);
@@ -206,643 +208,297 @@ export default function Users() {
       fetchUsers();
     } catch (error: any) {
       console.error('Erro ao salvar usuário:', error);
-      alert(error.response?.data?.error || 'Erro ao salvar usuário');
+      toast.error(error.response?.data?.error || 'Erro ao salvar usuário');
     }
+  };
+
+  const toggleProfileId = (id: number, checked: boolean) => {
+    setFormData((prev) => ({
+      ...prev,
+      access_profile_ids: checked
+        ? [...prev.access_profile_ids, id]
+        : prev.access_profile_ids.filter((pid) => pid !== id),
+    }));
   };
 
   return (
     <div>
-      <div style={{ marginBottom: 'var(--spacing-2xl)' }}>
-        <h1 style={{ 
-          fontSize: '2.5rem', 
-          fontWeight: '800', 
-          marginBottom: 'var(--spacing-sm)',
-          background: 'linear-gradient(135deg, var(--text-primary) 0%, var(--text-secondary) 100%)',
-          WebkitBackgroundClip: 'text',
-          WebkitTextFillColor: 'transparent',
-          backgroundClip: 'text',
-          letterSpacing: '-0.03em'
-        }}>
-          Usuários
-        </h1>
-        <p style={{
-          color: 'var(--text-secondary)',
-          fontSize: '1rem',
-          fontWeight: '400'
-        }}>
-          Gerencie os usuários e seus perfis de acesso do sistema
-        </p>
+      <div className="mb-8">
+        <h1 className="text-3xl font-extrabold tracking-tight text-foreground">Usuários</h1>
+        <p className="mt-1 text-muted-foreground">Gerencie os usuários e seus perfis de acesso do sistema</p>
       </div>
 
-      <div className="list-page-toolbar" style={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center', 
-        marginBottom: 'var(--spacing-lg)',
-        gap: 'var(--spacing-md)',
-        flexWrap: 'wrap'
-      }}>
-        <div style={{ 
-          position: 'relative',
-          flex: '1',
-          minWidth: '300px',
-          maxWidth: '500px'
-        }}>
-          <Search 
-            size={20} 
-            style={{ 
-              position: 'absolute', 
-              left: 'var(--spacing-md)', 
-              top: '50%', 
-              transform: 'translateY(-50%)',
-              color: 'var(--text-tertiary)',
-              pointerEvents: 'none'
-            }} 
-          />
-          <input
-            type="text"
-            className="input"
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <div className="relative max-w-[500px] min-w-[280px] flex-1">
+          <Search size={18} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted-foreground" />
+          <Input
             placeholder="Buscar usuários..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            style={{ paddingLeft: '2.75rem' }}
+            className="pl-9"
           />
         </div>
-        <button 
-          className="btn btn-primary"
-          onClick={handleCreate}
-        >
-          <Plus size={20} />
+        <Button onClick={handleCreate}>
+          <Plus size={18} />
           Novo Usuário
-        </button>
+        </Button>
       </div>
 
       {loading ? (
-        <div className="card" style={{ 
-          textAlign: 'center', 
-          padding: 'var(--spacing-2xl)',
-          border: '1px solid var(--border-primary)'
-        }}>
-          <p style={{ color: 'var(--text-secondary)' }}>Carregando usuários...</p>
+        <div className="flex flex-col gap-3">
+          <Skeleton className="h-20 w-full" />
+          <Skeleton className="h-20 w-full" />
+          <Skeleton className="h-20 w-full" />
         </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
-          {filteredUsers.length === 0 ? (
-            <div className="card" style={{ 
-              textAlign: 'center', 
-              padding: 'var(--spacing-2xl)',
-              border: '1px solid var(--border-primary)'
-            }}>
-              <User size={48} color="var(--text-tertiary)" style={{ marginBottom: 'var(--spacing-md)' }} />
-              <p style={{ 
-                color: 'var(--text-secondary)',
-                fontSize: '1rem',
-                marginBottom: 'var(--spacing-sm)'
-              }}>
-                {searchTerm ? 'Nenhum usuário encontrado' : 'Nenhum usuário cadastrado ainda'}
-              </p>
-              {!searchTerm && (
-                <button 
-                  className="btn btn-primary" 
-                  style={{ marginTop: 'var(--spacing-md)' }}
-                  onClick={handleCreate}
-                >
-                  <Plus size={20} />
-                  Cadastrar Primeiro Usuário
-                </button>
-              )}
-            </div>
-          ) : (
-            filteredUsers.map((user) => {
-              return (
-                <div key={user.id} className="card" style={{ 
-                  border: '1px solid var(--border-primary)',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  transition: 'all var(--transition-base)'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = 'var(--border-secondary)';
-                  e.currentTarget.style.boxShadow = 'var(--shadow-md)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = 'var(--border-primary)';
-                  e.currentTarget.style.boxShadow = 'var(--shadow)';
-                }}
-                >
-                  <div style={{ flex: 1 }}>
-                    <div style={{ 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      gap: 'var(--spacing-md)',
-                      marginBottom: 'var(--spacing-xs)',
-                      flexWrap: 'wrap'
-                    }}>
-                      <User size={20} color="var(--blue)" />
-                      <h3 style={{ 
-                        fontSize: '1.125rem', 
-                        fontWeight: '600',
-                        color: 'var(--text-primary)'
-                      }}>
-                        {user.name}
-                      </h3>
-                    </div>
-                    <div style={{ 
-                      display: 'flex', 
-                      gap: 'var(--spacing-lg)',
-                      fontSize: '0.875rem',
-                      color: 'var(--text-secondary)',
-                      marginLeft: '2.25rem',
-                      flexWrap: 'wrap',
-                      alignItems: 'center'
-                    }}>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                        <Mail size={14} />
-                        {user.email}
-                      </span>
-                      {user.access_profiles && user.access_profiles.length > 0 && (
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                          <Shield size={14} color="var(--orange)" />
-                          <strong>{user.access_profiles.length}</strong> perfil{user.access_profiles.length > 1 ? 's' : ''}
-                        </span>
-                      )}
-                      <span><strong>Criado:</strong> {formatDateBR(user.created_at)}</span>
-                    </div>
-                    {user.access_profiles && user.access_profiles.length > 0 && (
-                      <div style={{
-                        marginLeft: '2.25rem',
-                        marginTop: 'var(--spacing-xs)',
-                        display: 'flex',
-                        gap: 'var(--spacing-xs)',
-                        flexWrap: 'wrap'
-                      }}>
-                        {user.access_profiles.map(profile => (
-                          <span
-                            key={profile.id}
-                            className="badge"
-                            style={{
-                              fontSize: '0.75rem',
-                              padding: '0.25rem 0.5rem',
-                              backgroundColor: 'var(--orange-light)',
-                              color: 'var(--orange)',
-                              border: '1px solid var(--orange)40'
-                            }}
-                          >
-                            {profile.name}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  <div style={{ 
-                    display: 'flex', 
-                    gap: 'var(--spacing-sm)'
-                  }}>
-                    <button 
-                      className="btn btn-info btn-sm"
-                      onClick={() => handleManageProfiles(user)}
-                    >
-                      <Shield size={16} />
-                      Perfis
-                    </button>
-                    <button 
-                      className="btn btn-secondary btn-sm"
-                      onClick={() => handleEdit(user)}
-                    >
-                      <Edit size={16} />
-                      Editar
-                    </button>
-                    <button 
-                      className="btn btn-danger btn-sm"
-                      onClick={() => handleDelete(user.id)}
-                    >
-                      <Trash2 size={16} />
-                      Excluir
-                    </button>
-                  </div>
-                </div>
-              );
-            })
+      ) : filteredUsers.length === 0 ? (
+        <Card className="items-center p-10 text-center">
+          <User size={40} className="mx-auto mb-3 text-muted-foreground" />
+          <p className="mb-3 text-muted-foreground">
+            {searchTerm ? 'Nenhum usuário encontrado' : 'Nenhum usuário cadastrado ainda'}
+          </p>
+          {!searchTerm && (
+            <Button onClick={handleCreate} className="mx-auto">
+              <Plus size={18} />
+              Cadastrar Primeiro Usuário
+            </Button>
           )}
+        </Card>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {filteredUsers.map((user) => (
+            <Card key={user.id} className="flex-row flex-wrap items-center justify-between gap-3 px-4 py-4">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <User size={18} className="text-[var(--blue)]" />
+                  <h3 className="text-base font-semibold text-foreground">{user.name}</h3>
+                </div>
+                <div className="mt-1 ml-6 flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
+                  <span className="flex items-center gap-1">
+                    <Mail size={13} />
+                    {user.email}
+                  </span>
+                  {!!user.access_profiles?.length && (
+                    <span className="flex items-center gap-1">
+                      <Shield size={13} className="text-[var(--orange)]" />
+                      <strong className="text-foreground">{user.access_profiles.length}</strong> perfil
+                      {user.access_profiles.length > 1 ? 's' : ''}
+                    </span>
+                  )}
+                  <span>
+                    <strong className="text-foreground">Criado:</strong> {formatDateBR(user.created_at)}
+                  </span>
+                </div>
+                {!!user.access_profiles?.length && (
+                  <div className="mt-2 ml-6 flex flex-wrap gap-1.5">
+                    {user.access_profiles.map((profile) => (
+                      <span
+                        key={profile.id}
+                        className="rounded-full px-2 py-0.5 text-xs font-medium"
+                        style={{ background: 'var(--orange-light)', color: 'var(--orange)' }}
+                      >
+                        {profile.name}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="flex shrink-0 gap-2">
+                <Button variant="outline" size="sm" onClick={() => handleManageProfiles(user)}>
+                  <Shield size={15} />
+                  Perfis
+                </Button>
+                <Button variant="secondary" size="sm" onClick={() => handleEdit(user)}>
+                  <Edit size={15} />
+                  Editar
+                </Button>
+                <Button variant="destructive" size="sm" onClick={() => handleDelete(user.id)}>
+                  <Trash2 size={15} />
+                  Excluir
+                </Button>
+              </div>
+            </Card>
+          ))}
         </div>
       )}
 
       {/* Modal de Gerenciamento de Perfis */}
-      {showProfileModal && selectedUser && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.7)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000,
-          padding: 'var(--spacing-xl)'
+      <Dialog
+        open={showProfileModal}
+        onOpenChange={(open) => {
+          setShowProfileModal(open);
+          if (!open) setSelectedUser(null);
         }}
-        onClick={(e) => {
-          if (e.target === e.currentTarget) {
-            setShowProfileModal(false);
-            setSelectedUser(null);
-          }
-        }}
-        >
-          <div className="card" style={{
-            maxWidth: '700px',
-            width: '100%',
-            maxHeight: '90vh',
-            overflow: 'auto',
-            border: '1px solid var(--border-primary)',
-            position: 'relative'
-          }}
-          onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: 'var(--spacing-xl)',
-              paddingBottom: 'var(--spacing-md)',
-              borderBottom: '1px solid var(--border-primary)'
-            }}>
-              <div>
-                <h2 style={{
-                  fontSize: '1.5rem',
-                  fontWeight: '700',
-                  color: 'var(--text-primary)',
-                  marginBottom: 'var(--spacing-xs)'
-                }}>
-                  Perfis de Acesso
-                </h2>
-                <p style={{
-                  fontSize: '0.875rem',
-                  color: 'var(--text-secondary)'
-                }}>
-                  {selectedUser.name} ({selectedUser.email})
-                </p>
-              </div>
-              <button
-                className="btn btn-secondary btn-sm"
-                onClick={() => {
-                  setShowProfileModal(false);
-                  setSelectedUser(null);
-                }}
-              >
-                <X size={20} />
-              </button>
-            </div>
+      >
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Perfis de Acesso</DialogTitle>
+            {selectedUser && (
+              <DialogDescription>
+                {selectedUser.name} ({selectedUser.email})
+              </DialogDescription>
+            )}
+          </DialogHeader>
 
-            <div style={{ marginBottom: 'var(--spacing-lg)' }}>
-              <h3 style={{
-                fontSize: '1rem',
-                fontWeight: '600',
-                color: 'var(--text-primary)',
-                marginBottom: 'var(--spacing-md)'
-              }}>
-                Perfis Vinculados
-              </h3>
-              {selectedUser.access_profiles && selectedUser.access_profiles.length > 0 ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-sm)' }}>
-                  {selectedUser.access_profiles.map(profile => (
-                    <div
-                      key={profile.id}
-                      className="card"
-                      style={{
-                        border: '1px solid var(--border-primary)',
-                        padding: 'var(--spacing-md)',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center'
-                      }}
-                    >
+          <div>
+            <h3 className="mb-2 text-sm font-semibold text-foreground">Perfis Vinculados</h3>
+            {selectedUser?.access_profiles?.length ? (
+              <div className="flex flex-col gap-2">
+                {selectedUser.access_profiles.map((profile) => (
+                  <Card key={profile.id} className="flex-row items-center justify-between gap-3 px-3 py-3">
+                    <div>
+                      <div className="font-medium text-foreground">{profile.name}</div>
+                      {profile.description && (
+                        <div className="text-sm text-muted-foreground">{profile.description}</div>
+                      )}
+                    </div>
+                    <Button variant="destructive" size="sm" onClick={() => handleUnlinkProfile(profile.id)}>
+                      <Unlink size={14} />
+                      Desvincular
+                    </Button>
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground italic">Nenhum perfil vinculado</p>
+            )}
+          </div>
+
+          <div>
+            <h3 className="mb-2 text-sm font-semibold text-foreground">Perfis Disponíveis</h3>
+            {loadingProfiles ? (
+              <p className="text-sm text-muted-foreground">Carregando perfis...</p>
+            ) : availableProfiles.length === 0 ? (
+              <p className="text-sm text-muted-foreground italic">Nenhum perfil disponível</p>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {availableProfiles.map((profile) => {
+                  const isLinked = isProfileLinked(profile.id);
+                  return (
+                    <Card key={profile.id} className={cn('flex-row items-center justify-between gap-3 px-3 py-3', isLinked && 'opacity-60')}>
                       <div>
-                        <div style={{
-                          fontWeight: '600',
-                          color: 'var(--text-primary)',
-                          marginBottom: 'var(--spacing-xs)'
-                        }}>
+                        <div className="font-medium text-foreground">
                           {profile.name}
+                          {isLinked && <span className="ml-2 text-xs font-medium text-[var(--green)]">(Vinculado)</span>}
                         </div>
                         {profile.description && (
-                          <div style={{
-                            fontSize: '0.875rem',
-                            color: 'var(--text-secondary)'
-                          }}>
-                            {profile.description}
-                          </div>
+                          <div className="text-sm text-muted-foreground">{profile.description}</div>
                         )}
                       </div>
-                      <button
-                        className="btn btn-danger btn-sm"
-                        onClick={() => handleUnlinkProfile(profile.id)}
-                      >
-                        <Unlink size={16} />
-                        Desvincular
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p style={{
-                  color: 'var(--text-tertiary)',
-                  fontSize: '0.875rem',
-                  fontStyle: 'italic'
-                }}>
-                  Nenhum perfil vinculado
-                </p>
-              )}
+                      <Button size="sm" onClick={() => handleLinkProfile(profile.id)} disabled={isLinked}>
+                        <LinkIcon size={14} />
+                        {isLinked ? 'Vinculado' : 'Vincular'}
+                      </Button>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Criar/Editar Usuário */}
+      <Dialog
+        open={showUserModal}
+        onOpenChange={(open) => {
+          setShowUserModal(open);
+          if (!open) setEditingUser(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{editingUser ? 'Editar Usuário' : 'Novo Usuário'}</DialogTitle>
+          </DialogHeader>
+
+          <div className="flex flex-col gap-4">
+            <div>
+              <Label className="mb-1.5">Nome *</Label>
+              <Input
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                placeholder="Nome completo"
+              />
             </div>
 
             <div>
-              <h3 style={{
-                fontSize: '1rem',
-                fontWeight: '600',
-                color: 'var(--text-primary)',
-                marginBottom: 'var(--spacing-md)'
-              }}>
-                Perfis Disponíveis
-              </h3>
+              <Label className="mb-1.5">Email *</Label>
+              <Input
+                type="email"
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                placeholder="email@exemplo.com"
+              />
+            </div>
+
+            <div>
+              <Label className="mb-1.5">
+                Senha {!editingUser && '*'}
+                {editingUser && <span className="font-normal text-muted-foreground"> (deixe em branco para não alterar)</span>}
+              </Label>
+              <Input
+                type="password"
+                value={formData.password}
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                placeholder={editingUser ? 'Nova senha (opcional)' : 'Mínimo 6 caracteres'}
+              />
+            </div>
+
+            <div>
+              <Label className="mb-1.5">Perfis de Acesso *</Label>
               {loadingProfiles ? (
-                <p style={{ color: 'var(--text-secondary)' }}>Carregando perfis...</p>
-              ) : availableProfiles.length === 0 ? (
-                <p style={{
-                  color: 'var(--text-tertiary)',
-                  fontSize: '0.875rem',
-                  fontStyle: 'italic'
-                }}>
-                  Nenhum perfil disponível
-                </p>
+                <p className="text-sm text-muted-foreground">Carregando perfis...</p>
               ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-sm)' }}>
-                  {availableProfiles.map(profile => {
-                    const isLinked = isProfileLinked(profile.id);
+                <div className="flex max-h-[200px] flex-col gap-1 overflow-y-auto rounded-lg border border-border p-2">
+                  {availableProfiles.map((profile) => {
+                    const isSelected = formData.access_profile_ids.includes(profile.id);
                     return (
-                      <div
+                      <label
                         key={profile.id}
-                        className="card"
-                        style={{
-                          border: '1px solid var(--border-primary)',
-                          padding: 'var(--spacing-md)',
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          opacity: isLinked ? 0.6 : 1
-                        }}
+                        className={cn(
+                          'flex cursor-pointer items-center gap-2 rounded-md p-2 transition-colors',
+                          isSelected && 'bg-primary/10'
+                        )}
                       >
-                        <div>
-                          <div style={{
-                            fontWeight: '600',
-                            color: 'var(--text-primary)',
-                            marginBottom: 'var(--spacing-xs)'
-                          }}>
-                            {profile.name}
-                            {isLinked && (
-                              <span style={{
-                                marginLeft: 'var(--spacing-sm)',
-                                fontSize: '0.75rem',
-                                color: 'var(--green)',
-                                fontWeight: '500'
-                              }}>
-                                (Vinculado)
-                              </span>
-                            )}
-                          </div>
+                        <Checkbox
+                          checked={isSelected}
+                          onCheckedChange={(checked) => toggleProfileId(profile.id, checked === true)}
+                        />
+                        <div className="flex-1">
+                          <div className="text-sm font-medium text-foreground">{profile.name}</div>
                           {profile.description && (
-                            <div style={{
-                              fontSize: '0.875rem',
-                              color: 'var(--text-secondary)'
-                            }}>
-                              {profile.description}
-                            </div>
+                            <div className="text-xs text-muted-foreground">{profile.description}</div>
                           )}
                         </div>
-                        <button
-                          className="btn btn-primary btn-sm"
-                          onClick={() => handleLinkProfile(profile.id)}
-                          disabled={isLinked}
-                        >
-                          <LinkIcon size={16} />
-                          {isLinked ? 'Vinculado' : 'Vincular'}
-                        </button>
-                      </div>
+                      </label>
                     );
                   })}
+                  {availableProfiles.length === 0 && (
+                    <p className="p-3 text-center text-sm text-muted-foreground">
+                      Nenhum perfil de acesso disponível. Crie perfis em /config/perfil-de-acesso
+                    </p>
+                  )}
                 </div>
               )}
             </div>
           </div>
-        </div>
-      )}
 
-      {/* Modal de Criar/Editar Usuário */}
-      {showUserModal && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.7)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000,
-          padding: 'var(--spacing-xl)'
-        }}
-        onClick={(e) => {
-          if (e.target === e.currentTarget) {
-            setShowUserModal(false);
-            setEditingUser(null);
-          }
-        }}
-        >
-          <div className="card" style={{
-            maxWidth: '600px',
-            width: '100%',
-            border: '1px solid var(--border-primary)',
-            position: 'relative'
-          }}
-          onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: 'var(--spacing-xl)',
-              paddingBottom: 'var(--spacing-md)',
-              borderBottom: '1px solid var(--border-primary)'
-            }}>
-              <h2 style={{
-                fontSize: '1.5rem',
-                fontWeight: '700',
-                color: 'var(--text-primary)'
-              }}>
-                {editingUser ? 'Editar Usuário' : 'Novo Usuário'}
-              </h2>
-              <button
-                className="btn btn-secondary btn-sm"
-                onClick={() => {
-                  setShowUserModal(false);
-                  setEditingUser(null);
-                }}
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-lg)' }}>
-              <div>
-                <label className="label">Nome *</label>
-                <input
-                  type="text"
-                  className="input"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="Nome completo"
-                />
-              </div>
-
-              <div>
-                <label className="label">Email *</label>
-                <input
-                  type="email"
-                  className="input"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  placeholder="email@exemplo.com"
-                />
-              </div>
-
-              <div>
-                <label className="label">
-                  Senha {!editingUser && '*'}
-                  {editingUser && <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', fontWeight: 'normal' }}> (deixe em branco para não alterar)</span>}
-                </label>
-                <input
-                  type="password"
-                  className="input"
-                  value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  placeholder={editingUser ? "Nova senha (opcional)" : "Mínimo 6 caracteres"}
-                />
-              </div>
-
-              <div>
-                <label className="label">Perfis de Acesso *</label>
-                {loadingProfiles ? (
-                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Carregando perfis...</p>
-                ) : (
-                  <div style={{ 
-                    display: 'flex', 
-                    flexDirection: 'column', 
-                    gap: 'var(--spacing-sm)',
-                    maxHeight: '200px',
-                    overflowY: 'auto',
-                    border: '1px solid var(--border-primary)',
-                    borderRadius: 'var(--radius-md)',
-                    padding: 'var(--spacing-sm)'
-                  }}>
-                    {availableProfiles.map(profile => {
-                      const isSelected = formData.access_profile_ids.includes(profile.id);
-                      return (
-                        <label
-                          key={profile.id}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 'var(--spacing-sm)',
-                            padding: 'var(--spacing-sm)',
-                            cursor: 'pointer',
-                            borderRadius: 'var(--radius-sm)',
-                            backgroundColor: isSelected ? 'var(--purple-light)' : 'transparent',
-                            transition: 'all var(--transition-base)'
-                          }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setFormData({
-                                  ...formData,
-                                  access_profile_ids: [...formData.access_profile_ids, profile.id]
-                                });
-                              } else {
-                                setFormData({
-                                  ...formData,
-                                  access_profile_ids: formData.access_profile_ids.filter(id => id !== profile.id)
-                                });
-                              }
-                            }}
-                            style={{ cursor: 'pointer' }}
-                          />
-                          <div style={{ flex: 1 }}>
-                            <div style={{ 
-                              fontWeight: '500', 
-                              color: 'var(--text-primary)',
-                              fontSize: '0.9375rem'
-                            }}>
-                              {profile.name}
-                            </div>
-                            {profile.description && (
-                              <div style={{ 
-                                fontSize: '0.8125rem', 
-                                color: 'var(--text-secondary)',
-                                marginTop: '0.125rem'
-                              }}>
-                                {profile.description}
-                              </div>
-                            )}
-                          </div>
-                        </label>
-                      );
-                    })}
-                    {availableProfiles.length === 0 && (
-                      <p style={{ 
-                        color: 'var(--text-tertiary)', 
-                        fontSize: '0.875rem',
-                        textAlign: 'center',
-                        padding: 'var(--spacing-md)'
-                      }}>
-                        Nenhum perfil de acesso disponível. Crie perfis em /config/perfil-de-acesso
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div style={{
-              display: 'flex',
-              justifyContent: 'flex-end',
-              gap: 'var(--spacing-sm)',
-              marginTop: 'var(--spacing-xl)',
-              paddingTop: 'var(--spacing-md)',
-              borderTop: '1px solid var(--border-primary)'
-            }}>
-              <button
-                className="btn btn-secondary"
-                onClick={() => {
-                  setShowUserModal(false);
-                  setEditingUser(null);
-                }}
-              >
-                Cancelar
-              </button>
-              <button
-                className="btn btn-primary"
-                onClick={handleSaveUser}
-              >
-                <Save size={20} />
-                {editingUser ? 'Atualizar' : 'Criar'} Usuário
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+          <DialogFooter>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setShowUserModal(false);
+                setEditingUser(null);
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button onClick={handleSaveUser}>
+              <Save size={18} />
+              {editingUser ? 'Atualizar' : 'Criar'} Usuário
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

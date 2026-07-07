@@ -2,6 +2,10 @@ import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { RefreshCw, Download, CheckCircle, AlertCircle, Clock, ExternalLink, GitBranch } from 'lucide-react';
 import { formatDateBR } from '../utils/dateUtils';
+import { cn } from '@/lib/utils';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 
 interface UpdateInfo {
   currentVersion: string;
@@ -17,7 +21,25 @@ interface Commit {
   message: string;
 }
 
+function Banner({ tone, icon: Icon, children }: { tone: 'blue' | 'red' | 'green' | 'orange'; icon: typeof AlertCircle; children: React.ReactNode }) {
+  return (
+    <div
+      className={cn(
+        'mb-4 flex items-start gap-2 rounded-lg border px-4 py-3 text-sm',
+        tone === 'blue' && 'border-[var(--blue)]/20 bg-[var(--blue-light)] text-[var(--blue)]',
+        tone === 'red' && 'border-[var(--red)]/20 bg-[var(--red-light)] text-[var(--red)]',
+        tone === 'green' && 'border-[var(--green)]/20 bg-[var(--green-light)] text-[var(--green)]',
+        tone === 'orange' && 'border-[var(--orange)]/20 bg-[var(--orange-light)] text-[var(--orange)]'
+      )}
+    >
+      <Icon size={18} className="mt-0.5 shrink-0" />
+      <div className="flex flex-col gap-1">{children}</div>
+    </div>
+  );
+}
+
 export default function Atualizar() {
+  const confirm = useConfirm();
   const [isChecking, setIsChecking] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
@@ -26,7 +48,6 @@ export default function Atualizar() {
   const [success, setSuccess] = useState<string | null>(null);
   const [updateOutput, setUpdateOutput] = useState<string | null>(null);
 
-  // Carregar versão atual ao montar
   useEffect(() => {
     fetchCurrentVersion();
     fetchCommits();
@@ -35,9 +56,11 @@ export default function Atualizar() {
   const fetchCurrentVersion = async () => {
     try {
       const response = await axios.get('/api/updates/version');
-      if (updateInfo) {
-        setUpdateInfo({ ...updateInfo, currentVersion: response.data.version });
-      }
+      setUpdateInfo((prev) =>
+        prev
+          ? { ...prev, currentVersion: response.data.version }
+          : { currentVersion: response.data.version, latestVersion: null, hasUpdate: false, releaseNotes: null, releaseUrl: null, lastChecked: null }
+      );
     } catch (err) {
       console.error('Erro ao obter versão:', err);
     }
@@ -56,7 +79,7 @@ export default function Atualizar() {
     setIsChecking(true);
     setError(null);
     setSuccess(null);
-    
+
     try {
       const response = await axios.get('/api/updates/check');
       setUpdateInfo(response.data);
@@ -69,21 +92,24 @@ export default function Atualizar() {
   };
 
   const handleUpdate = async () => {
-    if (!confirm('Tem certeza que deseja atualizar o sistema? Isso fará um git pull do repositório.')) {
-      return;
-    }
+    const ok = await confirm({
+      title: 'Atualizar sistema',
+      description: 'Tem certeza que deseja atualizar o sistema? Isso fará um git pull do repositório.',
+      confirmLabel: 'Atualizar',
+      variant: 'destructive',
+    });
+    if (!ok) return;
 
     setIsUpdating(true);
     setError(null);
     setSuccess(null);
     setUpdateOutput(null);
-    
+
     try {
       const response = await axios.post('/api/updates/update', { branch: 'main' });
       if (response.data.success) {
         setSuccess(response.data.message);
         setUpdateOutput(response.data.output || null);
-        // Atualizar informações após atualização
         await handleCheckUpdates();
         await fetchCommits();
       } else {
@@ -99,279 +125,115 @@ export default function Atualizar() {
 
   return (
     <div>
-      <div style={{ marginBottom: 'var(--spacing-2xl)' }}>
-        <h1 style={{ 
-          fontSize: '2.5rem', 
-          fontWeight: '800', 
-          marginBottom: 'var(--spacing-sm)',
-          background: 'linear-gradient(135deg, var(--text-primary) 0%, var(--text-secondary) 100%)',
-          WebkitBackgroundClip: 'text',
-          WebkitTextFillColor: 'transparent',
-          backgroundClip: 'text',
-          letterSpacing: '-0.03em'
-        }}>
+      <div className="mb-8">
+        <h1 className="mb-1.5 bg-gradient-to-br from-foreground to-muted-foreground bg-clip-text text-[2.5rem] font-extrabold tracking-tight text-transparent">
           Atualizar Sistema
         </h1>
-        <p style={{
-          color: 'var(--text-secondary)',
-          fontSize: '1rem',
-          fontWeight: '400'
-        }}>
-          Verifique e instale atualizações do sistema
-        </p>
+        <p className="text-base text-muted-foreground">Verifique e instale atualizações do sistema</p>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-lg)' }}>
-        <div className="card" style={{ 
-          border: '1px solid var(--border-primary)',
-          padding: 'var(--spacing-xl)'
-        }}>
-          <div style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: 'var(--spacing-md)',
-            marginBottom: 'var(--spacing-lg)'
-          }}>
-            <RefreshCw size={24} color="var(--blue)" />
-            <h2 style={{ 
-              fontSize: '1.5rem', 
-              fontWeight: '600',
-              color: 'var(--text-primary)'
-            }}>
-              Verificar Atualizações
-            </h2>
+      <div className="flex flex-col gap-5">
+        <Card className="px-6 py-6">
+          <div className="mb-5 flex items-center gap-3">
+            <RefreshCw size={24} className="text-[var(--blue)]" />
+            <h2 className="text-2xl font-semibold text-foreground">Verificar Atualizações</h2>
           </div>
 
-          <div style={{ marginBottom: 'var(--spacing-lg)' }}>
-            <p style={{ 
-              color: 'var(--text-secondary)',
-              fontSize: '0.9375rem',
-              marginBottom: 'var(--spacing-md)'
-            }}>
-              Versão atual do sistema: <strong>{updateInfo?.currentVersion || 'Carregando...'}</strong>
+          <div className="mb-5">
+            <p className="mb-3 text-[0.9375rem] text-muted-foreground">
+              Versão atual do sistema: <strong className="text-foreground">{updateInfo?.currentVersion || 'Carregando...'}</strong>
             </p>
 
             {updateInfo?.lastChecked && (
-              <p style={{ 
-                color: 'var(--text-tertiary)',
-                fontSize: '0.8125rem',
-                marginBottom: 'var(--spacing-md)'
-              }}>
+              <p className="mb-3 text-[0.8125rem] text-muted-foreground/80">
                 Última verificação: {formatDateBR(updateInfo.lastChecked, { includeTime: true })}
               </p>
             )}
-            
+
             {isChecking && (
-              <div style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: 'var(--spacing-sm)',
-                color: 'var(--blue)',
-                marginBottom: 'var(--spacing-md)'
-              }}>
+              <div className="mb-3 flex items-center gap-2 text-[var(--blue)]">
                 <Clock size={18} />
                 <span>Verificando atualizações...</span>
               </div>
             )}
 
             {error && (
-              <div style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: 'var(--spacing-sm)',
-                color: 'var(--red)',
-                marginBottom: 'var(--spacing-md)',
-                padding: 'var(--spacing-md)',
-                background: 'var(--red-light)',
-                borderRadius: 'var(--radius-md)',
-                border: '1px solid rgba(255, 59, 48, 0.2)'
-              }}>
-                <AlertCircle size={18} />
+              <Banner tone="red" icon={AlertCircle}>
                 <span>{error}</span>
-              </div>
+              </Banner>
             )}
 
             {success && (
-              <div style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: 'var(--spacing-sm)',
-                color: 'var(--green)',
-                marginBottom: 'var(--spacing-md)',
-                padding: 'var(--spacing-md)',
-                background: 'var(--green-light)',
-                borderRadius: 'var(--radius-md)',
-                border: '1px solid rgba(0, 255, 135, 0.2)'
-              }}>
-                <CheckCircle size={18} />
+              <Banner tone="green" icon={CheckCircle}>
                 <span>{success}</span>
-              </div>
+              </Banner>
             )}
 
             {updateInfo?.hasUpdate && (
-              <div style={{ 
-                display: 'flex', 
-                flexDirection: 'column',
-                gap: 'var(--spacing-sm)',
-                color: 'var(--orange)',
-                marginBottom: 'var(--spacing-md)',
-                padding: 'var(--spacing-md)',
-                background: 'var(--orange-light)',
-                borderRadius: 'var(--radius-md)',
-                border: '1px solid rgba(255, 154, 0, 0.2)'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)' }}>
-                  <AlertCircle size={18} />
-                  <span><strong>Nova versão disponível:</strong> {updateInfo.latestVersion}</span>
-                </div>
+              <Banner tone="orange" icon={AlertCircle}>
+                <span>
+                  <strong>Nova versão disponível:</strong> {updateInfo.latestVersion}
+                </span>
                 {updateInfo.releaseUrl && (
-                  <a 
-                    href={updateInfo.releaseUrl} 
-                    target="_blank" 
+                  <a
+                    href={updateInfo.releaseUrl}
+                    target="_blank"
                     rel="noopener noreferrer"
-                    style={{ 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      gap: 'var(--spacing-xs)',
-                      color: 'var(--orange)',
-                      textDecoration: 'none',
-                      fontSize: '0.875rem',
-                      marginTop: 'var(--spacing-xs)'
-                    }}
+                    className="flex items-center gap-1 text-[0.875rem] font-medium underline-offset-2 hover:underline"
                   >
                     Ver detalhes da release <ExternalLink size={14} />
                   </a>
                 )}
-              </div>
+              </Banner>
             )}
 
             {updateInfo && !updateInfo.hasUpdate && !isChecking && (
-              <div style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: 'var(--spacing-sm)',
-                color: 'var(--green)',
-                marginBottom: 'var(--spacing-md)',
-                padding: 'var(--spacing-md)',
-                background: 'var(--green-light)',
-                borderRadius: 'var(--radius-md)',
-                border: '1px solid rgba(0, 255, 135, 0.2)'
-              }}>
-                <CheckCircle size={18} />
+              <Banner tone="green" icon={CheckCircle}>
                 <span>Seu sistema está atualizado!</span>
-              </div>
+              </Banner>
             )}
 
             {updateOutput && (
-              <div style={{
-                marginTop: 'var(--spacing-md)',
-                padding: 'var(--spacing-md)',
-                background: 'var(--bg-secondary)',
-                borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--border-primary)',
-                fontFamily: 'monospace',
-                fontSize: '0.8125rem',
-                color: 'var(--text-secondary)',
-                whiteSpace: 'pre-wrap',
-                maxHeight: '300px',
-                overflow: 'auto'
-              }}>
+              <pre className="mt-3 max-h-[300px] overflow-auto rounded-lg border border-border bg-muted p-3 font-mono text-[0.8125rem] whitespace-pre-wrap text-muted-foreground">
                 {updateOutput}
-              </div>
+              </pre>
             )}
           </div>
 
-          <div style={{ display: 'flex', gap: 'var(--spacing-md)', flexWrap: 'wrap' }}>
-            <button 
-              className="btn btn-primary"
-              onClick={handleCheckUpdates}
-              disabled={isChecking || isUpdating}
-              style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-xs)' }}
-            >
-              <RefreshCw size={20} style={{ animation: isChecking ? 'spin 1s linear infinite' : 'none' }} />
+          <div className="flex flex-wrap gap-3">
+            <Button onClick={handleCheckUpdates} disabled={isChecking || isUpdating}>
+              <RefreshCw size={18} className={isChecking ? 'animate-spin' : ''} />
               {isChecking ? 'Verificando...' : 'Verificar Atualizações'}
-            </button>
-            
+            </Button>
+
             {updateInfo?.hasUpdate && (
-              <button 
-                className="btn btn-secondary"
-                onClick={handleUpdate}
-                disabled={isUpdating || isChecking}
-                style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-xs)' }}
-              >
-                <Download size={20} style={{ animation: isUpdating ? 'spin 1s linear infinite' : 'none' }} />
+              <Button variant="secondary" onClick={handleUpdate} disabled={isUpdating || isChecking}>
+                <Download size={18} className={isUpdating ? 'animate-spin' : ''} />
                 {isUpdating ? 'Atualizando...' : 'Instalar Atualização'}
-              </button>
+              </Button>
             )}
           </div>
-        </div>
+        </Card>
 
-        <div className="card" style={{ 
-          border: '1px solid var(--border-primary)',
-          padding: 'var(--spacing-xl)'
-        }}>
-          <div style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: 'var(--spacing-md)',
-            marginBottom: 'var(--spacing-lg)'
-          }}>
-            <GitBranch size={24} color="var(--purple)" />
-            <h3 style={{ 
-              fontSize: '1.125rem', 
-              fontWeight: '600',
-              color: 'var(--text-primary)'
-            }}>
-              Commits Recentes
-            </h3>
+        <Card className="px-6 py-6">
+          <div className="mb-5 flex items-center gap-3">
+            <GitBranch size={24} className="text-[var(--purple)]" />
+            <h3 className="text-lg font-semibold text-foreground">Commits Recentes</h3>
           </div>
-          
+
           {commits.length > 0 ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
+            <div className="flex flex-col gap-3">
               {commits.map((commit, index) => (
-                <div 
-                  key={index}
-                  style={{ 
-                    padding: 'var(--spacing-md)',
-                    background: 'var(--bg-tertiary)',
-                    borderRadius: 'var(--radius-md)',
-                    border: '1px solid var(--border-primary)'
-                  }}
-                >
-                  <div style={{ 
-                    display: 'flex', 
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    marginBottom: 'var(--spacing-xs)'
-                  }}>
-                    <span style={{ 
-                      fontFamily: 'monospace',
-                      fontSize: '0.8125rem',
-                      color: 'var(--text-secondary)',
-                      fontWeight: '600'
-                    }}>
-                      {commit.hash}
-                    </span>
-                  </div>
-                  <p style={{ 
-                    fontSize: '0.875rem',
-                    color: 'var(--text-primary)'
-                  }}>
-                    {commit.message}
-                  </p>
+                <div key={index} className="rounded-lg border border-border bg-muted/50 px-4 py-3">
+                  <span className="mb-1 block font-mono text-[0.8125rem] font-semibold text-muted-foreground">{commit.hash}</span>
+                  <p className="text-sm text-foreground">{commit.message}</p>
                 </div>
               ))}
             </div>
           ) : (
-            <p style={{ 
-              color: 'var(--text-secondary)',
-              fontSize: '0.875rem',
-              fontStyle: 'italic'
-            }}>
-              Nenhum commit encontrado ou repositório não configurado
-            </p>
+            <p className="text-sm text-muted-foreground italic">Nenhum commit encontrado ou repositório não configurado</p>
           )}
-        </div>
+        </Card>
       </div>
     </div>
   );

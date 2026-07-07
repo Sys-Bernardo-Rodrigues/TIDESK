@@ -1,7 +1,20 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
+import { toast } from 'sonner';
 import { FileEdit, CheckCircle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 interface FormField {
   id: string;
@@ -169,7 +182,7 @@ export default function PublicForm() {
       setSubmitted(true);
     } catch (error) {
       console.error('Erro ao submeter formulário:', error);
-      alert('Erro ao enviar formulário. Tente novamente.');
+      toast.error('Erro ao enviar formulário. Tente novamente.');
     } finally {
       setIsSubmitting(false);
     }
@@ -281,8 +294,8 @@ export default function PublicForm() {
               </span>
             )}
           </p>
-          <button
-            className="btn btn-primary public-form-submit"
+          <Button
+            className="public-form-submit"
             onClick={() => {
               setSubmitted(false);
               setFormData({});
@@ -290,7 +303,7 @@ export default function PublicForm() {
             }}
           >
             Enviar Outro
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -327,147 +340,97 @@ export default function PublicForm() {
                   </label>
 
                   {field.type === 'text' && (
-                    <input
-                      type="text"
-                      className="input"
+                    <Input
                       placeholder={field.placeholder || 'Digite...'}
                       value={formData[field.id] || ''}
                       onChange={(e) => handleChange(field.id, e.target.value)}
-                      style={{ width: '100%' }}
                     />
                   )}
 
                   {field.type === 'email' && (
-                    <input
+                    <Input
                       type="email"
-                      className="input"
                       placeholder={field.placeholder || 'email@exemplo.com'}
                       value={formData[field.id] || ''}
                       onChange={(e) => handleChange(field.id, e.target.value)}
-                      style={{ width: '100%' }}
                     />
                   )}
 
                   {field.type === 'number' && (
-                    <input
+                    <Input
                       type="number"
-                      className="input"
                       placeholder={field.placeholder || '0'}
                       value={formData[field.id] || ''}
                       onChange={(e) => handleChange(field.id, e.target.value)}
-                      style={{ width: '100%' }}
                     />
                   )}
 
                   {field.type === 'textarea' && (
-                    <textarea
-                      className="input"
+                    <Textarea
                       placeholder={field.placeholder || 'Digite...'}
                       value={formData[field.id] || ''}
                       onChange={(e) => handleChange(field.id, e.target.value)}
-                      style={{ 
-                        width: '100%',
-                        minHeight: '120px',
-                        resize: 'vertical'
-                      }}
+                      className="min-h-[120px]"
                     />
                   )}
 
                   {field.type === 'select' && (
-                    <select
-                      className="select"
-                      value={formData[field.id] || ''}
-                      onChange={(e) => handleChange(field.id, e.target.value)}
-                      style={{ width: '100%' }}
-                    >
-                      <option value="">Selecione uma opção</option>
-                      {field.options?.map((opt, idx) => (
-                        <option key={idx} value={opt}>{opt}</option>
-                      ))}
-                    </select>
+                    <Select value={formData[field.id] || ''} onValueChange={(v) => handleChange(field.id, v)}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Selecione uma opção" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {field.options?.map((opt, idx) => (
+                          <SelectItem key={idx} value={opt}>
+                            {opt}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   )}
 
                   {field.type === 'radio' && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-xs)' }}>
+                    <RadioGroup
+                      value={formData[field.id] || ''}
+                      onValueChange={(v) => handleChange(field.id, v)}
+                      className="gap-1"
+                    >
                       {field.options?.map((opt, idx) => (
-                        <label 
+                        <label
                           key={idx}
-                          className="public-form-option"
-                          style={{ 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            gap: 'var(--spacing-xs)',
-                            cursor: 'pointer',
-                            padding: 'var(--spacing-xs)',
-                            borderRadius: 'var(--radius-md)',
-                            transition: 'background var(--transition-base)'
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.backgroundColor = 'transparent';
-                          }}
+                          className="flex cursor-pointer items-center gap-2 rounded-md p-2 transition-colors hover:bg-accent"
                         >
-                          <input
-                            type="radio"
-                            name={field.id}
-                            value={opt}
-                            checked={formData[field.id] === opt}
-                            onChange={(e) => handleChange(field.id, e.target.value)}
-                          />
-                          <span style={{ fontSize: '0.9375rem', color: 'var(--text-primary)' }}>{opt}</span>
+                          <RadioGroupItem value={opt} id={`${field.id}-${idx}`} />
+                          <span className="text-sm text-foreground">{opt}</span>
                         </label>
                       ))}
-                    </div>
+                    </RadioGroup>
                   )}
 
                   {field.type === 'checkbox' && (
-                    <label
-                      className="public-form-option"
-                      style={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        gap: 'var(--spacing-xs)',
-                        cursor: 'pointer',
-                        padding: 'var(--spacing-xs)',
-                        borderRadius: 'var(--radius-md)',
-                        transition: 'background var(--transition-base)'
-                      }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = 'transparent';
-                    }}
-                    >
-                      <input
-                        type="checkbox"
+                    <label className="flex cursor-pointer items-center gap-2 rounded-md p-2 transition-colors hover:bg-accent">
+                      <Checkbox
                         checked={formData[field.id] || false}
-                        onChange={(e) => handleChange(field.id, e.target.checked)}
+                        onCheckedChange={(checked) => handleChange(field.id, checked === true)}
                       />
-                      <span style={{ fontSize: '0.9375rem', color: 'var(--text-primary)' }}>
-                        {field.label}
-                      </span>
+                      <span className="text-sm text-foreground">{field.label}</span>
                     </label>
                   )}
 
                   {field.type === 'date' && (
-                    <input
+                    <Input
                       type="date"
-                      className="input"
                       value={formData[field.id] || ''}
                       onChange={(e) => handleChange(field.id, e.target.value)}
-                      style={{ width: '100%' }}
                     />
                   )}
 
                   {(field.type === 'file' || field.type === 'image') && (
                     <div>
-                      <input
+                      <Input
                         type="file"
-                        className="input"
                         accept={field.validation?.accept || (field.type === 'image' ? 'image/*' : undefined)}
+                        className="cursor-pointer file:cursor-pointer"
                         onChange={(e) => {
                           const file = e.target.files?.[0];
                           if (file) {
@@ -494,34 +457,17 @@ export default function PublicForm() {
                             }
                           }
                         }}
-                        style={{ 
-                          width: '100%',
-                          padding: 'var(--spacing-sm)',
-                          cursor: 'pointer'
-                        }}
                       />
                       {formData[field.id] && (
-                        <div style={{
-                          marginTop: 'var(--spacing-xs)',
-                          fontSize: '0.875rem',
-                          color: 'var(--text-secondary)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 'var(--spacing-xs)'
-                        }}>
+                        <div className="mt-1.5 flex items-center gap-1.5 text-sm text-muted-foreground">
                           <span>✓ Arquivo selecionado: {(formData[field.id] as File).name}</span>
-                          <span style={{ color: 'var(--text-tertiary)' }}>
+                          <span className="text-muted-foreground/70">
                             ({(Math.round((formData[field.id] as File).size / 1024 * 100) / 100).toFixed(2)} KB)
                           </span>
                         </div>
                       )}
                       {field.validation?.maxSize && (
-                        <small style={{ 
-                          display: 'block', 
-                          marginTop: 'var(--spacing-xs)',
-                          color: 'var(--text-tertiary)',
-                          fontSize: '0.75rem'
-                        }}>
+                        <small className="mt-1.5 block text-xs text-muted-foreground/70">
                           Tamanho máximo: {field.validation.maxSize}MB
                         </small>
                       )}
@@ -529,26 +475,16 @@ export default function PublicForm() {
                   )}
 
                   {errors[field.id] && (
-                    <div style={{
-                      marginTop: 'var(--spacing-xs)',
-                      fontSize: '0.8125rem',
-                      color: 'var(--red)'
-                    }}>
-                      {errors[field.id]}
-                    </div>
+                    <div className="mt-1.5 text-sm text-destructive">{errors[field.id]}</div>
                   )}
                 </div>
               ))}
             </div>
 
             <div className="public-form-actions">
-              <button
-                type="submit"
-                className="btn btn-primary public-form-submit"
-                disabled={isSubmitting}
-              >
+              <Button type="submit" disabled={isSubmitting} className="public-form-submit w-full">
                 {isSubmitting ? 'Enviando...' : 'Enviar Formulário'}
-              </button>
+              </Button>
             </div>
           </form>
         </div>

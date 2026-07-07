@@ -62,17 +62,10 @@ export default function PublicPage() {
 
   if (loading) {
     return (
-      <div style={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: 'var(--bg-primary)',
-        padding: 'var(--spacing-2xl)'
-      }}>
-        <div style={{ textAlign: 'center' }}>
-          <FileText size={48} color="var(--text-tertiary)" style={{ marginBottom: 'var(--spacing-md)' }} />
-          <p style={{ color: 'var(--text-secondary)' }}>Carregando página...</p>
+      <div className="flex min-h-screen items-center justify-center bg-background p-10">
+        <div className="text-center">
+          <FileText size={44} className="mx-auto mb-3 text-muted-foreground" />
+          <p className="text-muted-foreground">Carregando página...</p>
         </div>
       </div>
     );
@@ -80,124 +73,52 @@ export default function PublicPage() {
 
   if (error || !page) {
     return (
-      <div style={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: 'var(--bg-primary)',
-        padding: 'var(--spacing-2xl)'
-      }}>
-        <div style={{ textAlign: 'center' }}>
-          <FileText size={48} color="var(--red)" style={{ marginBottom: 'var(--spacing-md)' }} />
-          <h1 style={{ 
-            fontSize: '2rem',
-            fontWeight: '700',
-            color: 'var(--text-primary)',
-            marginBottom: 'var(--spacing-sm)'
-          }}>
-            {error || 'Página não encontrada'}
-          </h1>
-          <p style={{ color: 'var(--text-secondary)' }}>
-            A página que você está procurando não existe ou foi removida.
-          </p>
+      <div className="flex min-h-screen items-center justify-center bg-background p-10">
+        <div className="text-center">
+          <FileText size={44} className="mx-auto mb-3 text-destructive" />
+          <h1 className="mb-2 text-3xl font-bold text-foreground">{error || 'Página não encontrada'}</h1>
+          <p className="text-muted-foreground">A página que você está procurando não existe ou foi removida.</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      backgroundColor: 'var(--bg-primary)',
-      padding: 'var(--spacing-2xl)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center'
-    }}>
-      <div style={{ 
-        maxWidth: '800px', 
-        width: '100%',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 'var(--spacing-xl)'
-      }}>
+    <div className="flex min-h-screen items-center justify-center bg-background p-10">
+      <div className="flex w-full max-w-3xl flex-col gap-6">
         {/* Header */}
         <div>
-          <h1 style={{
-            fontSize: '3rem',
-            fontWeight: '800',
-            color: 'var(--text-primary)',
-            marginBottom: 'var(--spacing-md)',
-            lineHeight: '1.2'
-          }}>
-            {page.title}
-          </h1>
-          {page.description && (
-            <p style={{
-              color: 'var(--text-secondary)',
-              fontSize: '1.125rem',
-              lineHeight: '1.6'
-            }}>
-              {page.description}
-            </p>
-          )}
+          <h1 className="mb-3 text-4xl leading-tight font-extrabold text-foreground sm:text-5xl">{page.title}</h1>
+          {page.description && <p className="text-lg leading-relaxed text-muted-foreground">{page.description}</p>}
         </div>
 
         {/* Content */}
         {page.content && (
-          <div 
-            style={{
-              color: 'var(--text-primary)',
-              lineHeight: '1.8',
-              fontSize: '1rem'
-            }}
-            dangerouslySetInnerHTML={{ __html: page.content }}
-          />
+          <div className="leading-relaxed text-foreground" dangerouslySetInnerHTML={{ __html: page.content }} />
         )}
 
         {/* Buttons */}
         {page.buttons && page.buttons.length > 0 && (
-          <div style={{ 
-            display: 'flex', 
-            flexDirection: 'column',
-            gap: 'var(--spacing-md)',
-            marginTop: 'var(--spacing-lg)'
-          }}>
+          <div className="mt-4 flex flex-col gap-3">
             {page.buttons.map((button) => {
-              const sizeMap = {
-                small: { padding: 'var(--spacing-xs) var(--spacing-md)', fontSize: '0.875rem' },
-                medium: { padding: 'var(--spacing-sm) var(--spacing-lg)', fontSize: '1rem' },
-                large: { padding: 'var(--spacing-md) var(--spacing-xl)', fontSize: '1.125rem' }
-              };
-              const size = sizeMap[button.style?.size || 'medium'];
-              
+              const sizeClass = {
+                small: 'px-4 py-2 text-sm',
+                medium: 'px-6 py-3 text-base',
+                large: 'px-8 py-4 text-lg',
+              }[button.style?.size || 'medium'];
+
               return (
                 <button
                   key={button.id}
-                  className="btn"
+                  className={`flex w-full items-center justify-center gap-1.5 rounded-lg font-semibold transition-all hover:-translate-y-0.5 hover:opacity-90 ${sizeClass}`}
                   style={{
                     backgroundColor: button.style?.backgroundColor || 'var(--purple)',
                     color: button.style?.color || '#FFFFFF',
-                    ...size,
-                    width: '100%',
-                    justifyContent: 'center',
-                    fontWeight: '600',
-                    transition: 'all var(--transition-base)',
-                    cursor: 'pointer'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.opacity = '0.9';
-                    e.currentTarget.style.transform = 'translateY(-2px)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.opacity = '1';
-                    e.currentTarget.style.transform = 'translateY(0)';
                   }}
                   onClick={() => handleButtonClick(button)}
                 >
                   {button.label}
-                  {button.formUrl && <ExternalLink size={18} style={{ marginLeft: 'var(--spacing-xs)' }} />}
+                  {button.formUrl && <ExternalLink size={17} />}
                 </button>
               );
             })}

@@ -1,8 +1,17 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
+import { toast } from 'sonner';
 import { Database, Download, Clock, HardDrive, Trash2, RefreshCw, AlertCircle, Settings2, Save, Mail, X, Upload } from 'lucide-react';
 import { formatDateBR } from '../utils/dateUtils';
 import { usePermissions, RESOURCES, ACTIONS } from '../hooks/usePermissions';
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Card } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 
 interface Backup {
   id: string;
@@ -24,6 +33,7 @@ interface BackupConfig {
 }
 
 export default function Backup() {
+  const confirm = useConfirm();
   const [searchTerm, setSearchTerm] = useState('');
   const [backups, setBackups] = useState<Backup[]>([]);
   const [loading, setLoading] = useState(true);
@@ -38,7 +48,7 @@ export default function Backup() {
     intervalHours: 24,
     retentionDays: 30,
     emailEnabled: false,
-    emailTo: []
+    emailTo: [],
   });
   const [emailInput, setEmailInput] = useState('');
   const [sendingEmail, setSendingEmail] = useState<string | null>(null);
@@ -50,7 +60,6 @@ export default function Backup() {
   const canEdit = hasPermission(RESOURCES.CONFIG, ACTIONS.EDIT);
   const canDelete = hasPermission(RESOURCES.CONFIG, ACTIONS.DELETE);
 
-  // Buscar configuração de backup automático
   const fetchConfig = async () => {
     try {
       setConfigLoading(true);
@@ -64,7 +73,6 @@ export default function Backup() {
     }
   };
 
-  // Salvar configuração
   const saveConfig = async () => {
     if (!canEdit) return;
     try {
@@ -82,7 +90,6 @@ export default function Backup() {
     }
   };
 
-  // Buscar backups
   const fetchBackups = async () => {
     try {
       setLoading(true);
@@ -102,22 +109,21 @@ export default function Backup() {
     fetchConfig();
   }, []);
 
-  // Criar backup
   const createBackup = async () => {
     if (!canCreate) {
-      alert('Você não tem permissão para criar backups');
+      toast.error('Você não tem permissão para criar backups');
       return;
     }
-
-    if (!confirm('Deseja criar um novo backup do banco de dados?')) {
-      return;
-    }
+    const ok = await confirm({
+      title: 'Criar backup',
+      description: 'Deseja criar um novo backup do banco de dados?',
+    });
+    if (!ok) return;
 
     try {
       setCreating(true);
       setError(null);
       setSuccess(null);
-      
       await axios.post('/api/backup');
       setSuccess('Backup criado com sucesso!');
       await fetchBackups();
@@ -129,13 +135,9 @@ export default function Backup() {
     }
   };
 
-  // Download de backup
   const downloadBackup = async (filename: string) => {
     try {
-      const response = await axios.get(`/api/backup/${filename}/download`, {
-        responseType: 'blob'
-      });
-      
+      const response = await axios.get(`/api/backup/${filename}/download`, { responseType: 'blob' });
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
@@ -146,51 +148,56 @@ export default function Backup() {
       window.URL.revokeObjectURL(url);
     } catch (err: any) {
       console.error('Erro ao fazer download:', err);
-      alert('Erro ao fazer download do backup');
+      toast.error('Erro ao fazer download do backup');
     }
   };
 
-  // Restaurar backup
   const restoreBackup = async (filename: string) => {
     if (!canEdit) {
-      alert('Você não tem permissão para restaurar backups');
+      toast.error('Você não tem permissão para restaurar backups');
       return;
     }
 
-    if (!confirm('ATENÇÃO: Esta ação irá substituir todos os dados atuais pelos dados do backup. Esta operação não pode ser desfeita. Deseja continuar?')) {
-      return;
-    }
+    const ok1 = await confirm({
+      title: 'Restaurar backup',
+      description:
+        'ATENÇÃO: Esta ação irá substituir todos os dados atuais pelos dados do backup. Esta operação não pode ser desfeita. Deseja continuar?',
+      confirmLabel: 'Continuar',
+      variant: 'destructive',
+    });
+    if (!ok1) return;
 
-    if (!confirm('Tem certeza? Todos os dados atuais serão perdidos!')) {
-      return;
-    }
+    const ok2 = await confirm({
+      title: 'Confirmar restauração',
+      description: 'Tem certeza? Todos os dados atuais serão perdidos!',
+      confirmLabel: 'Restaurar',
+      variant: 'destructive',
+    });
+    if (!ok2) return;
 
     try {
       setError(null);
       setSuccess(null);
-      
       const response = await axios.post(`/api/backup/${filename}/restore`);
-      setSuccess(response.data.message + (response.data.note ? ' ' + response.data.note : ''));
-      alert(response.data.message + '\n\n' + (response.data.note || ''));
+      const message = response.data.message + (response.data.note ? ' ' + response.data.note : '');
+      setSuccess(message);
+      toast.success(message);
     } catch (err: any) {
       console.error('Erro ao restaurar backup:', err);
       setError(err.response?.data?.error || 'Erro ao restaurar backup');
-      alert('Erro ao restaurar backup: ' + (err.response?.data?.error || 'Erro desconhecido'));
+      toast.error('Erro ao restaurar backup: ' + (err.response?.data?.error || 'Erro desconhecido'));
     }
   };
 
-  // Enviar backup por email
   const sendBackupByEmail = async (filename: string) => {
     if (!canEdit) {
-      alert('Você não tem permissão para enviar backups por email');
+      toast.error('Você não tem permissão para enviar backups por email');
       return;
     }
-
     try {
       setSendingEmail(filename);
       setError(null);
       setSuccess(null);
-      
       await axios.post(`/api/backup/${filename}/send`);
       setSuccess('Backup enviado por email com sucesso!');
     } catch (err: any) {
@@ -201,48 +208,41 @@ export default function Backup() {
     }
   };
 
-  // Adicionar email à lista
   const addEmail = () => {
     const email = emailInput.trim();
     if (!email || !email.includes('@')) {
-      alert('Digite um email válido');
+      toast.error('Digite um email válido');
       return;
     }
     if (configForm.emailTo.includes(email)) {
-      alert('Este email já está na lista');
+      toast.error('Este email já está na lista');
       return;
     }
     setConfigForm((c) => ({ ...c, emailTo: [...c.emailTo, email] }));
     setEmailInput('');
   };
 
-  // Remover email da lista
   const removeEmail = (email: string) => {
     setConfigForm((c) => ({ ...c, emailTo: c.emailTo.filter((e) => e !== email) }));
   };
 
-  // Upload de backup
   const handleUploadBackup = async () => {
     if (!canCreate) {
-      alert('Você não tem permissão para fazer upload de backups');
+      toast.error('Você não tem permissão para fazer upload de backups');
       return;
     }
-
     if (!uploadFile) {
-      alert('Selecione um arquivo para fazer upload');
+      toast.error('Selecione um arquivo para fazer upload');
       return;
     }
 
-    // Validar extensão
     const ext = uploadFile.name.toLowerCase().split('.').pop();
     if (ext !== 'db' && ext !== 'sql') {
-      alert('Apenas arquivos .db e .sql são permitidos');
+      toast.error('Apenas arquivos .db e .sql são permitidos');
       return;
     }
-
-    // Validar tamanho (500MB)
     if (uploadFile.size > 500 * 1024 * 1024) {
-      alert('Arquivo muito grande. Tamanho máximo: 500MB');
+      toast.error('Arquivo muito grande. Tamanho máximo: 500MB');
       return;
     }
 
@@ -253,20 +253,14 @@ export default function Backup() {
 
       const formData = new FormData();
       formData.append('backupFile', uploadFile);
-
       await axios.post('/api/backup/upload', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data'
-        }
+        headers: { 'Content-Type': 'multipart/form-data' },
       });
 
       setSuccess('Backup enviado com sucesso!');
       setUploadFile(null);
-      // Resetar input de arquivo
       const fileInput = document.getElementById('backup-upload-input') as HTMLInputElement;
-      if (fileInput) {
-        fileInput.value = '';
-      }
+      if (fileInput) fileInput.value = '';
       await fetchBackups();
     } catch (err: any) {
       console.error('Erro ao fazer upload:', err);
@@ -276,21 +270,22 @@ export default function Backup() {
     }
   };
 
-  // Deletar backup
   const deleteBackup = async (filename: string) => {
     if (!canDelete) {
-      alert('Você não tem permissão para deletar backups');
+      toast.error('Você não tem permissão para deletar backups');
       return;
     }
-
-    if (!confirm('Deseja realmente deletar este backup?')) {
-      return;
-    }
+    const ok = await confirm({
+      title: 'Excluir backup',
+      description: 'Deseja realmente deletar este backup?',
+      confirmLabel: 'Excluir',
+      variant: 'destructive',
+    });
+    if (!ok) return;
 
     try {
       setError(null);
       setSuccess(null);
-      
       await axios.delete(`/api/backup/${filename}`);
       setSuccess('Backup deletado com sucesso!');
       await fetchBackups();
@@ -300,526 +295,273 @@ export default function Backup() {
     }
   };
 
-  const filteredBackups = backups.filter(backup =>
-    backup.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    backup.filename.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredBackups = backups.filter(
+    (backup) =>
+      backup.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      backup.filename.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
     <div>
-      <div style={{ marginBottom: 'var(--spacing-2xl)' }}>
-        <h1 style={{ 
-          fontSize: '2.5rem', 
-          fontWeight: '800', 
-          marginBottom: 'var(--spacing-sm)',
-          background: 'linear-gradient(135deg, var(--text-primary) 0%, var(--text-secondary) 100%)',
-          WebkitBackgroundClip: 'text',
-          WebkitTextFillColor: 'transparent',
-          backgroundClip: 'text',
-          letterSpacing: '-0.03em'
-        }}>
-          Backup
-        </h1>
-        <p style={{
-          color: 'var(--text-secondary)',
-          fontSize: '1rem',
-          fontWeight: '400'
-        }}>
-          Gerencie os backups do sistema e restaure dados quando necessário
-        </p>
+      <div className="mb-8">
+        <h1 className="text-3xl font-extrabold tracking-tight text-foreground">Backup</h1>
+        <p className="mt-1 text-muted-foreground">Gerencie os backups do sistema e restaure dados quando necessário</p>
       </div>
 
-      {/* Mensagens de erro e sucesso */}
       {error && (
-        <div className="card" style={{
-          marginBottom: 'var(--spacing-lg)',
-          padding: 'var(--spacing-md)',
-          backgroundColor: 'var(--danger-light)',
-          border: '1px solid var(--danger)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 'var(--spacing-sm)'
-        }}>
-          <AlertCircle size={20} color="var(--danger)" />
-          <span style={{ color: 'var(--danger)' }}>{error}</span>
+        <div className="mb-4 flex items-center gap-2 rounded-lg border border-destructive bg-destructive/10 p-3 text-destructive">
+          <AlertCircle size={18} />
+          <span>{error}</span>
         </div>
       )}
-
       {success && (
-        <div className="card" style={{
-          marginBottom: 'var(--spacing-lg)',
-          padding: 'var(--spacing-md)',
-          backgroundColor: 'var(--success-light)',
-          border: '1px solid var(--success)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 'var(--spacing-sm)'
-        }}>
-          <span style={{ color: 'var(--success)' }}>{success}</span>
+        <div className="mb-4 rounded-lg border p-3" style={{ borderColor: 'var(--green)', background: 'var(--green-light)', color: 'var(--green)' }}>
+          {success}
         </div>
       )}
 
-      {/* Configuração do backup automático */}
       {canEdit && (
-        <div className="card" style={{
-          marginBottom: 'var(--spacing-lg)',
-          padding: 'var(--spacing-lg)',
-          border: '1px solid var(--border-primary)'
-        }}>
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 'var(--spacing-sm)',
-            marginBottom: 'var(--spacing-md)'
-          }}>
-            <Settings2 size={22} color="var(--purple)" />
-            <h2 style={{
-              fontSize: '1.25rem',
-              fontWeight: '600',
-              color: 'var(--text-primary)',
-              margin: 0
-            }}>
-              Backup automático
-            </h2>
+        <Card className="mb-5 p-5">
+          <div className="mb-3 flex items-center gap-2">
+            <Settings2 size={20} className="text-primary" />
+            <h2 className="text-lg font-semibold text-foreground">Backup automático</h2>
           </div>
           {configLoading ? (
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Carregando...</p>
+            <p className="text-sm text-muted-foreground">Carregando...</p>
           ) : (
-            <div style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: 'var(--spacing-lg)',
-              alignItems: 'flex-end'
-            }}>
-              <label style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 'var(--spacing-sm)',
-                cursor: 'pointer',
-                fontSize: '0.9375rem',
-                color: 'var(--text-primary)'
-              }}>
-                <input
-                  type="checkbox"
+            <div className="flex flex-wrap items-end gap-5">
+              <label className="flex cursor-pointer items-center gap-2 text-sm text-foreground">
+                <Checkbox
                   checked={configForm.enabled}
-                  onChange={(e) => setConfigForm((c) => ({ ...c, enabled: e.target.checked }))}
+                  onCheckedChange={(checked) => setConfigForm((c) => ({ ...c, enabled: checked === true }))}
                 />
                 Ativar backup automático
               </label>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <label style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
-                  Intervalo (horas)
-                </label>
-                <input
+              <div className="flex flex-col gap-1">
+                <Label className="text-xs text-muted-foreground">Intervalo (horas)</Label>
+                <Input
                   type="number"
-                  className="input"
                   min={1}
                   max={168}
                   value={configForm.intervalHours}
                   onChange={(e) =>
-                    setConfigForm((c) => ({
-                      ...c,
-                      intervalHours: Math.min(168, Math.max(1, parseInt(e.target.value) || 1))
-                    }))
+                    setConfigForm((c) => ({ ...c, intervalHours: Math.min(168, Math.max(1, parseInt(e.target.value) || 1)) }))
                   }
-                  style={{ width: '90px' }}
+                  className="w-[90px]"
                 />
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <label style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
-                  Manter backups por (dias)
-                </label>
-                <input
+              <div className="flex flex-col gap-1">
+                <Label className="text-xs text-muted-foreground">Manter backups por (dias)</Label>
+                <Input
                   type="number"
-                  className="input"
                   min={1}
                   max={365}
                   value={configForm.retentionDays}
                   onChange={(e) =>
-                    setConfigForm((c) => ({
-                      ...c,
-                      retentionDays: Math.min(365, Math.max(1, parseInt(e.target.value) || 1))
-                    }))
+                    setConfigForm((c) => ({ ...c, retentionDays: Math.min(365, Math.max(1, parseInt(e.target.value) || 1)) }))
                   }
-                  style={{ width: '90px' }}
+                  className="w-[90px]"
                 />
               </div>
-              <button
-                className="btn btn-primary"
-                onClick={saveConfig}
-                disabled={configSaving}
-                style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-xs)' }}
-              >
-                <Save size={18} />
+              <Button onClick={saveConfig} disabled={configSaving}>
+                <Save size={17} />
                 {configSaving ? 'Salvando...' : 'Salvar'}
-              </button>
+              </Button>
             </div>
           )}
+
           {config && !configLoading && (
             <>
-              <div style={{ marginTop: 'var(--spacing-md)', paddingTop: 'var(--spacing-md)', borderTop: '1px solid var(--border-primary)' }}>
-                <label style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 'var(--spacing-sm)',
-                  cursor: 'pointer',
-                  fontSize: '0.9375rem',
-                  color: 'var(--text-primary)',
-                  marginBottom: 'var(--spacing-sm)'
-                }}>
-                  <input
-                    type="checkbox"
+              <div className="mt-4 border-t border-border pt-4">
+                <label className="mb-2 flex cursor-pointer items-center gap-2 text-sm text-foreground">
+                  <Checkbox
                     checked={configForm.emailEnabled}
-                    onChange={(e) => setConfigForm((c) => ({ ...c, emailEnabled: e.target.checked }))}
+                    onCheckedChange={(checked) => setConfigForm((c) => ({ ...c, emailEnabled: checked === true }))}
                   />
                   Enviar backups por email automaticamente
                 </label>
                 {configForm.emailEnabled && (
-                  <div style={{ marginTop: 'var(--spacing-md)' }}>
-                    <div style={{ display: 'flex', gap: 'var(--spacing-sm)', marginBottom: 'var(--spacing-sm)' }}>
-                      <input
+                  <div className="mt-3">
+                    <div className="mb-2 flex gap-2">
+                      <Input
                         type="email"
-                        className="input"
                         placeholder="Digite o email de destino"
                         value={emailInput}
                         onChange={(e) => setEmailInput(e.target.value)}
-                        onKeyPress={(e) => e.key === 'Enter' && addEmail()}
-                        style={{ flex: 1 }}
+                        onKeyDown={(e) => e.key === 'Enter' && addEmail()}
+                        className="flex-1"
                       />
-                      <button className="btn btn-secondary" onClick={addEmail}>
+                      <Button variant="secondary" onClick={addEmail}>
                         Adicionar
-                      </button>
+                      </Button>
                     </div>
                     {configForm.emailTo.length > 0 && (
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--spacing-xs)' }}>
+                      <div className="flex flex-wrap gap-1.5">
                         {configForm.emailTo.map((email) => (
                           <span
                             key={email}
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: 'var(--spacing-xs)',
-                              padding: '4px 8px',
-                              backgroundColor: 'var(--bg-secondary)',
-                              borderRadius: 'var(--radius-sm)',
-                              fontSize: '0.8125rem'
-                            }}
+                            className="inline-flex items-center gap-1.5 rounded-md bg-muted px-2 py-1 text-xs"
                           >
                             {email}
-                            <button
-                              onClick={() => removeEmail(email)}
-                              style={{
-                                background: 'none',
-                                border: 'none',
-                                cursor: 'pointer',
-                                color: 'var(--text-secondary)',
-                                padding: 0,
-                                display: 'flex',
-                                alignItems: 'center'
-                              }}
-                            >
-                              <X size={14} />
+                            <button onClick={() => removeEmail(email)} className="text-muted-foreground hover:text-foreground">
+                              <X size={13} />
                             </button>
                           </span>
                         ))}
                       </div>
                     )}
-                    <p style={{
-                      marginTop: 'var(--spacing-sm)',
-                      marginBottom: 0,
-                      fontSize: '0.75rem',
-                      color: 'var(--text-tertiary)'
-                    }}>
+                    <p className="mt-2 text-xs text-muted-foreground">
                       Configure as variáveis de ambiente SMTP_HOST, SMTP_USER, SMTP_PASSWORD no servidor.
                     </p>
                   </div>
                 )}
               </div>
-              <p style={{
-                marginTop: 'var(--spacing-md)',
-                marginBottom: 0,
-                fontSize: '0.8125rem',
-                color: 'var(--text-secondary)'
-              }}>
+              <p className="mt-3 text-sm text-muted-foreground">
                 {config.enabled
                   ? `Backup a cada ${config.intervalHours}h. Backups com mais de ${config.retentionDays} dias são removidos automaticamente.`
                   : 'Backup automático desativado. Ative e salve para agendar.'}
               </p>
             </>
           )}
-        </div>
+        </Card>
       )}
 
-      <div className="list-page-toolbar" style={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center', 
-        marginBottom: 'var(--spacing-lg)',
-        gap: 'var(--spacing-md)',
-        flexWrap: 'wrap'
-      }}>
-        <div style={{ 
-          position: 'relative',
-          flex: '1',
-          minWidth: '300px',
-          maxWidth: '500px'
-        }}>
-          <input
-            type="text"
-            className="input"
-            placeholder="Buscar backups..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            style={{ paddingLeft: 'var(--spacing-md)' }}
-          />
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div className="max-w-[500px] min-w-[280px] flex-1">
+          <Input placeholder="Buscar backups..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
         </div>
-        <div style={{ display: 'flex', gap: 'var(--spacing-sm)', flexWrap: 'wrap' }}>
-          <button 
-            className="btn btn-secondary"
-            onClick={fetchBackups}
-            disabled={loading}
-            style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-xs)' }}
-          >
-            <RefreshCw size={18} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="secondary" onClick={fetchBackups} disabled={loading}>
+            <RefreshCw size={17} className={cn(loading && 'animate-spin')} />
             Atualizar
-          </button>
+          </Button>
           {canCreate && (
             <>
-              <label
-                className="btn btn-secondary"
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 'var(--spacing-xs)',
-                  cursor: uploading ? 'not-allowed' : 'pointer',
-                  opacity: uploading ? 0.6 : 1,
-                  margin: 0,
-                  marginBottom: 0,
-                  padding: '0.625rem 1.25rem',
-                  border: '1px solid var(--border-primary)',
-                  borderRadius: '0.375rem',
-                  fontSize: '0.875rem',
-                  fontWeight: 600,
-                  whiteSpace: 'nowrap',
-                  userSelect: 'none'
-                }}
-              >
-                <Upload size={18} />
-                {uploading ? 'Enviando...' : 'Upload Backup'}
+              <label>
+                <Button variant="secondary" disabled={uploading} asChild>
+                  <span>
+                    <Upload size={17} />
+                    {uploading ? 'Enviando...' : 'Upload Backup'}
+                  </span>
+                </Button>
                 <input
                   id="backup-upload-input"
                   type="file"
                   accept=".db,.sql"
-                  style={{ display: 'none' }}
+                  className="hidden"
                   disabled={uploading}
                   onChange={(e) => {
                     const file = e.target.files?.[0];
-                    if (file) {
-                      setUploadFile(file);
-                    }
+                    if (file) setUploadFile(file);
                   }}
                 />
               </label>
               {uploadFile && (
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 'var(--spacing-xs)',
-                  padding: 'var(--spacing-xs) var(--spacing-sm)',
-                  backgroundColor: 'var(--bg-secondary)',
-                  borderRadius: 'var(--radius-sm)',
-                  fontSize: '0.875rem'
-                }}>
+                <div className="flex items-center gap-2 rounded-md bg-muted px-2.5 py-1.5 text-sm">
                   <span>{uploadFile.name}</span>
-                  <span style={{ color: 'var(--text-secondary)' }}>
-                    ({(uploadFile.size / (1024 * 1024)).toFixed(2)} MB)
-                  </span>
+                  <span className="text-muted-foreground">({(uploadFile.size / (1024 * 1024)).toFixed(2)} MB)</span>
                   <button
                     onClick={() => {
                       setUploadFile(null);
                       const fileInput = document.getElementById('backup-upload-input') as HTMLInputElement;
                       if (fileInput) fileInput.value = '';
                     }}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      cursor: 'pointer',
-                      padding: 0,
-                      display: 'flex',
-                      alignItems: 'center',
-                      color: 'var(--text-secondary)'
-                    }}
+                    className="text-muted-foreground hover:text-foreground"
                   >
-                    <X size={16} />
+                    <X size={15} />
                   </button>
-                  <button
-                    className="btn btn-primary btn-sm"
-                    onClick={handleUploadBackup}
-                    disabled={uploading}
-                    style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-xs)' }}
-                  >
+                  <Button size="sm" onClick={handleUploadBackup} disabled={uploading}>
                     {uploading ? 'Enviando...' : 'Enviar'}
-                  </button>
+                  </Button>
                 </div>
               )}
-              <button 
-                className="btn btn-primary"
-                onClick={createBackup}
-                disabled={creating}
-                style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-xs)' }}
-              >
-                <Database size={20} />
+              <Button onClick={createBackup} disabled={creating}>
+                <Database size={18} />
                 {creating ? 'Criando...' : 'Novo Backup'}
-              </button>
+              </Button>
             </>
           )}
         </div>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
+      <div className="flex flex-col gap-3">
         {loading ? (
-          <div className="card" style={{ 
-            textAlign: 'center', 
-            padding: 'var(--spacing-2xl)',
-            border: '1px solid var(--border-primary)'
-          }}>
-            <RefreshCw size={48} style={{ 
-              marginBottom: 'var(--spacing-md)',
-              animation: 'spin 1s linear infinite',
-              color: 'var(--text-tertiary)'
-            }} />
-            <p style={{ 
-              color: 'var(--text-secondary)',
-              fontSize: '1rem'
-            }}>
-              Carregando backups...
-            </p>
-          </div>
+          <>
+            <Skeleton className="h-20 w-full" />
+            <Skeleton className="h-20 w-full" />
+          </>
         ) : filteredBackups.length === 0 ? (
-          <div className="card" style={{ 
-            textAlign: 'center', 
-            padding: 'var(--spacing-2xl)',
-            border: '1px solid var(--border-primary)'
-          }}>
-            <Database size={48} color="var(--text-tertiary)" style={{ marginBottom: 'var(--spacing-md)' }} />
-            <p style={{ 
-              color: 'var(--text-secondary)',
-              fontSize: '1rem',
-              marginBottom: 'var(--spacing-sm)'
-            }}>
-              {searchTerm ? 'Nenhum backup encontrado' : 'Nenhum backup criado ainda'}
-            </p>
+          <Card className="items-center p-10 text-center">
+            <Database size={40} className="mx-auto mb-3 text-muted-foreground" />
+            <p className="mb-3 text-muted-foreground">{searchTerm ? 'Nenhum backup encontrado' : 'Nenhum backup criado ainda'}</p>
             {!searchTerm && canCreate && (
-              <button 
-                className="btn btn-primary" 
-                style={{ marginTop: 'var(--spacing-md)' }}
-                onClick={createBackup}
-                disabled={creating}
-              >
-                <Database size={20} />
+              <Button onClick={createBackup} disabled={creating} className="mx-auto">
+                <Database size={18} />
                 {creating ? 'Criando...' : 'Criar Primeiro Backup'}
-              </button>
+              </Button>
             )}
-          </div>
+          </Card>
         ) : (
           filteredBackups.map((backup) => (
-            <div key={backup.id} className="card" style={{ 
-              border: '1px solid var(--border-primary)',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              transition: 'all var(--transition-base)'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.borderColor = 'var(--border-secondary)';
-              e.currentTarget.style.boxShadow = 'var(--shadow-md)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.borderColor = 'var(--border-primary)';
-              e.currentTarget.style.boxShadow = 'var(--shadow)';
-            }}
-            >
-              <div style={{ flex: 1 }}>
-                <div style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: 'var(--spacing-md)',
-                  marginBottom: 'var(--spacing-xs)'
-                }}>
-                  <Database size={20} color="var(--blue)" />
-                  <h3 style={{ 
-                    fontSize: '1.125rem', 
-                    fontWeight: '600',
-                    color: 'var(--text-primary)'
-                  }}>
-                    {backup.name}
-                  </h3>
+            <Card key={backup.id} className="flex-row flex-wrap items-center justify-between gap-3 px-4 py-4">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <Database size={18} className="text-[var(--blue)]" />
+                  <h3 className="text-base font-semibold text-foreground">{backup.name}</h3>
                 </div>
-                <div style={{ 
-                  display: 'flex', 
-                  gap: 'var(--spacing-lg)',
-                  fontSize: '0.875rem',
-                  color: 'var(--text-secondary)',
-                  marginLeft: '2.25rem'
-                }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                    <Clock size={14} />
+                <div className="mt-1 ml-6 flex flex-wrap gap-4 text-sm text-muted-foreground">
+                  <span className="flex items-center gap-1">
+                    <Clock size={13} />
                     {formatDateBR(backup.date, { includeTime: true })}
                   </span>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                    <HardDrive size={14} />
+                  <span className="flex items-center gap-1">
+                    <HardDrive size={13} />
                     {backup.size}
                   </span>
-                  <span><strong>Tipo:</strong> {backup.type}</span>
-                  <span><strong>Status:</strong> {backup.status}</span>
+                  <span>
+                    <strong className="text-foreground">Tipo:</strong> {backup.type}
+                  </span>
+                  <span>
+                    <strong className="text-foreground">Status:</strong> {backup.status}
+                  </span>
                 </div>
               </div>
-              <div style={{ 
-                display: 'flex', 
-                gap: 'var(--spacing-sm)'
-              }}>
+              <div className="flex shrink-0 gap-2">
                 {canEdit && (
-                  <button 
-                    className="btn btn-secondary btn-sm"
-                    onClick={() => restoreBackup(backup.filename)}
-                    title="Restaurar este backup"
-                  >
-                    <RefreshCw size={16} />
+                  <Button variant="secondary" size="sm" onClick={() => restoreBackup(backup.filename)} title="Restaurar este backup">
+                    <RefreshCw size={14} />
                     Restaurar
-                  </button>
+                  </Button>
                 )}
-                <button 
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => downloadBackup(backup.filename)}
-                  title="Baixar este backup"
-                >
-                  <Download size={16} />
+                <Button variant="secondary" size="sm" onClick={() => downloadBackup(backup.filename)} title="Baixar este backup">
+                  <Download size={14} />
                   Download
-                </button>
+                </Button>
                 {canEdit && (
-                  <button 
-                    className="btn btn-secondary btn-sm"
+                  <Button
+                    variant="secondary"
+                    size="sm"
                     onClick={() => sendBackupByEmail(backup.filename)}
                     title="Enviar este backup por email"
                     disabled={sendingEmail === backup.filename}
                   >
-                    <Mail size={16} />
+                    <Mail size={14} />
                     {sendingEmail === backup.filename ? 'Enviando...' : 'Email'}
-                  </button>
+                  </Button>
                 )}
                 {canDelete && (
-                  <button 
-                    className="btn btn-secondary btn-sm"
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
                     onClick={() => deleteBackup(backup.filename)}
                     title="Deletar este backup"
-                    style={{ color: 'var(--danger)' }}
+                    className="text-destructive hover:text-destructive"
                   >
-                    <Trash2 size={16} />
-                  </button>
+                    <Trash2 size={15} />
+                  </Button>
                 )}
               </div>
-            </div>
+            </Card>
           ))
         )}
       </div>

@@ -1,14 +1,35 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
 import { usePermissions, RESOURCES, ACTIONS } from '../hooks/usePermissions';
 import { formatDateChat, formatTicketTitle } from '../utils/dateUtils';
-import { 
-  ArrowLeft, 
-  Send, 
-  User, 
-  Edit2, 
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useConfirm } from '@/components/ui/confirm-dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  ArrowLeft,
+  Send,
+  User,
+  Edit2,
   Trash2,
   FileText,
   Settings,
@@ -18,8 +39,46 @@ import {
   Calendar,
   Clock,
   Pause,
-  Play
+  Play,
+  Tag,
 } from 'lucide-react';
+
+const STATUS_META: Record<string, { label: string; color: string }> = {
+  open: { label: 'Aberto', color: 'var(--red)' },
+  in_progress: { label: 'Em Progresso', color: 'var(--blue)' },
+  resolved: { label: 'Resolvido', color: 'var(--green)' },
+  closed: { label: 'Fechado', color: 'var(--green)' },
+  scheduled: { label: 'Agendado', color: 'var(--purple)' },
+  pending_approval: { label: 'Pendente Aprovação', color: 'var(--orange)' },
+  rejected: { label: 'Rejeitado', color: 'var(--red)' },
+};
+
+const PRIORITY_META: Record<string, { label: string; color: string }> = {
+  low: { label: 'Baixa', color: 'var(--text-tertiary)' },
+  medium: { label: 'Média', color: 'var(--blue)' },
+  high: { label: 'Alta', color: 'var(--orange)' },
+  urgent: { label: 'Urgente', color: 'var(--red)' },
+};
+
+function MetaBadge({ label, color }: { label: string; color: string }) {
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold whitespace-nowrap"
+      style={{ background: `color-mix(in srgb, ${color} 15%, transparent)`, color }}
+    >
+      {label}
+    </span>
+  );
+}
+
+function MetaTag({ icon: Icon, children }: { icon: React.ComponentType<{ size?: number; className?: string }>; children: React.ReactNode }) {
+  return (
+    <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
+      <Icon size={13} className="shrink-0 text-muted-foreground/70" />
+      <span className="truncate">{children}</span>
+    </span>
+  );
+}
 
 interface Ticket {
   id: number;
@@ -51,22 +110,6 @@ interface FormAttachment {
   file_size: number;
   mime_type: string;
 }
-
-// Função para gerar ID completo do ticket (sem barras) - usado em URLs
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-// function getTicketFullId(ticket: Ticket): string {
-//   if (!ticket.ticket_number || !ticket.created_at) {
-//     return ticket.id.toString();
-//   }
-//   
-//   const date = new Date(ticket.created_at);
-//   const year = date.getFullYear();
-//   const month = String(date.getMonth() + 1).padStart(2, '0');
-//   const day = String(date.getDate()).padStart(2, '0');
-//   const number = String(ticket.ticket_number).padStart(3, '0');
-//   
-//   return `${year}${month}${day}${number}`;
-// }
 
 // Função para formatar ID do ticket para exibição (com barras)
 function formatTicketId(ticket: Ticket): string {
@@ -117,6 +160,7 @@ export default function TicketDetail({ ticketId: ticketIdProp, onClose }: Ticket
   const navigate = useNavigate();
   const { user } = useAuth();
   const { hasPermission } = usePermissions();
+  const confirm = useConfirm();
   const canEditTicket = hasPermission(RESOURCES.TICKETS, ACTIONS.EDIT);
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [messages, setMessages] = useState<TicketMessage[]>([]);
@@ -437,7 +481,7 @@ export default function TicketDetail({ ticketId: ticketIdProp, onClose }: Ticket
       window.URL.revokeObjectURL(url);
     } catch (err: any) {
       console.error('Erro ao baixar arquivo:', err);
-      alert('Erro ao baixar arquivo');
+      toast.error('Erro ao baixar arquivo');
     }
   };
 
@@ -484,7 +528,7 @@ export default function TicketDetail({ ticketId: ticketIdProp, onClose }: Ticket
       }
     } catch (err: any) {
       console.error('Erro ao atualizar ticket:', err);
-      alert(err.response?.data?.error || 'Erro ao atualizar ticket');
+      toast.error(err.response?.data?.error || 'Erro ao atualizar ticket');
     } finally {
       setUpdating(false);
     }
@@ -492,7 +536,7 @@ export default function TicketDetail({ ticketId: ticketIdProp, onClose }: Ticket
 
   const handleScheduleTicket = async () => {
     if (!scheduleDate || !scheduleTime) {
-      alert('Por favor, preencha data e horário');
+      toast.error('Por favor, preencha data e horário');
       return;
     }
 
@@ -522,16 +566,20 @@ export default function TicketDetail({ ticketId: ticketIdProp, onClose }: Ticket
       await fetchMessages();
     } catch (err: any) {
       console.error('Erro ao agendar ticket:', err);
-      alert(err.response?.data?.error || 'Erro ao agendar ticket');
+      toast.error(err.response?.data?.error || 'Erro ao agendar ticket');
     } finally {
       setScheduling(false);
     }
   };
 
   const handleUnscheduleTicket = async () => {
-    if (!confirm('Deseja realmente cancelar o agendamento deste ticket?')) {
-      return;
-    }
+    const ok = await confirm({
+      title: 'Cancelar agendamento',
+      description: 'Deseja realmente cancelar o agendamento deste ticket?',
+      confirmLabel: 'Cancelar agendamento',
+      variant: 'destructive',
+    });
+    if (!ok) return;
 
     setScheduling(true);
     try {
@@ -545,7 +593,7 @@ export default function TicketDetail({ ticketId: ticketIdProp, onClose }: Ticket
       await fetchMessages();
     } catch (err: any) {
       console.error('Erro ao cancelar agendamento:', err);
-      alert(err.response?.data?.error || 'Erro ao cancelar agendamento');
+      toast.error(err.response?.data?.error || 'Erro ao cancelar agendamento');
     } finally {
       setScheduling(false);
     }
@@ -559,7 +607,7 @@ export default function TicketDetail({ ticketId: ticketIdProp, onClose }: Ticket
       await fetchTicket();
     } catch (err: any) {
       console.error('Erro ao pausar ticket:', err);
-      alert(err.response?.data?.error || 'Erro ao pausar ticket');
+      toast.error(err.response?.data?.error || 'Erro ao pausar ticket');
     } finally {
       setPausingResume(false);
     }
@@ -573,7 +621,7 @@ export default function TicketDetail({ ticketId: ticketIdProp, onClose }: Ticket
       await fetchTicket();
     } catch (err: any) {
       console.error('Erro ao retomar ticket:', err);
-      alert(err.response?.data?.error || 'Erro ao retomar ticket');
+      toast.error(err.response?.data?.error || 'Erro ao retomar ticket');
     } finally {
       setPausingResume(false);
     }
@@ -605,7 +653,7 @@ export default function TicketDetail({ ticketId: ticketIdProp, onClose }: Ticket
       await fetchTicket(); // Atualizar timestamp do ticket
     } catch (err: any) {
       console.error('Erro ao enviar mensagem:', err);
-      alert(err.response?.data?.error || 'Erro ao enviar mensagem');
+      toast.error(err.response?.data?.error || 'Erro ao enviar mensagem');
     } finally {
       setSending(false);
     }
@@ -662,7 +710,7 @@ export default function TicketDetail({ ticketId: ticketIdProp, onClose }: Ticket
       window.URL.revokeObjectURL(url);
     } catch (err: any) {
       console.error('Erro ao baixar arquivo:', err);
-      alert('Erro ao baixar arquivo');
+      toast.error('Erro ao baixar arquivo');
     }
   };
 
@@ -678,19 +726,25 @@ export default function TicketDetail({ ticketId: ticketIdProp, onClose }: Ticket
       setEditText('');
     } catch (err: any) {
       console.error('Erro ao editar mensagem:', err);
-      alert(err.response?.data?.error || 'Erro ao editar mensagem');
+      toast.error(err.response?.data?.error || 'Erro ao editar mensagem');
     }
   };
 
   const handleDeleteMessage = async (messageId: number) => {
-    if (!window.confirm('Tem certeza que deseja excluir esta mensagem?')) return;
+    const ok = await confirm({
+      title: 'Excluir mensagem',
+      description: 'Tem certeza que deseja excluir esta mensagem?',
+      confirmLabel: 'Excluir',
+      variant: 'destructive',
+    });
+    if (!ok) return;
 
     try {
       await axios.delete(`/api/ticket-messages/${messageId}`);
       setMessages(messages.filter(msg => msg.id !== messageId));
     } catch (err: any) {
       console.error('Erro ao excluir mensagem:', err);
-      alert(err.response?.data?.error || 'Erro ao excluir mensagem');
+      toast.error(err.response?.data?.error || 'Erro ao excluir mensagem');
     }
   };
 
@@ -702,25 +756,14 @@ export default function TicketDetail({ ticketId: ticketIdProp, onClose }: Ticket
 
   if (loading) {
     return (
-      <div style={{
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-        minHeight: '60vh',
-        color: 'var(--text-secondary)'
-      }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{
-            width: '48px',
-            height: '48px',
-            border: '4px solid var(--border-primary)',
-            borderTopColor: 'var(--purple)',
-            borderRadius: '50%',
-            animation: 'spin 1s linear infinite',
-            margin: '0 auto 1rem'
-          }} />
-          <p>Carregando ticket...</p>
+      <div className="flex flex-col gap-4 p-6">
+        <div className="flex items-center gap-3">
+          <Skeleton className="size-9 rounded-lg" />
+          <Skeleton className="h-6 w-64" />
         </div>
+        <Skeleton className="h-24 w-full" />
+        <Skeleton className="h-24 w-3/4" />
+        <Skeleton className="h-24 w-2/3" />
       </div>
     );
   }
@@ -731,14 +774,12 @@ export default function TicketDetail({ ticketId: ticketIdProp, onClose }: Ticket
 
   if (!ticket) {
     return (
-      <div style={{ padding: 'var(--spacing-xl)', textAlign: 'center' }}>
-        <p style={{ color: 'var(--text-secondary)', marginBottom: 'var(--spacing-lg)' }}>
-          Ticket não encontrado
-        </p>
-        <button className="btn btn-secondary" onClick={() => (onClose ? onClose() : navigate('/tickets'))}>
+      <div className="flex flex-col items-center gap-4 p-10 text-center">
+        <p className="text-muted-foreground">Ticket não encontrado</p>
+        <Button variant="secondary" onClick={() => (onClose ? onClose() : navigate('/tickets'))}>
           <ArrowLeft size={18} />
           Voltar
-        </button>
+        </Button>
       </div>
     );
   }
@@ -760,246 +801,141 @@ export default function TicketDetail({ ticketId: ticketIdProp, onClose }: Ticket
   };
 
   return (
-    <div className="ticket-detail">
+    <div className="ticket-detail flex h-full flex-col">
       {/* Header */}
-      <header className="ticket-detail__header">
-        <div className="ticket-detail__header-top">
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="ticket-detail__title-row">
-              <button
-                className="btn btn-secondary btn-sm"
-                onClick={() => (onClose ? onClose() : navigate(getBackPath()))}
-                style={{ padding: 'var(--spacing-xs) var(--spacing-sm)', flexShrink: 0 }}
-              >
-                <ArrowLeft size={18} />
-              </button>
-              <h1 className="ticket-detail__title">{formatTicketTitle(ticket.title)}</h1>
-            </div>
-            <div className="ticket-detail__info">
-              <div className="ticket-detail__info-item">
-                <span className="ticket-detail__info-label">ID</span>
-                <span className="ticket-detail__info-value">{formatTicketId(ticket)}</span>
+      <header className="flex flex-col border-b border-border">
+        <div
+          className="h-[3px] shrink-0"
+          style={{ background: PRIORITY_META[ticket.priority]?.color ?? 'var(--text-tertiary)' }}
+        />
+        <div className="flex flex-col gap-3 p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 flex-1 items-start gap-2">
+            <Button
+              variant="secondary"
+              size="icon-sm"
+              className="mt-0.5 shrink-0"
+              onClick={() => (onClose ? onClose() : navigate(getBackPath()))}
+            >
+              <ArrowLeft size={18} />
+            </Button>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="font-mono text-[0.6875rem] text-muted-foreground/70">{formatTicketId(ticket)}</span>
+                <MetaBadge label={STATUS_LABELS[ticket.status] || ticket.status} color={STATUS_META[ticket.status]?.color ?? 'var(--text-tertiary)'} />
+                <MetaBadge label={PRIORITY_LABELS[ticket.priority] || ticket.priority} color={PRIORITY_META[ticket.priority]?.color ?? 'var(--text-tertiary)'} />
+                {ticket.status === 'in_progress' && ticket.is_paused && <MetaBadge label="Em pausa" color="var(--orange)" />}
               </div>
-              <div className="ticket-detail__info-item">
-                <span className="ticket-detail__info-label">Status</span>
-                <span className={`ticket-detail__badge ticket-detail__badge--status-${ticket.status}`}>
-                  {STATUS_LABELS[ticket.status] || ticket.status}
-                </span>
+              <h1 className="mt-1 truncate text-lg font-semibold text-foreground">{formatTicketTitle(ticket.title)}</h1>
+              <div className="mt-2 flex flex-wrap items-center gap-x-3.5 gap-y-1 text-xs">
+                {ticket.category_name && <MetaTag icon={Tag}>{ticket.category_name}</MetaTag>}
+                <MetaTag icon={User}>{ticket.assigned_name || 'Não atribuído'}</MetaTag>
+                {ticket.form_name && <MetaTag icon={FileText}>{ticket.form_name}</MetaTag>}
+                <MetaTag icon={Clock}>Criado {formatDate(ticket.created_at)}</MetaTag>
+                <MetaTag icon={Clock}>Atualizado {formatDate(ticket.updated_at)}</MetaTag>
+                {ticket.scheduled_at && (
+                  <MetaTag icon={Calendar}>Agendado {new Date(ticket.scheduled_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</MetaTag>
+                )}
               </div>
-              <div className="ticket-detail__info-item">
-                <span className="ticket-detail__info-label">Prioridade</span>
-                <span className={`ticket-detail__badge ticket-detail__badge--priority-${ticket.priority}`}>
-                  {PRIORITY_LABELS[ticket.priority] || ticket.priority}
-                </span>
-              </div>
-              {ticket.category_name && (
-                <div className="ticket-detail__info-item">
-                  <span className="ticket-detail__info-label">Categoria</span>
-                  <span className="ticket-detail__info-value">{ticket.category_name}</span>
-                </div>
-              )}
-              <div className="ticket-detail__info-item">
-                <span className="ticket-detail__info-label">Atribuído a</span>
-                <span className="ticket-detail__info-value">{ticket.assigned_name || '—'}</span>
-              </div>
-              <div className="ticket-detail__info-item">
-                <span className="ticket-detail__info-label">Formulário</span>
-                <span className="ticket-detail__info-value">{ticket.form_name || '—'}</span>
-              </div>
-              <div className="ticket-detail__info-item">
-                <span className="ticket-detail__info-label">Criado em</span>
-                <span className="ticket-detail__info-value">{formatDate(ticket.created_at)}</span>
-              </div>
-              <div className="ticket-detail__info-item">
-                <span className="ticket-detail__info-label">Atualizado em</span>
-                <span className="ticket-detail__info-value">{formatDate(ticket.updated_at)}</span>
-              </div>
-              {ticket.scheduled_at && (
-                <div className="ticket-detail__info-item">
-                  <span className="ticket-detail__info-label">Agendado para</span>
-                  <span className="ticket-detail__info-value">
-                    {new Date(ticket.scheduled_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
-                  </span>
-                </div>
-              )}
-              {ticket.status === 'in_progress' && ticket.is_paused && (
-                <div className="ticket-detail__info-item">
-                  <span className="ticket-detail__info-label">Tempo</span>
-                  <span className="ticket-detail__badge ticket-detail__badge--paused">
-                    <Pause size={12} />
-                    Em pausa
-                  </span>
-                </div>
-              )}
             </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)', flexShrink: 0 }}>
+          <div className="flex shrink-0 items-center gap-2">
             {canEditTicket && ticket.status === 'in_progress' && (
-              <button
-                className="btn btn-secondary btn-sm"
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={ticket.is_paused ? handleResume : handlePause}
                 disabled={pausingResume}
-                style={{ padding: 'var(--spacing-xs) var(--spacing-sm)' }}
                 title={ticket.is_paused ? 'Retomar (tempo volta a contar)' : 'Pausar (tempo não conta no tempo médio)'}
               >
-                {ticket.is_paused ? <Play size={18} /> : <Pause size={18} />}
-                {pausingResume ? '…' : (ticket.is_paused ? ' Retomar' : ' Pausar')}
-              </button>
+                {ticket.is_paused ? <Play size={16} /> : <Pause size={16} />}
+                {pausingResume ? '…' : ticket.is_paused ? 'Retomar' : 'Pausar'}
+              </Button>
             )}
             {canEditTicket && ticket.status !== 'pending_approval' && (
-              <button
-                className="btn btn-secondary btn-sm"
-                onClick={() => setShowSettings(!showSettings)}
-                style={{ padding: 'var(--spacing-xs) var(--spacing-sm)' }}
-              >
-                <Settings size={18} />
-              </button>
+              <Button variant={showSettings ? 'default' : 'secondary'} size="icon-sm" onClick={() => setShowSettings(!showSettings)}>
+                <Settings size={16} />
+              </Button>
             )}
             {onClose && (
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                onClick={onClose}
-                style={{ padding: 'var(--spacing-xs) var(--spacing-sm)' }}
-                title="Fechar"
-              >
-                <X size={18} />
-              </button>
+              <Button variant="secondary" size="icon-sm" onClick={onClose} title="Fechar">
+                <X size={16} />
+              </Button>
             )}
           </div>
         </div>
 
         {/* Painel de Configurações */}
         {showSettings && canEditTicket && ticket.status !== 'pending_approval' && (
-          <div style={{
-            marginTop: 'var(--spacing-md)',
-            padding: 'var(--spacing-md)',
-            backgroundColor: 'var(--bg-tertiary)',
-            borderRadius: 'var(--radius-md)',
-            border: '1px solid var(--border-primary)',
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-            gap: 'var(--spacing-md)'
-          }}>
+          <div className="grid grid-cols-1 gap-3 rounded-lg border border-border bg-muted/40 p-3 sm:grid-cols-3">
             <div>
-              <label style={{
-                display: 'block',
-                marginBottom: 'var(--spacing-xs)',
-                fontSize: '0.875rem',
-                fontWeight: '500',
-                color: 'var(--text-secondary)'
-              }}>
-                Status
-              </label>
-              <select
-                className="select"
-                value={ticket.status}
-                onChange={(e) => handleUpdateTicket('status', e.target.value)}
-                disabled={updating}
-                style={{ width: '100%' }}
-              >
-                <option value="open">Aberto</option>
-                <option value="in_progress">Em Progresso</option>
-                <option value="scheduled">Agendado</option>
-                <option value="resolved">Resolvido</option>
-                <option value="closed">Fechado</option>
-                <option value="pending_approval">Pendente Aprovação</option>
-              </select>
+              <Label className="mb-1.5 text-xs text-muted-foreground">Status</Label>
+              <Select value={ticket.status} onValueChange={(v) => handleUpdateTicket('status', v)}>
+                <SelectTrigger disabled={updating} className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="open">Aberto</SelectItem>
+                  <SelectItem value="in_progress">Em Progresso</SelectItem>
+                  <SelectItem value="scheduled">Agendado</SelectItem>
+                  <SelectItem value="resolved">Resolvido</SelectItem>
+                  <SelectItem value="closed">Fechado</SelectItem>
+                  <SelectItem value="pending_approval">Pendente Aprovação</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             <div>
-              <label style={{
-                display: 'block',
-                marginBottom: 'var(--spacing-xs)',
-                fontSize: '0.875rem',
-                fontWeight: '500',
-                color: 'var(--text-secondary)'
-              }}>
-                Prioridade
-              </label>
-              <select
-                className="select"
-                value={ticket.priority}
-                onChange={(e) => handleUpdateTicket('priority', e.target.value)}
-                disabled={updating}
-                style={{ width: '100%' }}
-              >
-                <option value="low">Baixa</option>
-                <option value="medium">Média</option>
-                <option value="high">Alta</option>
-                <option value="urgent">Urgente</option>
-              </select>
+              <Label className="mb-1.5 text-xs text-muted-foreground">Prioridade</Label>
+              <Select value={ticket.priority} onValueChange={(v) => handleUpdateTicket('priority', v)}>
+                <SelectTrigger disabled={updating} className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="low">Baixa</SelectItem>
+                  <SelectItem value="medium">Média</SelectItem>
+                  <SelectItem value="high">Alta</SelectItem>
+                  <SelectItem value="urgent">Urgente</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             <div>
-              <label style={{
-                display: 'block',
-                marginBottom: 'var(--spacing-xs)',
-                fontSize: '0.875rem',
-                fontWeight: '500',
-                color: 'var(--text-secondary)'
-              }}>
-                Atribuir a
-              </label>
-              <div style={{ display: 'flex', gap: 'var(--spacing-xs)' }}>
-              <select
-                className="select"
-                value={agents.find(a => a.name === ticket.assigned_name)?.id || ''}
-                onChange={(e) => handleUpdateTicket('assigned_to', e.target.value ? parseInt(e.target.value) : null)}
-                disabled={updating}
-                  style={{ flex: 1 }}
-              >
-                <option value="">Não atribuído</option>
-                {agents.map((agent) => (
-                  <option key={agent.id} value={agent.id}>
-                    {agent.name}
-                  </option>
-                ))}
-              </select>
-                <button
-                  className="btn btn-secondary"
+              <Label className="mb-1.5 text-xs text-muted-foreground">Atribuir a</Label>
+              <div className="flex gap-1.5">
+                <Select
+                  value={String(agents.find((a) => a.name === ticket.assigned_name)?.id ?? '')}
+                  onValueChange={(v) => handleUpdateTicket('assigned_to', v ? parseInt(v) : null)}
+                >
+                  <SelectTrigger disabled={updating} className="flex-1">
+                    <SelectValue placeholder="Não atribuído" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {agents.map((agent) => (
+                      <SelectItem key={agent.id} value={String(agent.id)}>
+                        {agent.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  variant="secondary"
+                  size="icon-sm"
                   onClick={() => setShowScheduleModal(true)}
                   disabled={updating || scheduling}
-                  style={{
-                    padding: 'var(--spacing-xs) var(--spacing-sm)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 'var(--spacing-xs)',
-                    whiteSpace: 'nowrap'
-                  }}
                   title={ticket.scheduled_at ? 'Editar agendamento' : 'Agendar ticket'}
                 >
                   <Calendar size={16} />
-                  {ticket.scheduled_at ? 'Agendado' : 'Agendar'}
-                </button>
+                </Button>
               </div>
               {ticket.scheduled_at && (
-                <div style={{
-                  marginTop: 'var(--spacing-xs)',
-                  fontSize: '0.75rem',
-                  color: 'var(--text-tertiary)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 'var(--spacing-xs)'
-                }}>
+                <div className="mt-1.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
                   <Clock size={12} />
-                  Agendado para: {new Date(ticket.scheduled_at).toLocaleString('pt-BR', {
-                    dateStyle: 'short',
-                    timeStyle: 'short'
-                  })}
+                  {new Date(ticket.scheduled_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
                   <button
                     onClick={handleUnscheduleTicket}
                     disabled={scheduling}
-                    style={{
-                      marginLeft: 'auto',
-                      padding: '0.125rem 0.375rem',
-                      fontSize: '0.75rem',
-                      backgroundColor: 'transparent',
-                      border: '1px solid var(--border-primary)',
-                      borderRadius: 'var(--radius-sm)',
-                      color: 'var(--text-secondary)',
-                      cursor: 'pointer'
-                    }}
+                    className="ml-auto rounded border border-border px-1.5 py-0.5 text-[11px] text-muted-foreground hover:bg-accent"
                   >
                     Cancelar
                   </button>
@@ -1008,6 +944,7 @@ export default function TicketDetail({ ticketId: ticketIdProp, onClose }: Ticket
             </div>
           </div>
         )}
+        </div>
       </header>
 
       {/* Área do chat */}
@@ -1809,166 +1746,66 @@ export default function TicketDetail({ ticketId: ticketIdProp, onClose }: Ticket
       )}
 
       {/* Modal de Agendamento */}
-      {showScheduleModal && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.7)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 2000,
-          padding: 'var(--spacing-xl)'
-        }}
-        onClick={(e) => {
-          if (e.target === e.currentTarget) {
-            setShowScheduleModal(false);
+      <Dialog
+        open={showScheduleModal}
+        onOpenChange={(open) => {
+          setShowScheduleModal(open);
+          if (!open) {
+            setScheduleDate('');
+            setScheduleTime('');
           }
         }}
-        >
-          <div style={{
-            backgroundColor: 'var(--bg-secondary)',
-            borderRadius: 'var(--radius-lg)',
-            padding: 'var(--spacing-lg)',
-            width: '100%',
-            maxWidth: '500px',
-            boxShadow: 'var(--shadow-xl)',
-            border: '1px solid var(--border-primary)'
-          }}
-          onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: 'var(--spacing-lg)'
-            }}>
-              <h2 style={{
-                fontSize: '1.5rem',
-                fontWeight: '700',
-                color: 'var(--text-primary)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 'var(--spacing-sm)'
-              }}>
-                <Calendar size={24} />
-                Agendar Ticket
-              </h2>
-              <button
-                onClick={() => setShowScheduleModal(false)}
-                style={{
-                  backgroundColor: 'transparent',
-                  border: 'none',
-                  color: 'var(--text-secondary)',
-                  cursor: 'pointer',
-                  padding: 'var(--spacing-xs)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}
-              >
-                <X size={20} />
-              </button>
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Calendar size={20} />
+              Agendar Ticket
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="flex flex-col gap-4">
+            <div>
+              <Label className="mb-1.5 text-sm text-muted-foreground">Data</Label>
+              <Input
+                type="date"
+                value={scheduleDate}
+                onChange={(e) => setScheduleDate(e.target.value)}
+                min={new Date().toISOString().split('T')[0]}
+              />
             </div>
 
-            <div style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 'var(--spacing-md)'
-            }}>
-              <div>
-                <label style={{
-                  display: 'block',
-                  marginBottom: 'var(--spacing-xs)',
-                  fontSize: '0.875rem',
-                  fontWeight: '500',
-                  color: 'var(--text-secondary)'
-                }}>
-                  Data
-                </label>
-                <input
-                  type="date"
-                  className="input"
-                  value={scheduleDate}
-                  onChange={(e) => setScheduleDate(e.target.value)}
-                  min={new Date().toISOString().split('T')[0]}
-                  style={{ width: '100%' }}
-                />
-              </div>
-
-              <div>
-                <label style={{
-                  display: 'block',
-                  marginBottom: 'var(--spacing-xs)',
-                  fontSize: '0.875rem',
-                  fontWeight: '500',
-                  color: 'var(--text-secondary)'
-                }}>
-                  Horário
-                </label>
-                <input
-                  type="time"
-                  className="input"
-                  value={scheduleTime}
-                  onChange={(e) => setScheduleTime(e.target.value)}
-                  style={{ width: '100%' }}
-                />
-              </div>
-
-              {ticket?.scheduled_at && (
-                <div style={{
-                  padding: 'var(--spacing-sm)',
-                  backgroundColor: 'var(--bg-tertiary)',
-                  borderRadius: 'var(--radius-md)',
-                  fontSize: '0.875rem',
-                  color: 'var(--text-secondary)'
-                }}>
-                  <strong>Agendamento atual:</strong> {new Date(ticket.scheduled_at).toLocaleString('pt-BR', {
-                    dateStyle: 'short',
-                    timeStyle: 'short'
-                  })}
-                </div>
-              )}
-
-              <div style={{
-                display: 'flex',
-                gap: 'var(--spacing-sm)',
-                justifyContent: 'flex-end',
-                marginTop: 'var(--spacing-md)'
-              }}>
-                <button
-                  className="btn btn-secondary"
-                  onClick={() => {
-                    setShowScheduleModal(false);
-                    setScheduleDate('');
-                    setScheduleTime('');
-                  }}
-                  disabled={scheduling}
-                >
-                  Cancelar
-                </button>
-                <button
-                  className="btn btn-primary"
-                  onClick={handleScheduleTicket}
-                  disabled={scheduling || !scheduleDate || !scheduleTime}
-                >
-                  {scheduling ? 'Agendando...' : 'Agendar'}
-                </button>
-              </div>
+            <div>
+              <Label className="mb-1.5 text-sm text-muted-foreground">Horário</Label>
+              <Input type="time" value={scheduleTime} onChange={(e) => setScheduleTime(e.target.value)} />
             </div>
+
+            {ticket?.scheduled_at && (
+              <div className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">
+                <strong className="text-foreground">Agendamento atual:</strong>{' '}
+                {new Date(ticket.scheduled_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
+              </div>
+            )}
           </div>
-        </div>
-      )}
 
-      {/* CSS Animation */}
-      <style>{`
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
+          <DialogFooter>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setShowScheduleModal(false);
+                setScheduleDate('');
+                setScheduleTime('');
+              }}
+              disabled={scheduling}
+            >
+              Cancelar
+            </Button>
+            <Button onClick={handleScheduleTicket} disabled={scheduling || !scheduleDate || !scheduleTime}>
+              {scheduling ? 'Agendando...' : 'Agendar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

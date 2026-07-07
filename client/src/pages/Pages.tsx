@@ -1,8 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { toast } from 'sonner';
 import { FileText, Plus, Search, Edit, Trash2, Eye, Copy, Link as LinkIcon } from 'lucide-react';
 import { formatDateBR } from '../utils/dateUtils';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 
 interface PageButton {
   id: number;
@@ -28,8 +34,25 @@ interface Page {
   updated_at: string;
 }
 
+function PageRowSkeleton() {
+  return (
+    <Card className="flex-row items-center justify-between gap-4 px-4 py-4">
+      <div className="min-w-0 flex-1">
+        <Skeleton className="mb-2 h-5 w-1/3" />
+        <div className="flex gap-4">
+          <Skeleton className="h-3.5 w-20" />
+          <Skeleton className="h-3.5 w-16" />
+          <Skeleton className="h-3.5 w-24" />
+        </div>
+      </div>
+      <Skeleton className="h-8 w-[300px] shrink-0" />
+    </Card>
+  );
+}
+
 export default function Pages() {
   const navigate = useNavigate();
+  const confirm = useConfirm();
   const [searchTerm, setSearchTerm] = useState('');
   const [pages, setPages] = useState<Page[]>([]);
   const [loading, setLoading] = useState(true);
@@ -51,7 +74,7 @@ export default function Pages() {
         buttons: page.buttons || [],
         buttons_count: page.buttons_count || 0,
         created_at: page.created_at,
-        updated_at: page.updated_at
+        updated_at: page.updated_at,
       }));
       setPages(pagesData);
     } catch (error) {
@@ -62,247 +85,132 @@ export default function Pages() {
   };
 
   const handleDelete = async (pageId: number) => {
-    if (!window.confirm('Tem certeza que deseja excluir esta página?')) {
-      return;
-    }
+    const ok = await confirm({
+      title: 'Excluir página',
+      description: 'Tem certeza que deseja excluir esta página?',
+      confirmLabel: 'Excluir',
+      variant: 'destructive',
+    });
+    if (!ok) return;
 
     try {
       await axios.delete(`/api/pages/${pageId}`);
-      setPages(pages.filter(p => p.id !== pageId));
-      alert('Página excluída com sucesso!');
+      setPages(pages.filter((p) => p.id !== pageId));
+      toast.success('Página excluída com sucesso!');
     } catch (error: any) {
       console.error('Erro ao excluir página:', error);
-      alert(error.response?.data?.error || 'Erro ao excluir página');
+      toast.error(error.response?.data?.error || 'Erro ao excluir página');
     }
   };
 
   const copyUrl = (url: string) => {
     navigator.clipboard.writeText(`${window.location.origin}${url}`);
-    alert('URL copiada para a área de transferência!');
+    toast.success('URL copiada para a área de transferência!');
   };
 
-  const startCreatingPage = () => {
-    navigate('/create/pages/builder');
-  };
+  const startCreatingPage = () => navigate('/create/pages/builder');
+  const handleEdit = (pageId: number) => navigate(`/create/pages/builder/${pageId}`);
 
-  const handleEdit = (pageId: number) => {
-    navigate(`/create/pages/builder/${pageId}`);
-  };
-
-  const filteredPages = pages.filter(page =>
-    page.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    page.slug.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (page.description && page.description.toLowerCase().includes(searchTerm.toLowerCase()))
+  const filteredPages = pages.filter(
+    (page) =>
+      page.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      page.slug.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (page.description && page.description.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   return (
     <div>
-      <div style={{ marginBottom: 'var(--spacing-2xl)' }}>
-        <h1 style={{ 
-          fontSize: '2.5rem', 
-          fontWeight: '800', 
-          marginBottom: 'var(--spacing-sm)',
-          background: 'linear-gradient(135deg, var(--text-primary) 0%, var(--text-secondary) 100%)',
-          WebkitBackgroundClip: 'text',
-          WebkitTextFillColor: 'transparent',
-          backgroundClip: 'text',
-          letterSpacing: '-0.03em'
-        }}>
+      <div className="mb-8">
+        <h1 className="mb-1.5 bg-gradient-to-br from-foreground to-muted-foreground bg-clip-text text-[2.5rem] font-extrabold tracking-tight text-transparent">
           Páginas
         </h1>
-        <p style={{
-          color: 'var(--text-secondary)',
-          fontSize: '1rem',
-          fontWeight: '400'
-        }}>
-          Gerencie as páginas do sistema
-        </p>
+        <p className="text-base text-muted-foreground">Gerencie as páginas do sistema</p>
       </div>
 
-      <div className="list-page-toolbar" style={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center', 
-        marginBottom: 'var(--spacing-lg)',
-        gap: 'var(--spacing-md)',
-        flexWrap: 'wrap'
-      }}>
-        <div style={{ 
-          position: 'relative',
-          flex: '1',
-          minWidth: '300px',
-          maxWidth: '500px'
-        }}>
-          <Search 
-            size={20} 
-            style={{ 
-              position: 'absolute', 
-              left: 'var(--spacing-md)', 
-              top: '50%', 
-              transform: 'translateY(-50%)',
-              color: 'var(--text-tertiary)',
-              pointerEvents: 'none'
-            }} 
-          />
-          <input
-            type="text"
-            className="input"
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <div className="relative min-w-[300px] max-w-[500px] flex-1">
+          <Search size={18} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted-foreground" />
+          <Input
             placeholder="Buscar páginas..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            style={{ paddingLeft: '2.75rem' }}
+            className="pl-10"
           />
         </div>
-        <button 
-          className="btn btn-primary"
-          onClick={startCreatingPage}
-        >
-          <Plus size={20} />
-          Nova Página
-        </button>
+        <Button onClick={startCreatingPage}>
+          <Plus size={18} /> Nova Página
+        </Button>
       </div>
 
       {loading ? (
-        <div className="card" style={{ 
-          textAlign: 'center', 
-          padding: 'var(--spacing-2xl)',
-          border: '1px solid var(--border-primary)'
-        }}>
-          <p style={{ color: 'var(--text-secondary)' }}>Carregando páginas...</p>
+        <div className="flex flex-col gap-3">
+          {[1, 2, 3].map((i) => (
+            <PageRowSkeleton key={i} />
+          ))}
         </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
-          {filteredPages.length === 0 ? (
-          <div className="card" style={{ 
-            textAlign: 'center', 
-            padding: 'var(--spacing-2xl)',
-            border: '1px solid var(--border-primary)'
-          }}>
-            <FileText size={48} color="var(--text-tertiary)" style={{ marginBottom: 'var(--spacing-md)' }} />
-            <p style={{ 
-              color: 'var(--text-secondary)',
-              fontSize: '1rem',
-              marginBottom: 'var(--spacing-sm)'
-            }}>
-              {searchTerm ? 'Nenhuma página encontrada' : 'Nenhuma página criada ainda'}
-            </p>
-            {!searchTerm && (
-              <button 
-                className="btn btn-primary" 
-                style={{ marginTop: 'var(--spacing-md)' }}
-                onClick={startCreatingPage}
-              >
-                <Plus size={20} />
-                Criar Primeira Página
-              </button>
-            )}
-          </div>
-        ) : (
-          filteredPages.map((page) => (
-            <div key={page.id} className="card" style={{ 
-              border: '1px solid var(--border-primary)',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              transition: 'all var(--transition-base)'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.borderColor = 'var(--border-secondary)';
-              e.currentTarget.style.boxShadow = 'var(--shadow-md)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.borderColor = 'var(--border-primary)';
-              e.currentTarget.style.boxShadow = 'var(--shadow)';
-            }}
-            >
-              <div style={{ flex: 1 }}>
-                <div style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: 'var(--spacing-md)',
-                  marginBottom: 'var(--spacing-xs)'
-                }}>
-                  <FileText size={20} color="var(--purple)" />
-                  <h3 style={{ 
-                    fontSize: '1.125rem', 
-                    fontWeight: '600',
-                    color: 'var(--text-primary)'
-                  }}>
-                    {page.title}
-                  </h3>
-                </div>
-                {page.description && (
-                  <p style={{ 
-                    fontSize: '0.875rem',
-                    color: 'var(--text-secondary)',
-                    marginLeft: '2.25rem',
-                    marginBottom: 'var(--spacing-xs)'
-                  }}>
-                    {page.description}
-                  </p>
-                )}
-                <div style={{ 
-                  display: 'flex', 
-                  gap: 'var(--spacing-lg)',
-                  fontSize: '0.875rem',
-                  color: 'var(--text-secondary)',
-                  marginLeft: '2.25rem',
-                  flexWrap: 'wrap'
-                }}>
-                  <span><strong>Slug:</strong> /{page.slug}</span>
-                  <span><strong>{page.buttons_count}</strong> botões</span>
-                  <span><strong>Criado:</strong> {formatDateBR(page.created_at)}</span>
-                  <span><strong>Atualizado:</strong> {formatDateBR(page.updated_at)}</span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-xs)' }}>
-                    <LinkIcon size={14} />
-                    <span style={{ 
-                      color: 'var(--purple)',
-                      textDecoration: 'underline',
-                      cursor: 'pointer'
-                    }}
-                    onClick={() => copyUrl(page.publicUrl)}
-                    >
-                      {page.publicUrl}
-                    </span>
-                  </div>
-                </div>
-              </div>
-              <div style={{ 
-                display: 'flex', 
-                gap: 'var(--spacing-sm)'
-              }}>
-                <button 
-                  className="btn btn-info btn-sm"
-                  onClick={() => window.open(page.publicUrl, '_blank')}
-                >
-                  <Eye size={16} />
-                  Visualizar
-                </button>
-                <button 
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => copyUrl(page.publicUrl)}
-                >
-                  <Copy size={16} />
-                  Copiar URL
-                </button>
-                <button 
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => handleEdit(page.id)}
-                >
-                  <Edit size={16} />
-                  Editar
-                </button>
-                <button 
-                  className="btn btn-danger btn-sm"
-                  onClick={() => handleDelete(page.id)}
-                >
-                  <Trash2 size={16} />
-                  Excluir
-                </button>
-              </div>
-            </div>
-          ))
+      ) : filteredPages.length === 0 ? (
+        <Card className="flex flex-col items-center px-4 py-16 text-center">
+          <FileText size={48} strokeWidth={1.5} className="mb-4 text-muted-foreground opacity-50" />
+          <p className="mb-4 text-base text-muted-foreground">
+            {searchTerm ? 'Nenhuma página encontrada' : 'Nenhuma página criada ainda'}
+          </p>
+          {!searchTerm && (
+            <Button onClick={startCreatingPage}>
+              <Plus size={18} /> Criar Primeira Página
+            </Button>
           )}
+        </Card>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {filteredPages.map((page) => (
+            <Card
+              key={page.id}
+              className="flex-row flex-wrap items-center justify-between gap-4 px-4 py-4 transition-shadow hover:shadow-md"
+            >
+              <div className="min-w-0 flex-1">
+                <div className="mb-1 flex items-center gap-2.5">
+                  <FileText size={20} className="shrink-0 text-[var(--purple)]" />
+                  <h3 className="text-[1.0625rem] font-semibold text-foreground">{page.title}</h3>
+                </div>
+                {page.description && <p className="mb-1.5 ml-9 text-sm text-muted-foreground">{page.description}</p>}
+                <div className="ml-9 flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
+                  <span>
+                    <strong className="text-foreground">Slug:</strong> /{page.slug}
+                  </span>
+                  <span>
+                    <strong className="text-foreground">{page.buttons_count}</strong> botões
+                  </span>
+                  <span>
+                    <strong className="text-foreground">Criado:</strong> {formatDateBR(page.created_at)}
+                  </span>
+                  <span>
+                    <strong className="text-foreground">Atualizado:</strong> {formatDateBR(page.updated_at)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => copyUrl(page.publicUrl)}
+                    className="flex items-center gap-1 text-[var(--purple)] underline-offset-2 hover:underline"
+                  >
+                    <LinkIcon size={14} /> {page.publicUrl}
+                  </button>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                <Button variant="secondary" size="sm" onClick={() => window.open(page.publicUrl, '_blank')}>
+                  <Eye size={15} /> Visualizar
+                </Button>
+                <Button variant="secondary" size="sm" onClick={() => copyUrl(page.publicUrl)}>
+                  <Copy size={15} /> Copiar URL
+                </Button>
+                <Button variant="secondary" size="sm" onClick={() => handleEdit(page.id)}>
+                  <Edit size={15} /> Editar
+                </Button>
+                <Button variant="destructive" size="sm" onClick={() => handleDelete(page.id)}>
+                  <Trash2 size={15} /> Excluir
+                </Button>
+              </div>
+            </Card>
+          ))}
         </div>
       )}
     </div>

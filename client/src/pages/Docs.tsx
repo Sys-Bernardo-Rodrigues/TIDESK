@@ -1,27 +1,24 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import {
-  HardDrive,
-  Search,
-  Plus,
-  FileText,
-  Users,
-  Lock,
-  ChevronRight,
-  X,
-  Trash2,
-  ChevronLeft,
-  Globe,
-} from 'lucide-react';
+import { toast } from 'sonner';
+import { HardDrive, Search, Plus, FileText, Users, Lock, ChevronRight, Trash2, ChevronLeft, Globe } from 'lucide-react';
 import { usePermissions, RESOURCES, ACTIONS } from '../hooks/usePermissions';
 import type { DocRepository, DocVisibility } from './docs/docsData';
 import { formatDate } from './docs/docsData';
-import DocsUserAccessPicker, {
-  type AccessMember,
-  type UserOption,
-} from './docs/DocsUserAccessPicker';
+import DocsUserAccessPicker, { type AccessMember, type UserOption } from './docs/DocsUserAccessPicker';
 import { useAuth } from '../contexts/AuthContext';
+import { cn } from '@/lib/utils';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 
 const PAGE_SIZE = 8;
 
@@ -30,10 +27,23 @@ const VISIBILITY_LABEL: Record<DocVisibility, string> = {
   team: 'Equipe',
 };
 
+function RepoRowSkeleton() {
+  return (
+    <div className="flex items-center gap-3 border-b border-border px-4 py-3.5 last:border-0">
+      <Skeleton className="h-9 w-9 shrink-0 rounded-lg" />
+      <div className="min-w-0 flex-1">
+        <Skeleton className="mb-1.5 h-4 w-1/3" />
+        <Skeleton className="h-3.5 w-1/2" />
+      </div>
+    </div>
+  );
+}
+
 export default function Docs() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { hasPermission } = usePermissions();
+  const confirm = useConfirm();
   const canCreate = hasPermission(RESOURCES.DOCS, ACTIONS.CREATE);
 
   const [search, setSearch] = useState('');
@@ -85,28 +95,29 @@ export default function Docs() {
   }, [search]);
 
   const totalPages = Math.max(1, Math.ceil(filteredRepos.length / PAGE_SIZE));
-  const paginatedRepos = filteredRepos.slice(
-    (currentPage - 1) * PAGE_SIZE,
-    currentPage * PAGE_SIZE
-  );
+  const paginatedRepos = filteredRepos.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
-  const handleOpenRepo = (repo: DocRepository) => {
-    navigate(`/docs/${repo.id}`);
-  };
+  const handleOpenRepo = (repo: DocRepository) => navigate(`/docs/${repo.id}`);
 
   const handleDeleteRepo = async (e: React.MouseEvent, repo: DocRepository) => {
     e.stopPropagation();
     if (repo.access !== 'owner') {
-      alert('Apenas o proprietário pode excluir este repositório.');
+      toast.error('Apenas o proprietário pode excluir este repositório.');
       return;
     }
-    if (!window.confirm(`Excluir o repositório "${repo.name}" e todos os arquivos?`)) return;
+    const ok = await confirm({
+      title: 'Excluir repositório',
+      description: `Excluir o repositório "${repo.name}" e todos os arquivos?`,
+      confirmLabel: 'Excluir',
+      variant: 'destructive',
+    });
+    if (!ok) return;
     try {
       await axios.delete(`/api/docs/repositories/${repo.id}`);
       setRepos((prev) => prev.filter((r) => r.id !== repo.id));
     } catch (err: unknown) {
       const msg = axios.isAxiosError(err) ? err.response?.data?.error : 'Erro ao excluir';
-      alert(msg || 'Erro ao excluir');
+      toast.error(msg || 'Erro ao excluir');
     }
   };
 
@@ -118,10 +129,7 @@ export default function Docs() {
         name: newRepoName.trim(),
         description: newRepoDesc.trim(),
         visibility: newRepoVisibility,
-        members:
-          newRepoVisibility === 'private'
-            ? accessMembers.map((m) => ({ user_id: m.user_id, permission: m.permission }))
-            : [],
+        members: newRepoVisibility === 'private' ? accessMembers.map((m) => ({ user_id: m.user_id, permission: m.permission })) : [],
       });
       setShowNewRepoModal(false);
       setNewRepoName('');
@@ -131,240 +139,187 @@ export default function Docs() {
       navigate(`/docs/${res.data.id}`);
     } catch (err: unknown) {
       const msg = axios.isAxiosError(err) ? err.response?.data?.error : 'Erro ao criar';
-      alert(msg || 'Erro ao criar repositório');
+      toast.error(msg || 'Erro ao criar repositório');
     }
   };
 
   return (
-    <div className="docs-page">
-      <header className="docs-header">
-        <h1 className="docs-header__title">Arquivos</h1>
-        <p className="docs-header__subtitle">
+    <div>
+      <div className="mb-8">
+        <h1 className="mb-1.5 bg-gradient-to-br from-foreground to-muted-foreground bg-clip-text text-[2.5rem] font-extrabold tracking-tight text-transparent">
+          Arquivos
+        </h1>
+        <p className="text-base text-muted-foreground">
           Repositório de arquivos da equipe — envie documentos, organize em pastas e compartilhe com colegas.
         </p>
-      </header>
+      </div>
 
-      <div className="docs-toolbar">
-        <div className="docs-search docs-search--repos">
-          <Search size={18} className="docs-search__icon" />
-          <input
-            type="text"
-            placeholder="Buscar repositórios..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="docs-search__input"
-          />
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <div className="relative min-w-[300px] max-w-[500px] flex-1">
+          <Search size={18} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted-foreground" />
+          <Input placeholder="Buscar repositórios..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
         </div>
         {canCreate && (
-          <button type="button" className="btn btn-primary" onClick={() => setShowNewRepoModal(true)}>
-            <Plus size={18} />
-            Novo repositório
-          </button>
+          <Button onClick={() => setShowNewRepoModal(true)}>
+            <Plus size={18} /> Novo repositório
+          </Button>
         )}
       </div>
 
       {error && (
-        <p className="docs-error" role="alert">
+        <div role="alert" className="mb-6 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           {error}
-        </p>
-      )}
-
-      <div className="docs-repos">
-        {loading ? (
-          <div className="card docs-empty-card">
-            <p className="docs-empty__text">Carregando repositórios...</p>
-          </div>
-        ) : filteredRepos.length === 0 ? (
-          <div className="card docs-empty-card">
-            <div className="docs-empty">
-              <div className="docs-empty__icon docs-empty__icon--repo">
-                <HardDrive size={40} />
-              </div>
-              <h3 className="docs-empty__title">
-                {search ? 'Nenhum repositório encontrado' : 'Nenhum repositório ainda'}
-              </h3>
-              <p className="docs-empty__text">
-                {search
-                  ? 'Tente outro termo de busca.'
-                  : 'Crie um repositório para armazenar e compartilhar arquivos com a equipe.'}
-              </p>
-              {!search && canCreate && (
-                <button type="button" className="btn btn-primary" onClick={() => setShowNewRepoModal(true)}>
-                  <Plus size={18} />
-                  Criar repositório
-                </button>
-              )}
-            </div>
-          </div>
-        ) : (
-          <div className="card docs-list-card">
-            <ul className="docs-list" role="list">
-              {paginatedRepos.map((repo, index) => (
-                <li
-                  key={repo.id}
-                  className="docs-list-item"
-                  onClick={() => handleOpenRepo(repo)}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => e.key === 'Enter' && handleOpenRepo(repo)}
-                >
-                  <span className="docs-list-item__accent" aria-hidden />
-                  <span className="docs-list-item__index">
-                    {String((currentPage - 1) * PAGE_SIZE + index + 1).padStart(2, '0')}
-                  </span>
-                  <span className="docs-list-item__icon">
-                    <HardDrive size={20} />
-                  </span>
-                  <div className="docs-list-item__content">
-                    <span className="docs-list-item__name">{repo.name}</span>
-                    <span className="docs-list-item__desc">{repo.description || 'Sem descrição'}</span>
-                  </div>
-                  <div className="docs-list-item__meta">
-                    <span className={`docs-visibility docs-visibility--${repo.visibility}`}>
-                      {repo.visibility === 'team' ? <Users size={12} /> : <Lock size={12} />}
-                      {VISIBILITY_LABEL[repo.visibility]}
-                    </span>
-                    <span>
-                      <FileText size={12} />
-                      {repo.item_count} {repo.item_count === 1 ? 'item' : 'itens'}
-                    </span>
-                    <span>{formatDate(repo.updated_at)}</span>
-                  </div>
-                  <div className="docs-list-item__actions">
-                    {repo.access === 'owner' && (
-                      <button
-                        type="button"
-                        className="docs-list-item__btn docs-list-item__btn--delete"
-                        onClick={(e) => handleDeleteRepo(e, repo)}
-                        title="Excluir repositório"
-                        aria-label="Excluir repositório"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    )}
-                    <span className="docs-list-item__open">
-                      <ChevronRight size={18} />
-                    </span>
-                  </div>
-                </li>
-              ))}
-            </ul>
-            {totalPages > 1 && (
-              <div className="docs-paginator">
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-sm"
-                  disabled={currentPage <= 1}
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                >
-                  <ChevronLeft size={16} />
-                  Anterior
-                </button>
-                <span className="docs-paginator__info">
-                  Página {currentPage} de {totalPages} · {filteredRepos.length} repositórios
-                </span>
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-sm"
-                  disabled={currentPage >= totalPages}
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                >
-                  Próxima
-                  <ChevronRight size={16} />
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {showNewRepoModal && (
-        <div className="docs-modal-backdrop" onClick={() => setShowNewRepoModal(false)}>
-          <div className="docs-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="docs-modal__head">
-              <div>
-                <h2 className="docs-modal__title">Novo repositório</h2>
-                <p className="docs-modal__subtitle">
-                  Espaço para arquivos, pastas e notas. Compartilhe com usuários específicos ou com toda a equipe.
-                </p>
-              </div>
-              <button
-                type="button"
-                className="docs-modal__close"
-                onClick={() => setShowNewRepoModal(false)}
-                aria-label="Fechar"
-              >
-                <X size={20} />
-              </button>
-            </div>
-            <form onSubmit={handleCreateRepo} className="docs-modal__form">
-              <div className="docs-form-grid">
-                <div className="docs-form-group docs-form-group--full">
-                  <label className="docs-form-label">Nome</label>
-                  <input
-                    type="text"
-                    required
-                    value={newRepoName}
-                    onChange={(e) => setNewRepoName(e.target.value)}
-                    placeholder="Ex: Documentos da equipe"
-                    className="docs-form-input"
-                    autoFocus
-                  />
-                </div>
-                <div className="docs-form-group docs-form-group--full">
-                  <label className="docs-form-label">Descrição</label>
-                  <textarea
-                    rows={3}
-                    value={newRepoDesc}
-                    onChange={(e) => setNewRepoDesc(e.target.value)}
-                    placeholder="Para que serve este repositório?"
-                    className="docs-form-input docs-form-textarea"
-                  />
-                </div>
-                <div className="docs-form-group docs-form-group--full">
-                  <label className="docs-form-label">Quem pode acessar</label>
-                  <select
-                    value={newRepoVisibility}
-                    onChange={(e) => setNewRepoVisibility(e.target.value as DocVisibility)}
-                    className="docs-form-input"
-                  >
-                    <option value="private">Usuários selecionados (+ você como dono)</option>
-                    <option value="team">Toda a equipe (quem tem permissão Arquivos)</option>
-                  </select>
-                </div>
-                {newRepoVisibility === 'private' && (
-                  <div className="docs-form-group docs-form-group--full">
-                    <DocsUserAccessPicker
-                      users={allUsers}
-                      value={accessMembers}
-                      onChange={setAccessMembers}
-                      excludeUserIds={user?.id ? [user.id] : []}
-                    />
-                  </div>
-                )}
-              </div>
-              <div className="docs-modal-footer">
-                <div className="docs-modal-footer__hint">
-                  <Globe size={14} />
-                  <span>
-                    {newRepoVisibility === 'private'
-                      ? 'Somente os usuários marcados e você terão acesso.'
-                      : 'Todos com permissão de Arquivos no sistema poderão ver.'}
-                  </span>
-                </div>
-                <div className="docs-modal-footer__actions">
-                  <button type="button" className="btn btn-secondary" onClick={() => setShowNewRepoModal(false)}>
-                    Cancelar
-                  </button>
-                  <button type="submit" className="btn btn-primary">
-                    Criar repositório
-                  </button>
-                </div>
-              </div>
-            </form>
-          </div>
         </div>
       )}
+
+      {loading ? (
+        <Card className="gap-0 overflow-hidden p-0">
+          {[1, 2, 3, 4].map((i) => (
+            <RepoRowSkeleton key={i} />
+          ))}
+        </Card>
+      ) : filteredRepos.length === 0 ? (
+        <Card className="flex flex-col items-center px-4 py-16 text-center">
+          <HardDrive size={48} strokeWidth={1.5} className="mb-4 text-muted-foreground opacity-50" />
+          <h3 className="mb-1.5 text-lg font-bold text-foreground">{search ? 'Nenhum repositório encontrado' : 'Nenhum repositório ainda'}</h3>
+          <p className="mb-4 max-w-[420px] text-sm text-muted-foreground">
+            {search ? 'Tente outro termo de busca.' : 'Crie um repositório para armazenar e compartilhar arquivos com a equipe.'}
+          </p>
+          {!search && canCreate && (
+            <Button onClick={() => setShowNewRepoModal(true)}>
+              <Plus size={18} /> Criar repositório
+            </Button>
+          )}
+        </Card>
+      ) : (
+        <Card className="gap-0 overflow-hidden p-0">
+          <ul role="list">
+            {paginatedRepos.map((repo, index) => (
+              <li
+                key={repo.id}
+                onClick={() => handleOpenRepo(repo)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => e.key === 'Enter' && handleOpenRepo(repo)}
+                className="group flex cursor-pointer items-center gap-3.5 border-b border-border px-4 py-3.5 outline-none last:border-0 hover:bg-muted/60 focus:bg-muted/60"
+              >
+                <span className="w-5 shrink-0 text-right font-mono text-xs text-muted-foreground/60 tabular-nums">
+                  {String((currentPage - 1) * PAGE_SIZE + index + 1).padStart(2, '0')}
+                </span>
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--purple-light)] text-[var(--purple)]">
+                  <HardDrive size={18} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <span className="block truncate text-[0.9375rem] font-semibold text-foreground">{repo.name}</span>
+                  <span className="block truncate text-sm text-muted-foreground">{repo.description || 'Sem descrição'}</span>
+                </div>
+                <div className="hidden shrink-0 items-center gap-4 text-xs text-muted-foreground sm:flex">
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      'gap-1 border-0 font-semibold',
+                      repo.visibility === 'team' ? 'bg-[var(--blue-light)] text-[var(--blue)]' : 'bg-[var(--purple-light)] text-[var(--purple)]'
+                    )}
+                  >
+                    {repo.visibility === 'team' ? <Users size={12} /> : <Lock size={12} />}
+                    {VISIBILITY_LABEL[repo.visibility]}
+                  </Badge>
+                  <span className="flex items-center gap-1">
+                    <FileText size={12} />
+                    {repo.item_count} {repo.item_count === 1 ? 'item' : 'itens'}
+                  </span>
+                  <span>{formatDate(repo.updated_at)}</span>
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  {repo.access === 'owner' && (
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={(e) => handleDeleteRepo(e, repo)}
+                      title="Excluir repositório"
+                      aria-label="Excluir repositório"
+                      className="text-muted-foreground hover:text-destructive"
+                    >
+                      <Trash2 size={14} />
+                    </Button>
+                  )}
+                  <ChevronRight size={18} className="text-muted-foreground/50 transition-transform group-hover:translate-x-0.5" />
+                </div>
+              </li>
+            ))}
+          </ul>
+          {totalPages > 1 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3">
+              <Button variant="secondary" size="sm" disabled={currentPage <= 1} onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}>
+                <ChevronLeft size={16} /> Anterior
+              </Button>
+              <span className="text-xs text-muted-foreground">
+                Página {currentPage} de {totalPages} · {filteredRepos.length} repositórios
+              </span>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={currentPage >= totalPages}
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              >
+                Próxima <ChevronRight size={16} />
+              </Button>
+            </div>
+          )}
+        </Card>
+      )}
+
+      <Dialog open={showNewRepoModal} onOpenChange={setShowNewRepoModal}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Novo repositório</DialogTitle>
+            <p className="text-sm text-muted-foreground">
+              Espaço para arquivos, pastas e notas. Compartilhe com usuários específicos ou com toda a equipe.
+            </p>
+          </DialogHeader>
+          <form onSubmit={handleCreateRepo} className="flex flex-col gap-4">
+            <div>
+              <Label className="mb-1.5">Nome</Label>
+              <Input required value={newRepoName} onChange={(e) => setNewRepoName(e.target.value)} placeholder="Ex: Documentos da equipe" autoFocus />
+            </div>
+            <div>
+              <Label className="mb-1.5">Descrição</Label>
+              <Textarea rows={3} value={newRepoDesc} onChange={(e) => setNewRepoDesc(e.target.value)} placeholder="Para que serve este repositório?" />
+            </div>
+            <div>
+              <Label className="mb-1.5">Quem pode acessar</Label>
+              <Select value={newRepoVisibility} onValueChange={(v) => setNewRepoVisibility(v as DocVisibility)}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="private">Usuários selecionados (+ você como dono)</SelectItem>
+                  <SelectItem value="team">Toda a equipe (quem tem permissão Arquivos)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {newRepoVisibility === 'private' && (
+              <DocsUserAccessPicker users={allUsers} value={accessMembers} onChange={setAccessMembers} excludeUserIds={user?.id ? [user.id] : []} />
+            )}
+            <DialogFooter className="flex-col items-stretch gap-3 sm:flex-col sm:items-stretch">
+              <div className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                <Globe size={14} className="mt-0.5 shrink-0" />
+                <span>
+                  {newRepoVisibility === 'private'
+                    ? 'Somente os usuários marcados e você terão acesso.'
+                    : 'Todos com permissão de Arquivos no sistema poderão ver.'}
+                </span>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => setShowNewRepoModal(false)}>
+                  Cancelar
+                </Button>
+                <Button type="submit">Criar repositório</Button>
+              </div>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

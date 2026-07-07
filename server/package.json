@@ -8,7 +8,9 @@
     "build": "tsc",
     "start": "node -r dotenv/config dist/server.js",
     "generate-certs": "tsx src/scripts/generate-certificates.ts",
-    "setup-cloudflare-certs": "tsx src/scripts/setup-cloudflare-certs.ts"
+    "setup-cloudflare-certs": "tsx src/scripts/setup-cloudflare-certs.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -38,6 +40,7 @@
     "@types/pg": "^8.10.9",
     "selfsigned": "^2.1.1",
     "tsx": "^4.7.0",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "vitest": "^4.1.10"
   }
 }

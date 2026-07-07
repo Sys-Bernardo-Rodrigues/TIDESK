@@ -1,14 +1,13 @@
-import { useEffect, useState, useRef, useLayoutEffect, useMemo } from 'react';
-import { createPortal } from 'react-dom';
+import { useEffect, useState, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import axios from 'axios';
+import { toast } from 'sonner';
 import {
   ArrowLeft,
   Plus,
   MoreHorizontal,
   Trash2,
   User,
-  X,
   Edit2,
   Settings,
   Calendar,
@@ -28,6 +27,17 @@ import {
 import React from 'react';
 import { usePermissions, RESOURCES, ACTIONS } from '../hooks/usePermissions';
 import ReactMarkdown from 'react-markdown';
+import { cn } from '@/lib/utils';
+import { Card } from '@/components/ui/card';
+import { Button, buttonVariants } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 
 const parseProjectDate = (dateStr: string) => {
   if (!dateStr) return new Date(NaN);
@@ -43,7 +53,9 @@ function processMentions(str: string): React.ReactNode {
   const parts = str.split(/(@[\wáéíóúãõâêôç]+)/gi);
   return parts.map((part, i) =>
     part.startsWith('@') ? (
-      <span key={i} className="mention" style={{ color: 'var(--purple)', fontWeight: 600 }}>{part}</span>
+      <span key={i} className="font-semibold text-[var(--purple)]">
+        {part}
+      </span>
     ) : (
       <React.Fragment key={i}>{part}</React.Fragment>
     )
@@ -197,16 +209,28 @@ const TASK_TYPE_COLOR: Record<string, string> = {
   chore: 'var(--text-tertiary)',
 };
 
+function FieldLabel({ children }: { children: React.ReactNode }) {
+  return <div className="mb-0.5 text-[0.6875rem] font-semibold tracking-wide text-muted-foreground uppercase">{children}</div>;
+}
+
+function MetricCard({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <Card className="min-w-[260px] flex-1 gap-2 px-4 py-4">
+      <div className="text-sm font-semibold text-foreground">{title}</div>
+      {children}
+    </Card>
+  );
+}
+
 export default function ProjetoDetail() {
   const { id } = useParams<{ id: string }>();
   const { hasPermission } = usePermissions();
+  const confirm = useConfirm();
   const [project, setProject] = useState<Project | null>(null);
   const [users, setUsers] = useState<UserOption[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [taskModalColumnId, setTaskModalColumnId] = useState<number | null>(null);
   const [editingTaskId, setEditingTaskId] = useState<number | null>(null);
-  const [taskMenuId, setTaskMenuId] = useState<number | null>(null);
   const [taskForm, setTaskForm] = useState({
     title: '',
     description: '',
@@ -223,16 +247,12 @@ export default function ProjetoDetail() {
   const [sprintForm, setSprintForm] = useState({ name: '', start_date: '', end_date: '' });
   const [editingSprintId, setEditingSprintId] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [columnMenuId, setColumnMenuId] = useState<number | null>(null);
   const [editColumnId, setEditColumnId] = useState<number | null>(null);
   const [editColumnName, setEditColumnName] = useState('');
-  const [deleteColumnId, setDeleteColumnId] = useState<number | null>(null);
   const [addColumnModal, setAddColumnModal] = useState(false);
   const [newColumnName, setNewColumnName] = useState('');
   const [dragTaskId, setDragTaskId] = useState<number | null>(null);
   const [dragOverColumnId, setDragOverColumnId] = useState<number | null>(null);
-  const taskMenuButtonRef = useRef<HTMLButtonElement>(null);
-  const [taskMenuPosition, setTaskMenuPosition] = useState<{ top: number; left: number } | null>(null);
   const [filterSprintId, setFilterSprintId] = useState<number | null>(null);
   const [filterTaskType, setFilterTaskType] = useState<ProjectTask['task_type'] | ''>('');
   const [subtasksByTaskId, setSubtasksByTaskId] = useState<Record<number, Subtask[]>>({});
@@ -256,11 +276,10 @@ export default function ProjetoDetail() {
   const fetchProject = async () => {
     if (!id) return;
     try {
-      setError(null);
       const res = await axios.get<Project>(`/api/projects/${id}`);
       setProject(res.data);
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Erro ao carregar projeto');
+      toast.error(err.response?.data?.error || 'Erro ao carregar projeto');
     } finally {
       setLoading(false);
     }
@@ -300,20 +319,6 @@ export default function ProjetoDetail() {
       .catch(() => {});
   }, [id, selectedTaskId]);
 
-  useLayoutEffect(() => {
-    if (!taskMenuId) {
-      setTaskMenuPosition(null);
-      return;
-    }
-    const rect = taskMenuButtonRef.current?.getBoundingClientRect();
-    if (rect) {
-      const menuWidth = 140;
-      const left = Math.max(8, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 8));
-      const top = rect.bottom + 4;
-      setTaskMenuPosition({ top, left });
-    }
-  }, [taskMenuId]);
-
   const openAddTask = (columnId: number) => {
     setTaskForm({
       title: '',
@@ -344,13 +349,11 @@ export default function ProjetoDetail() {
     });
     setEditingTaskId(task.id);
     setTaskModalColumnId(task.column_id);
-    setTaskMenuId(null);
     setSelectedTaskId(null);
   };
 
   const openTaskDrawer = (task: ProjectTask) => {
     setSelectedTaskId(task.id);
-    setTaskMenuId(null);
   };
 
   const handleSaveTask = async (e: React.FormEvent) => {
@@ -386,7 +389,7 @@ export default function ProjetoDetail() {
       setTaskModalColumnId(null);
       fetchProject();
     } catch (err: any) {
-      setError(err.response?.data?.error || (editingTaskId ? 'Erro ao atualizar tarefa' : 'Erro ao criar tarefa'));
+      toast.error(err.response?.data?.error || (editingTaskId ? 'Erro ao atualizar tarefa' : 'Erro ao criar tarefa'));
     } finally {
       setSubmitting(false);
     }
@@ -399,28 +402,27 @@ export default function ProjetoDetail() {
         column_id: columnId,
         ...(orderIndex !== undefined && { order_index: orderIndex }),
       });
-      setTaskMenuId(null);
       fetchProject();
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Erro ao mover tarefa');
+      toast.error(err.response?.data?.error || 'Erro ao mover tarefa');
     }
   };
 
   const handleDeleteTask = async (taskId: number) => {
-    if (!id || !window.confirm('Excluir esta tarefa?')) return;
+    if (!id) return;
+    const ok = await confirm({ title: 'Excluir tarefa', description: 'Excluir esta tarefa?', confirmLabel: 'Excluir', variant: 'destructive' });
+    if (!ok) return;
     try {
       await axios.delete(`/api/projects/${id}/tasks/${taskId}`);
-      setTaskMenuId(null);
       fetchProject();
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Erro ao excluir tarefa');
+      toast.error(err.response?.data?.error || 'Erro ao excluir tarefa');
     }
   };
 
   const openEditColumn = (col: ProjectColumn) => {
     setEditColumnName(col.name);
     setEditColumnId(col.id);
-    setColumnMenuId(null);
   };
 
   const handleSaveColumnName = async () => {
@@ -430,18 +432,24 @@ export default function ProjetoDetail() {
       setEditColumnId(null);
       fetchProject();
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Erro ao atualizar coluna');
+      toast.error(err.response?.data?.error || 'Erro ao atualizar coluna');
     }
   };
 
-  const handleDeleteColumn = async () => {
-    if (!id || !deleteColumnId) return;
+  const handleDeleteColumn = async (columnId: number) => {
+    if (!id) return;
+    const ok = await confirm({
+      title: 'Excluir coluna',
+      description: 'Excluir esta coluna? As tarefas desta coluna serão excluídas.',
+      confirmLabel: 'Excluir',
+      variant: 'destructive',
+    });
+    if (!ok) return;
     try {
-      await axios.delete(`/api/projects/${id}/columns/${deleteColumnId}`);
-      setDeleteColumnId(null);
+      await axios.delete(`/api/projects/${id}/columns/${columnId}`);
       fetchProject();
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Erro ao excluir coluna');
+      toast.error(err.response?.data?.error || 'Erro ao excluir coluna');
     }
   };
 
@@ -455,7 +463,7 @@ export default function ProjetoDetail() {
       setNewColumnName('');
       fetchProject();
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Erro ao criar coluna');
+      toast.error(err.response?.data?.error || 'Erro ao criar coluna');
     } finally {
       setSubmitting(false);
     }
@@ -483,30 +491,33 @@ export default function ProjetoDetail() {
       setSprintForm({ name: '', start_date: '', end_date: '' });
       fetchProject();
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Erro ao salvar sprint');
+      toast.error(err.response?.data?.error || 'Erro ao salvar sprint');
     } finally {
       setSubmitting(false);
     }
   };
 
   const openEditSprint = (s: ProjectSprint) => {
-    setSprintForm({
-      name: s.name,
-      start_date: s.start_date || '',
-      end_date: s.end_date || '',
-    });
+    setSprintForm({ name: s.name, start_date: s.start_date || '', end_date: s.end_date || '' });
     setEditingSprintId(s.id);
   };
 
   const handleDeleteSprint = async (sprintId: number) => {
-    if (!id || !window.confirm('Excluir esta sprint? As tarefas não serão excluídas, apenas desvinculadas.')) return;
+    if (!id) return;
+    const ok = await confirm({
+      title: 'Excluir sprint',
+      description: 'Excluir esta sprint? As tarefas não serão excluídas, apenas desvinculadas.',
+      confirmLabel: 'Excluir',
+      variant: 'destructive',
+    });
+    if (!ok) return;
     try {
       await axios.delete(`/api/projects/${id}/sprints/${sprintId}`);
       setEditingSprintId(null);
       setSprintForm({ name: '', start_date: '', end_date: '' });
       fetchProject();
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Erro ao excluir sprint');
+      toast.error(err.response?.data?.error || 'Erro ao excluir sprint');
     }
   };
 
@@ -517,7 +528,7 @@ export default function ProjetoDetail() {
       setNewSubtaskTitle('');
       setSubtasksByTaskId((prev) => ({ ...prev, [taskId]: [...(prev[taskId] || []), res.data] }));
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Erro ao criar subtarefa');
+      toast.error(err.response?.data?.error || 'Erro ao criar subtarefa');
     }
   };
 
@@ -525,12 +536,9 @@ export default function ProjetoDetail() {
     if (!id) return;
     try {
       const res = await axios.patch<Subtask>(`/api/projects/${id}/tasks/${taskId}/subtasks/${subtaskId}`, { completed: completed ? 0 : 1 });
-      setSubtasksByTaskId((prev) => ({
-        ...prev,
-        [taskId]: (prev[taskId] || []).map((s) => (s.id === subtaskId ? res.data : s)),
-      }));
+      setSubtasksByTaskId((prev) => ({ ...prev, [taskId]: (prev[taskId] || []).map((s) => (s.id === subtaskId ? res.data : s)) }));
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Erro ao atualizar subtarefa');
+      toast.error(err.response?.data?.error || 'Erro ao atualizar subtarefa');
     }
   };
 
@@ -540,7 +548,7 @@ export default function ProjetoDetail() {
       await axios.delete(`/api/projects/${id}/tasks/${taskId}/subtasks/${subtaskId}`);
       setSubtasksByTaskId((prev) => ({ ...prev, [taskId]: (prev[taskId] || []).filter((s) => s.id !== subtaskId) }));
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Erro ao excluir subtarefa');
+      toast.error(err.response?.data?.error || 'Erro ao excluir subtarefa');
     }
   };
 
@@ -551,7 +559,7 @@ export default function ProjetoDetail() {
       setNewDodLabel('');
       setDodByTaskId((prev) => ({ ...prev, [taskId]: [...(prev[taskId] || []), res.data] }));
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Erro ao criar item');
+      toast.error(err.response?.data?.error || 'Erro ao criar item');
     }
   };
 
@@ -559,12 +567,9 @@ export default function ProjetoDetail() {
     if (!id) return;
     try {
       const res = await axios.patch<DodItem>(`/api/projects/${id}/tasks/${taskId}/dod/${dodId}`, { checked: checked ? 0 : 1 });
-      setDodByTaskId((prev) => ({
-        ...prev,
-        [taskId]: (prev[taskId] || []).map((d) => (d.id === dodId ? res.data : d)),
-      }));
+      setDodByTaskId((prev) => ({ ...prev, [taskId]: (prev[taskId] || []).map((d) => (d.id === dodId ? res.data : d)) }));
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Erro ao atualizar item');
+      toast.error(err.response?.data?.error || 'Erro ao atualizar item');
     }
   };
 
@@ -574,7 +579,7 @@ export default function ProjetoDetail() {
       await axios.delete(`/api/projects/${id}/tasks/${taskId}/dod/${dodId}`);
       setDodByTaskId((prev) => ({ ...prev, [taskId]: (prev[taskId] || []).filter((d) => d.id !== dodId) }));
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Erro ao excluir item');
+      toast.error(err.response?.data?.error || 'Erro ao excluir item');
     }
   };
 
@@ -585,7 +590,7 @@ export default function ProjetoDetail() {
       setNewCommentMessage('');
       setCommentsByTaskId((prev) => ({ ...prev, [taskId]: [...(prev[taskId] || []), res.data] }));
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Erro ao enviar comentário');
+      toast.error(err.response?.data?.error || 'Erro ao enviar comentário');
     }
   };
 
@@ -601,7 +606,7 @@ export default function ProjetoDetail() {
       setTimeEntryForm((f) => ({ ...f, hours: '', note: '' }));
       setTimeEntriesByTaskId((prev) => ({ ...prev, [taskId]: [res.data, ...(prev[taskId] || [])] }));
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Erro ao registrar horas');
+      toast.error(err.response?.data?.error || 'Erro ao registrar horas');
     }
   };
 
@@ -611,7 +616,7 @@ export default function ProjetoDetail() {
       await axios.delete(`/api/projects/${id}/tasks/${taskId}/time-entries/${entryId}`);
       setTimeEntriesByTaskId((prev) => ({ ...prev, [taskId]: (prev[taskId] || []).filter((e) => e.id !== entryId) }));
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Erro ao excluir registro');
+      toast.error(err.response?.data?.error || 'Erro ao excluir registro');
     }
   };
 
@@ -626,7 +631,7 @@ export default function ProjetoDetail() {
       a.click();
       URL.revokeObjectURL(url);
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Erro ao transferir ficheiro');
+      toast.error(err.response?.data?.error || 'Erro ao transferir ficheiro');
     }
   };
 
@@ -641,7 +646,7 @@ export default function ProjetoDetail() {
       });
       setAttachmentsByTaskId((prev) => ({ ...prev, [taskId]: [res.data, ...(prev[taskId] || [])] }));
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Erro ao anexar ficheiro');
+      toast.error(err.response?.data?.error || 'Erro ao anexar ficheiro');
     } finally {
       setUploadingAttachment(false);
     }
@@ -653,7 +658,7 @@ export default function ProjetoDetail() {
       await axios.delete(`/api/projects/${id}/tasks/${taskId}/attachments/${attachmentId}`);
       setAttachmentsByTaskId((prev) => ({ ...prev, [taskId]: (prev[taskId] || []).filter((a) => a.id !== attachmentId) }));
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Erro ao excluir anexo');
+      toast.error(err.response?.data?.error || 'Erro ao excluir anexo');
     }
   };
 
@@ -663,13 +668,10 @@ export default function ProjetoDetail() {
       await axios.post(`/api/projects/${id}/tasks/${taskId}/dependencies`, { depends_on_task_id: dependsOnTaskId });
       setDependenciesByTaskId((prev) => ({
         ...prev,
-        [taskId]: {
-          depends_on: [...(prev[taskId]?.depends_on || []), dependsOnTaskId],
-          blocked_by: prev[taskId]?.blocked_by || [],
-        },
+        [taskId]: { depends_on: [...(prev[taskId]?.depends_on || []), dependsOnTaskId], blocked_by: prev[taskId]?.blocked_by || [] },
       }));
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Erro ao adicionar dependência');
+      toast.error(err.response?.data?.error || 'Erro ao adicionar dependência');
     }
   };
 
@@ -679,13 +681,10 @@ export default function ProjetoDetail() {
       await axios.delete(`/api/projects/${id}/tasks/${taskId}/dependencies/${dependsOnTaskId}`);
       setDependenciesByTaskId((prev) => ({
         ...prev,
-        [taskId]: {
-          depends_on: (prev[taskId]?.depends_on || []).filter((id) => id !== dependsOnTaskId),
-          blocked_by: prev[taskId]?.blocked_by || [],
-        },
+        [taskId]: { depends_on: (prev[taskId]?.depends_on || []).filter((did) => did !== dependsOnTaskId), blocked_by: prev[taskId]?.blocked_by || [] },
       }));
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Erro ao remover dependência');
+      toast.error(err.response?.data?.error || 'Erro ao remover dependência');
     }
   };
 
@@ -733,8 +732,7 @@ export default function ProjetoDetail() {
     return list;
   }, [project?.tasks, filterSprintId, filterTaskType]);
 
-  const getTasksByColumn = (columnId: number) =>
-    filteredTasks.filter((t) => t.column_id === columnId).sort((a, b) => a.order_index - b.order_index);
+  const getTasksByColumn = (columnId: number) => filteredTasks.filter((t) => t.column_id === columnId).sort((a, b) => a.order_index - b.order_index);
 
   const sprintProgress = useMemo(() => {
     if (!project || filterSprintId == null || filterSprintId <= 0) return null;
@@ -743,14 +741,8 @@ export default function ProjetoDetail() {
     const lastColumnOrder = Math.max(...(project.columns || []).map((c) => c.order_index), 0);
     const lastColumn = project.columns?.find((c) => c.order_index === lastColumnOrder);
     const total = tasksInSprint.reduce((s, t) => s + (t.story_points ?? 0), 0);
-    const done = lastColumn
-      ? tasksInSprint.filter((t) => t.column_id === lastColumn.id).reduce((s, t) => s + (t.story_points ?? 0), 0)
-      : 0;
-    return {
-      total,
-      done,
-      sprintName: project.sprints?.find((s) => s.id === filterSprintId)?.name || 'Sprint',
-    };
+    const done = lastColumn ? tasksInSprint.filter((t) => t.column_id === lastColumn.id).reduce((s, t) => s + (t.story_points ?? 0), 0) : 0;
+    return { total, done, sprintName: project.sprints?.find((s) => s.id === filterSprintId)?.name || 'Sprint' };
   }, [project, filterSprintId]);
 
   const burndownData = useMemo(() => {
@@ -770,17 +762,7 @@ export default function ProjetoDetail() {
     const remaining = Math.max(0, total - done);
     const todayRatio = totalDays > 0 ? elapsed / totalDays : 0;
     const idealRemaining = total * (1 - todayRatio);
-    return {
-      sprintName: sprintProgress.sprintName,
-      start,
-      end,
-      total,
-      done,
-      remaining,
-      totalDays,
-      todayRatio: Math.min(1, todayRatio),
-      idealRemaining,
-    };
+    return { sprintName: sprintProgress.sprintName, start, end, total, done, remaining, totalDays, todayRatio: Math.min(1, todayRatio), idealRemaining };
   }, [project, filterSprintId, sprintProgress]);
 
   const flowByColumn = useMemo(() => {
@@ -828,633 +810,488 @@ export default function ProjetoDetail() {
   };
 
   if (loading || !project) {
-    return (
-      <div style={{ padding: 'var(--spacing-2xl)', color: 'var(--text-secondary)' }}>
-        {loading ? 'Carregando...' : 'Projeto não encontrado.'}
-      </div>
-    );
+    return <div className="text-muted-foreground">{loading ? 'Carregando...' : 'Projeto não encontrado.'}</div>;
   }
 
+  const selectedTask = selectedTaskId ? project.tasks.find((t) => t.id === selectedTaskId) : null;
+  const selectedTaskColumn = selectedTask ? project.columns.find((c) => c.id === selectedTask.column_id) : null;
+  const formatDate = (s: string | null | undefined) => {
+    if (!s) return '—';
+    const d = parseProjectDate(s);
+    if (Number.isNaN(d.getTime())) return '—';
+    return d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
+  };
+
   return (
-    <div className="projeto-detail">
-      <header className="projeto-detail__header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-md)', marginBottom: 'var(--spacing-sm)' }}>
-          <Link to="/projetos" className="projeto-detail__back">
-            <ArrowLeft size={18} aria-hidden />
-            Voltar aos projetos
+    <div className="mx-auto max-w-[1600px]">
+      <header className="mb-5">
+        <div className="mb-2 flex flex-wrap items-center gap-3">
+          <Link to="/projetos" className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
+            <ArrowLeft size={18} /> Voltar aos projetos
           </Link>
           {id && (
-            <Link
-              to={`/agenda/calendario-de-servico?project=${id}`}
-              className="btn btn-secondary"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--spacing-xs)', padding: 'var(--spacing-xs) var(--spacing-sm)' }}
-            >
-              <Calendar size={16} aria-hidden />
-              Ver na Agenda
+            <Link to={`/agenda/calendario-de-servico?project=${id}`}>
+              <Button variant="secondary" size="sm">
+                <Calendar size={16} /> Ver na Agenda
+              </Button>
             </Link>
           )}
         </div>
-        <div className="projeto-detail__title-row">
+        <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h1 className="projeto-detail__title">{project.name}</h1>
-            {project.description && (
-              <p className="projeto-detail__description">{project.description}</p>
-            )}
+            <h1 className="text-2xl font-extrabold tracking-tight text-foreground">{project.name}</h1>
+            {project.description && <p className="mt-1 text-sm text-muted-foreground">{project.description}</p>}
           </div>
-          <div className="projeto-detail__toolbar">
+          <div className="flex flex-wrap items-center gap-2">
             {(project.sprints?.length ?? 0) > 0 && (
-              <select
-                value={filterSprintId === null ? '' : filterSprintId === -1 ? 'none' : filterSprintId}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  if (v === '') setFilterSprintId(null);
+              <Select
+                value={filterSprintId === null ? '__all' : filterSprintId === -1 ? 'none' : String(filterSprintId)}
+                onValueChange={(v) => {
+                  if (v === '__all') setFilterSprintId(null);
                   else if (v === 'none') setFilterSprintId(-1);
                   else setFilterSprintId(Number(v));
                 }}
-                className="input projeto-toolbar__select"
               >
-                <option value="">Todas as tarefas</option>
-                <option value="none">Sem sprint</option>
-                {project.sprints?.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger className="w-[170px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all">Todas as tarefas</SelectItem>
+                  <SelectItem value="none">Sem sprint</SelectItem>
+                  {project.sprints?.map((s) => (
+                    <SelectItem key={s.id} value={String(s.id)}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             )}
-            <select
-              value={filterTaskType}
-              onChange={(e) => setFilterTaskType(e.target.value as ProjectTask['task_type'] | '')}
-              className="input projeto-toolbar__select"
-            >
-              <option value="">Todos os tipos</option>
-              <option value="feature">{TASK_TYPE_LABEL.feature}</option>
-              <option value="bug">{TASK_TYPE_LABEL.bug}</option>
-              <option value="tech_debt">{TASK_TYPE_LABEL.tech_debt}</option>
-              <option value="chore">{TASK_TYPE_LABEL.chore}</option>
-            </select>
-            <div className="projeto-detail__view-toggle">
-              <button
-                type="button"
-                className={viewMode === 'board' ? 'btn btn-primary' : 'btn btn-secondary'}
-                style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-xs)' }}
-                onClick={() => setViewMode('board')}
-              >
-                <LayoutGrid size={18} aria-hidden />
-                Quadro
-              </button>
-              <button
-                type="button"
-                className={viewMode === 'backlog' ? 'btn btn-primary' : 'btn btn-secondary'}
-                style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-xs)' }}
-                onClick={() => setViewMode('backlog')}
-              >
-                <List size={18} aria-hidden />
-                Backlog
-              </button>
+            <Select value={filterTaskType || '__all'} onValueChange={(v) => setFilterTaskType(v === '__all' ? '' : (v as ProjectTask['task_type']))}>
+              <SelectTrigger className="w-[160px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all">Todos os tipos</SelectItem>
+                <SelectItem value="feature">{TASK_TYPE_LABEL.feature}</SelectItem>
+                <SelectItem value="bug">{TASK_TYPE_LABEL.bug}</SelectItem>
+                <SelectItem value="tech_debt">{TASK_TYPE_LABEL.tech_debt}</SelectItem>
+                <SelectItem value="chore">{TASK_TYPE_LABEL.chore}</SelectItem>
+              </SelectContent>
+            </Select>
+            <div className="flex gap-1.5">
+              <Button variant={viewMode === 'board' ? 'default' : 'outline'} onClick={() => setViewMode('board')}>
+                <LayoutGrid size={18} /> Quadro
+              </Button>
+              <Button variant={viewMode === 'backlog' ? 'default' : 'outline'} onClick={() => setViewMode('backlog')}>
+                <List size={18} /> Backlog
+              </Button>
             </div>
             {canEdit && (
-              <button
-                type="button"
-                className="btn btn-secondary"
-                style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)' }}
+              <Button
+                variant="secondary"
                 onClick={() => {
                   setSprintsModalOpen(true);
                   setSprintForm({ name: '', start_date: '', end_date: '' });
                   setEditingSprintId(null);
                 }}
               >
-                <ListTodo size={18} />
-                Sprints
-              </button>
+                <ListTodo size={18} /> Sprints
+              </Button>
             )}
           </div>
         </div>
       </header>
 
-      <div className="projeto-metrics">
-      {sprintProgress && sprintProgress.total >= 0 && (
-        <div className="projeto-metrics__card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--spacing-sm)' }}>
-            <span className="projeto-metrics__card-title">
-              Progresso da sprint: {sprintProgress.sprintName}
-            </span>
-            <span style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-              {sprintProgress.done} / {sprintProgress.total} pontos
-            </span>
-          </div>
-          <div
-            style={{
-              height: '8px',
-              borderRadius: 'var(--radius-sm)',
-              background: 'var(--border-primary)',
-              overflow: 'hidden',
-            }}
-          >
-            <div
-              style={{
-                height: '100%',
-                width: sprintProgress.total === 0 ? '0%' : `${Math.min(100, (sprintProgress.done / sprintProgress.total) * 100)}%`,
-                background: 'var(--purple)',
-                borderRadius: 'var(--radius-sm)',
-                transition: 'width 0.2s ease',
-              }}
-            />
-          </div>
-        </div>
-      )}
-
-      {burndownData && (
-        <div className="projeto-metrics__card">
-          <div className="projeto-metrics__card-title">
-            Burndown: {burndownData.sprintName}
-          </div>
-          <div style={{ display: 'flex', gap: 'var(--spacing-md)', fontSize: '0.75rem', color: 'var(--text-tertiary)', marginBottom: 'var(--spacing-sm)' }}>
-            <span>Ideal</span>
-            <span>Atual: {burndownData.remaining} pts restantes</span>
-          </div>
-          <div style={{ width: '100%', maxWidth: '480px', height: '160px', position: 'relative' }}>
-            <svg width="100%" height="160" viewBox="0 0 400 160" preserveAspectRatio="none" style={{ overflow: 'visible' }}>
-              <defs>
-                <line id="grid-y" x1="0" y1="0" x2="0" y2="120" stroke="var(--border-primary)" strokeWidth="0.5" strokeDasharray="4,2" />
-              </defs>
-              {/* Y axis label */}
-              <text x="8" y="14" fontSize="10" fill="var(--text-tertiary)">pts</text>
-              {/* Ideal line: from (0,0) in plot to (1,1) in data = (40, 120) to (360, 0) with y inverted */}
-              {burndownData.total > 0 && (
-                <>
-                  <line
-                    x1="40"
-                    y1="120"
-                    x2="360"
-                    y2="0"
-                    stroke="var(--text-tertiary)"
-                    strokeWidth="1.5"
-                    strokeDasharray="6,4"
-                    opacity={0.8}
-                  />
-                  {/* Current point: x = 40 + todayRatio * 320, y = remaining/total * 120 (inverted so 0 at top) */}
-                  <circle
-                    cx={40 + burndownData.todayRatio * 320}
-                    cy={120 - (burndownData.remaining / Math.max(burndownData.total, 1)) * 120}
-                    r="6"
-                    fill="var(--purple)"
-                    stroke="var(--bg-primary)"
-                    strokeWidth="2"
-                  />
-                </>
-              )}
-              {/* X axis: start and end dates */}
-              <text x="40" y="140" fontSize="9" fill="var(--text-tertiary)" textAnchor="start">
-                {burndownData.start.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
-              </text>
-              <text x="360" y="140" fontSize="9" fill="var(--text-tertiary)" textAnchor="end">
-                {burndownData.end.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
-              </text>
-            </svg>
-          </div>
-        </div>
-      )}
-
-      {leadTimeCycleTimeMetrics && (
-        <div className="projeto-metrics__card">
-          <div className="projeto-metrics__card-title">
-            Lead Time & Cycle Time: {leadTimeCycleTimeMetrics.sprintName}
-          </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--spacing-lg)', fontSize: '0.9375rem' }}>
-            <div>
-              <span style={{ color: 'var(--text-tertiary)' }}>Tarefas concluídas: </span>
-              <span style={{ color: 'var(--text-primary)' }}>{leadTimeCycleTimeMetrics.count}</span>
-            </div>
-            {leadTimeCycleTimeMetrics.avgLeadTimeDays != null && (
-              <div>
-                <span style={{ color: 'var(--text-tertiary)' }}>Lead time médio: </span>
-                <span style={{ color: 'var(--purple)' }}>{leadTimeCycleTimeMetrics.avgLeadTimeDays.toFixed(1)} dias</span>
-              </div>
-            )}
-            {leadTimeCycleTimeMetrics.avgCycleTimeDays != null && (
-              <div>
-                <span style={{ color: 'var(--text-tertiary)' }}>Cycle time médio: </span>
-                <span style={{ color: 'var(--green)' }}>{leadTimeCycleTimeMetrics.avgCycleTimeDays.toFixed(1)} dias</span>
-              </div>
-            )}
-            {leadTimeCycleTimeMetrics.count === 0 && (
-              <span style={{ color: 'var(--text-tertiary)', fontSize: '0.875rem' }}>Mova tarefas para a última coluna para preencher as métricas.</span>
-            )}
-          </div>
-        </div>
-      )}
-
-      {flowByColumn && flowByColumn.length > 0 && (
-        <div className="projeto-metrics__card">
-          <div className="projeto-metrics__card-title">
-            Fluxo por coluna
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-sm)' }}>
-            {flowByColumn.map((col) => (
-              <div key={col.id} style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-md)' }}>
-                <span style={{ width: '100px', fontSize: '0.8125rem', color: 'var(--text-secondary)', flexShrink: 0 }}>{col.name}</span>
-                <div style={{ flex: 1, minWidth: 0, height: '20px', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-sm)', overflow: 'hidden' }}>
-                  <div
-                    style={{
-                      width: `${col.widthPct}%`,
-                      height: '100%',
-                      background: 'var(--purple)',
-                      borderRadius: 'var(--radius-sm)',
-                      transition: 'width 0.2s ease',
-                    }}
-                  />
-                </div>
-                <span style={{ fontSize: '0.8125rem', color: 'var(--text-tertiary)', flexShrink: 0 }}>
-                  {col.count} {col.count === 1 ? 'tarefa' : 'tarefas'}
-                  {col.points > 0 && ` · ${col.points} pts`}
+      {(sprintProgress || burndownData || leadTimeCycleTimeMetrics || (flowByColumn && flowByColumn.length > 0) || (bugRateMetrics && bugRateMetrics.total > 0)) && (
+        <div className="mb-5 flex flex-wrap gap-4">
+          {sprintProgress && sprintProgress.total >= 0 && (
+            <MetricCard title={`Progresso da sprint: ${sprintProgress.sprintName}`}>
+              <div className="mb-1 flex items-center justify-between text-sm text-muted-foreground">
+                <span />
+                <span>
+                  {sprintProgress.done} / {sprintProgress.total} pontos
                 </span>
               </div>
-            ))}
-          </div>
-        </div>
-      )}
+              <div className="h-2 overflow-hidden rounded-full bg-muted">
+                <div
+                  className="h-full rounded-full bg-[var(--purple)] transition-[width] duration-200"
+                  style={{ width: sprintProgress.total === 0 ? '0%' : `${Math.min(100, (sprintProgress.done / sprintProgress.total) * 100)}%` }}
+                />
+              </div>
+            </MetricCard>
+          )}
 
-      {bugRateMetrics && (bugRateMetrics.total > 0) && (
-        <div className="projeto-metrics__card">
-          <div className="projeto-metrics__card-title">
-            Bug rate (funcionalidades vs bugs)
-          </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--spacing-lg)', alignItems: 'center', fontSize: '0.9375rem' }}>
-            <span style={{ color: 'var(--blue)' }}>{bugRateMetrics.features} funcionalidades</span>
-            <span style={{ color: 'var(--red)' }}>{bugRateMetrics.bugs} bugs</span>
-            <span style={{ color: 'var(--text-tertiary)' }}>
-              Taxa: <strong style={{ color: bugRateMetrics.ratePct > 30 ? 'var(--red)' : 'var(--text-primary)' }}>{bugRateMetrics.ratePct.toFixed(0)}%</strong> bugs
-            </span>
-          </div>
-        </div>
-      )}
-      </div>
+          {burndownData && (
+            <MetricCard title={`Burndown: ${burndownData.sprintName}`}>
+              <div className="mb-1 flex gap-4 text-xs text-muted-foreground">
+                <span>Ideal</span>
+                <span>Atual: {burndownData.remaining} pts restantes</span>
+              </div>
+              <div className="relative h-[160px] w-full max-w-[480px]">
+                <svg width="100%" height="160" viewBox="0 0 400 160" preserveAspectRatio="none" style={{ overflow: 'visible' }}>
+                  <text x="8" y="14" fontSize="10" fill="var(--text-tertiary)">
+                    pts
+                  </text>
+                  {burndownData.total > 0 && (
+                    <>
+                      <line x1="40" y1="120" x2="360" y2="0" stroke="var(--text-tertiary)" strokeWidth="1.5" strokeDasharray="6,4" opacity={0.8} />
+                      <circle
+                        cx={40 + burndownData.todayRatio * 320}
+                        cy={120 - (burndownData.remaining / Math.max(burndownData.total, 1)) * 120}
+                        r="6"
+                        fill="var(--purple)"
+                        stroke="var(--bg-primary)"
+                        strokeWidth="2"
+                      />
+                    </>
+                  )}
+                  <text x="40" y="140" fontSize="9" fill="var(--text-tertiary)" textAnchor="start">
+                    {burndownData.start.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+                  </text>
+                  <text x="360" y="140" fontSize="9" fill="var(--text-tertiary)" textAnchor="end">
+                    {burndownData.end.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+                  </text>
+                </svg>
+              </div>
+            </MetricCard>
+          )}
 
-      {error && (
-        <div
-          style={{
-            marginBottom: 'var(--spacing-lg)',
-            padding: 'var(--spacing-md)',
-            background: 'var(--red-light)',
-            border: '1px solid var(--red)',
-            color: 'var(--red)',
-            borderRadius: 'var(--radius-md)',
-          }}
-        >
-          {error}
+          {leadTimeCycleTimeMetrics && (
+            <MetricCard title={`Lead Time & Cycle Time: ${leadTimeCycleTimeMetrics.sprintName}`}>
+              <div className="flex flex-wrap gap-4 text-[0.9375rem]">
+                <div>
+                  <span className="text-muted-foreground">Tarefas concluídas: </span>
+                  <span className="text-foreground">{leadTimeCycleTimeMetrics.count}</span>
+                </div>
+                {leadTimeCycleTimeMetrics.avgLeadTimeDays != null && (
+                  <div>
+                    <span className="text-muted-foreground">Lead time médio: </span>
+                    <span className="text-[var(--purple)]">{leadTimeCycleTimeMetrics.avgLeadTimeDays.toFixed(1)} dias</span>
+                  </div>
+                )}
+                {leadTimeCycleTimeMetrics.avgCycleTimeDays != null && (
+                  <div>
+                    <span className="text-muted-foreground">Cycle time médio: </span>
+                    <span className="text-[var(--green)]">{leadTimeCycleTimeMetrics.avgCycleTimeDays.toFixed(1)} dias</span>
+                  </div>
+                )}
+                {leadTimeCycleTimeMetrics.count === 0 && <span className="text-sm text-muted-foreground">Mova tarefas para a última coluna para preencher as métricas.</span>}
+              </div>
+            </MetricCard>
+          )}
+
+          {flowByColumn && flowByColumn.length > 0 && (
+            <MetricCard title="Fluxo por coluna">
+              <div className="flex flex-col gap-2">
+                {flowByColumn.map((col) => (
+                  <div key={col.id} className="flex items-center gap-3">
+                    <span className="w-[100px] shrink-0 truncate text-[0.8125rem] text-muted-foreground">{col.name}</span>
+                    <div className="h-5 min-w-0 flex-1 overflow-hidden rounded-sm bg-muted">
+                      <div className="h-full rounded-sm bg-[var(--purple)] transition-[width] duration-200" style={{ width: `${col.widthPct}%` }} />
+                    </div>
+                    <span className="shrink-0 text-[0.8125rem] text-muted-foreground">
+                      {col.count} {col.count === 1 ? 'tarefa' : 'tarefas'}
+                      {col.points > 0 && ` · ${col.points} pts`}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </MetricCard>
+          )}
+
+          {bugRateMetrics && bugRateMetrics.total > 0 && (
+            <MetricCard title="Bug rate (funcionalidades vs bugs)">
+              <div className="flex flex-wrap items-center gap-4 text-[0.9375rem]">
+                <span className="text-[var(--blue)]">{bugRateMetrics.features} funcionalidades</span>
+                <span className="text-[var(--red)]">{bugRateMetrics.bugs} bugs</span>
+                <span className="text-muted-foreground">
+                  Taxa: <strong className={bugRateMetrics.ratePct > 30 ? 'text-[var(--red)]' : 'text-foreground'}>{bugRateMetrics.ratePct.toFixed(0)}%</strong> bugs
+                </span>
+              </div>
+            </MetricCard>
+          )}
         </div>
       )}
 
       {viewMode === 'backlog' ? (
-        <div className="projeto-backlog">
-          <h3 className="projeto-backlog__title">Backlog</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-lg)' }}>
-            {(project.columns || []).sort((a, b) => a.order_index - b.order_index).map((col) => {
-              const tasks = getTasksByColumn(col.id);
-              return (
-                <div key={col.id} className="projeto-backlog__group">
-                  <div className="projeto-backlog__group-name">
-                    {col.name}
-                  </div>
-                  <div
-                    style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-xs)' }}
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      e.dataTransfer.dropEffect = 'move';
-                    }}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      if (!backlogDragTaskId || !canEdit) return;
-                      const task = project.tasks.find((t) => t.id === backlogDragTaskId);
-                      if (!task) return;
-                      const targetTasks = getTasksByColumn(col.id);
-                      handleBacklogDrop(col.id, targetTasks.length);
-                      setBacklogDragTaskId(null);
-                    }}
-                  >
-                    {tasks.length === 0 && (
-                      <div
-                        className="projeto-backlog__drop-zone"
-                        style={{
-                          padding: 'var(--spacing-md)',
-                          border: '1px dashed var(--border-primary)',
-                          borderRadius: 'var(--radius-md)',
-                          color: 'var(--text-tertiary)',
-                          fontSize: '0.875rem',
-                        }}
-                        onDragOver={(e) => e.preventDefault()}
-                        onDrop={(e) => {
-                          e.preventDefault();
-                          if (!backlogDragTaskId || !canEdit) return;
-                          handleBacklogDrop(col.id, 0);
-                          setBacklogDragTaskId(null);
-                        }}
-                      >
-                        Arraste tarefas para cá
-                      </div>
-                    )}
-                    {tasks.map((task, idx) => (
-                      <div
-                        key={task.id}
-                        className={`projeto-backlog__row ${backlogDragTaskId === task.id ? 'projeto-backlog__row--dragging' : ''} ${!canEdit ? 'projeto-backlog__row--readonly' : ''}`}
-                        draggable={canEdit}
-                        onDragStart={() => canEdit && setBacklogDragTaskId(task.id)}
-                        onDragEnd={() => setBacklogDragTaskId(null)}
-                      >
-                        {canEdit && <GripVertical size={18} style={{ color: 'var(--text-tertiary)', flexShrink: 0 }} />}
-                        <div
-                          style={{ flex: 1, minWidth: 0 }}
-                          onClick={() => setSelectedTaskId(task.id)}
-                          role="button"
-                          tabIndex={0}
-                          onKeyDown={(e) => e.key === 'Enter' && setSelectedTaskId(task.id)}
-                        >
-                          <span style={{ fontWeight: '500', color: 'var(--text-primary)' }}>{task.title}</span>
-                          <div style={{ display: 'flex', gap: 'var(--spacing-sm)', marginTop: 'var(--spacing-xs)', flexWrap: 'wrap' }}>
-                            {task.sprint_name && (
-                              <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>{task.sprint_name}</span>
-                            )}
-                            {task.story_points != null && (
-                              <span style={{ fontSize: '0.75rem', color: 'var(--purple)' }}>{task.story_points} pts</span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      ) : (
-      <div className="projeto-board">
-        {(project.columns || []).sort((a, b) => a.order_index - b.order_index).map((col) => (
-          <div
-            key={col.id}
-            className={`projeto-board__column ${dragOverColumnId === col.id ? 'projeto-board__column--drag-over' : ''}`}
-            onDragOver={(e) => canEdit && handleDragOver(e, col.id)}
-            onDragLeave={handleDragLeave}
-            onDrop={(e) => canEdit && handleDrop(e, col.id)}
-          >
-            <div className="projeto-board__column-header">
-              <span style={{ flex: 1, minWidth: 0 }}>{col.name}</span>
-              <span style={{ fontSize: '0.8125rem', color: 'var(--text-tertiary)', fontWeight: '500' }}>
-                {getTasksByColumn(col.id).length}
-              </span>
-              {canEdit && (
-                <div style={{ position: 'relative' }}>
-                  <button
-                    type="button"
-                    onClick={() => setColumnMenuId(columnMenuId === col.id ? null : col.id)}
-                    style={{
-                      padding: '4px',
-                      border: 'none',
-                      background: 'transparent',
-                      color: 'var(--text-tertiary)',
-                      cursor: 'pointer',
-                      borderRadius: 'var(--radius-sm)',
-                    }}
-                  >
-                    <Settings size={16} />
-                  </button>
-                  {columnMenuId === col.id && (
+        <Card className="px-5 py-5">
+          <h3 className="mb-4 text-base font-semibold text-foreground">Backlog</h3>
+          <div className="flex flex-col gap-5">
+            {(project.columns || [])
+              .sort((a, b) => a.order_index - b.order_index)
+              .map((col) => {
+                const tasks = getTasksByColumn(col.id);
+                return (
+                  <div key={col.id}>
+                    <div className="mb-2 text-sm font-semibold text-muted-foreground">{col.name}</div>
                     <div
-                      className="card"
-                      style={{
-                        position: 'absolute',
-                        right: 0,
-                        top: '100%',
-                        marginTop: '2px',
-                        padding: '4px',
-                        minWidth: '140px',
-                        zIndex: 25,
-                        border: '1px solid var(--border-primary)',
+                      className="flex flex-col gap-1.5"
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = 'move';
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        if (!backlogDragTaskId || !canEdit) return;
+                        const task = project.tasks.find((t) => t.id === backlogDragTaskId);
+                        if (!task) return;
+                        handleBacklogDrop(col.id, getTasksByColumn(col.id).length);
+                        setBacklogDragTaskId(null);
                       }}
                     >
-                      <button
-                        type="button"
-                        style={{
-                          width: '100%',
-                          padding: '6px 8px',
-                          border: 'none',
-                          background: 'transparent',
-                          color: 'var(--text-primary)',
-                          cursor: 'pointer',
-                          fontSize: '0.8125rem',
-                          textAlign: 'left',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                        }}
-                        onClick={() => openEditColumn(col)}
-                      >
-                        <Edit2 size={14} />
-                        Editar nome
-                      </button>
-                      {project.columns.length > 1 && canDelete && (
-                        <button
-                          type="button"
-                          style={{
-                            width: '100%',
-                            padding: '6px 8px',
-                            border: 'none',
-                            background: 'transparent',
-                            color: 'var(--red)',
-                            cursor: 'pointer',
-                            fontSize: '0.8125rem',
-                            textAlign: 'left',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                          }}
-                          onClick={() => {
-                            setDeleteColumnId(col.id);
-                            setColumnMenuId(null);
+                      {tasks.length === 0 && (
+                        <div
+                          className="rounded-lg border border-dashed border-border px-4 py-3 text-sm text-muted-foreground"
+                          onDragOver={(e) => e.preventDefault()}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            if (!backlogDragTaskId || !canEdit) return;
+                            handleBacklogDrop(col.id, 0);
+                            setBacklogDragTaskId(null);
                           }}
                         >
-                          <Trash2 size={14} />
-                          Excluir coluna
-                        </button>
+                          Arraste tarefas para cá
+                        </div>
                       )}
+                      {tasks.map((task) => (
+                        <div
+                          key={task.id}
+                          className={cn(
+                            'flex items-center gap-2.5 rounded-lg border border-border bg-muted/40 px-4 py-2.5 transition-shadow hover:shadow-sm',
+                            canEdit ? 'cursor-grab active:cursor-grabbing' : 'cursor-default',
+                            backlogDragTaskId === task.id && 'opacity-60'
+                          )}
+                          draggable={canEdit}
+                          onDragStart={() => canEdit && setBacklogDragTaskId(task.id)}
+                          onDragEnd={() => setBacklogDragTaskId(null)}
+                        >
+                          {canEdit && <GripVertical size={18} className="shrink-0 text-muted-foreground" />}
+                          <div className="min-w-0 flex-1 cursor-pointer" onClick={() => setSelectedTaskId(task.id)} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && setSelectedTaskId(task.id)}>
+                            <span className="font-medium text-foreground">{task.title}</span>
+                            <div className="mt-0.5 flex flex-wrap gap-2.5">
+                              {task.sprint_name && <span className="text-xs text-muted-foreground">{task.sprint_name}</span>}
+                              {task.story_points != null && <span className="text-xs text-[var(--purple)]">{task.story_points} pts</span>}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
                     </div>
+                  </div>
+                );
+              })}
+          </div>
+        </Card>
+      ) : (
+        <div className="flex gap-4 overflow-x-auto pb-3">
+          {(project.columns || [])
+            .sort((a, b) => a.order_index - b.order_index)
+            .map((col) => (
+              <div
+                key={col.id}
+                className={cn(
+                  'flex max-h-[calc(100vh-220px)] w-[280px] shrink-0 flex-col overflow-hidden rounded-xl border border-border bg-card transition-colors',
+                  dragOverColumnId === col.id && 'bg-[var(--purple-light)] ring-2 ring-[var(--purple)]'
+                )}
+                onDragOver={(e) => canEdit && handleDragOver(e, col.id)}
+                onDragLeave={handleDragLeave}
+                onDrop={(e) => canEdit && handleDrop(e, col.id)}
+              >
+                <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3 text-[0.9375rem] font-semibold text-foreground">
+                  <span className="min-w-0 flex-1 truncate">{col.name}</span>
+                  <span className="text-[0.8125rem] font-medium text-muted-foreground">{getTasksByColumn(col.id).length}</span>
+                  {canEdit && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon-sm">
+                          <Settings size={16} />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => openEditColumn(col)}>
+                          <Edit2 size={14} /> Editar nome
+                        </DropdownMenuItem>
+                        {project.columns.length > 1 && canDelete && (
+                          <DropdownMenuItem variant="destructive" onClick={() => handleDeleteColumn(col.id)}>
+                            <Trash2 size={14} /> Excluir coluna
+                          </DropdownMenuItem>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   )}
                 </div>
-              )}
-            </div>
-            <div className="projeto-board__column-body">
-              {getTasksByColumn(col.id).map((task) => (
-                <div
-                  key={task.id}
-                  className={`projeto-task-card ${dragTaskId === task.id ? 'projeto-task-card--dragging' : ''}`}
-                  draggable={canEdit}
-                  onDragStart={(e) => handleDragStart(e, task.id)}
-                  onDragEnd={handleDragEnd}
-                  onClick={(e) => {
-                    if ((e.target as HTMLElement).closest('button')) return;
-                    openTaskDrawer(task);
-                  }}
-style={{
-                    position: 'relative',
-                    cursor: dragTaskId === task.id ? 'grabbing' : (canEdit ? 'grab' : 'pointer'),
-                    borderLeftColor: PRIORITY_COLOR[task.priority] || 'transparent',
-                  }}
-                >
-                  <div style={{ position: 'absolute', top: 'var(--spacing-xs)', right: 'var(--spacing-xs)' }}>
-                    {canEdit && (
-                      <button
-                        ref={taskMenuId === task.id ? taskMenuButtonRef : null}
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); setTaskMenuId(taskMenuId === task.id ? null : task.id); }}
-                        className="projeto-drawer__close"
-                        style={{ padding: '4px' }}
-                      >
-                        <MoreHorizontal size={16} aria-hidden />
-                      </button>
-                    )}
-                  </div>
-                  <div className="projeto-task-card__priority" style={{ color: PRIORITY_COLOR[task.priority] || 'var(--text-tertiary)' }}>
-                    {PRIORITY_LABEL[task.priority] || task.priority}
-                  </div>
-                  <div className="projeto-task-card__title">{task.title}</div>
-                  {(task.assigned_to_name || task.sprint_name || task.story_points != null || (task.task_type && task.task_type !== 'feature')) && (
-                    <div className="projeto-task-card__meta">
-                      {task.task_type && task.task_type !== 'feature' && (
-                        <span style={{ color: TASK_TYPE_COLOR[task.task_type] }}>{TASK_TYPE_LABEL[task.task_type]}</span>
+                <div className="flex flex-1 flex-col gap-2 overflow-y-auto p-2">
+                  {getTasksByColumn(col.id).map((task) => (
+                    <div
+                      key={task.id}
+                      draggable={canEdit}
+                      onDragStart={(e) => handleDragStart(e, task.id)}
+                      onDragEnd={handleDragEnd}
+                      onClick={(e) => {
+                        if ((e.target as HTMLElement).closest('button')) return;
+                        openTaskDrawer(task);
+                      }}
+                      className={cn(
+                        'relative rounded-lg border border-border bg-muted/40 p-3.5 border-l-[3px] transition-all hover:border-[var(--border-hover)] hover:shadow-sm',
+                        dragTaskId === task.id ? 'cursor-grabbing opacity-60 shadow-lg' : canEdit ? 'cursor-grab' : 'cursor-pointer'
                       )}
-                      {task.assigned_to_name && (
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                          <User size={12} aria-hidden />
-                          {task.assigned_to_name}
-                        </span>
+                      style={{ borderLeftColor: PRIORITY_COLOR[task.priority] || 'transparent' }}
+                    >
+                      {canEdit && (
+                        <div className="absolute top-1.5 right-1.5">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon-sm">
+                                <MoreHorizontal size={16} />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => openEditTask(task)}>
+                                <Edit2 size={14} /> Editar
+                              </DropdownMenuItem>
+                              {project.columns
+                                .filter((c) => c.id !== task.column_id)
+                                .map((c) => (
+                                  <DropdownMenuItem key={c.id} onClick={() => moveTask(task.id, c.id)}>
+                                    Mover para {c.name}
+                                  </DropdownMenuItem>
+                                ))}
+                              {canDelete && (
+                                <DropdownMenuItem variant="destructive" onClick={() => handleDeleteTask(task.id)}>
+                                  <Trash2 size={14} /> Excluir
+                                </DropdownMenuItem>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
                       )}
-                      {task.sprint_name && <span>{task.sprint_name}</span>}
-                      {task.story_points != null && <span>{task.story_points} pts</span>}
+                      <div className="mb-1.5 text-[0.6875rem] font-semibold tracking-wide uppercase" style={{ color: PRIORITY_COLOR[task.priority] || 'var(--text-tertiary)' }}>
+                        {PRIORITY_LABEL[task.priority] || task.priority}
+                      </div>
+                      <div className="pr-6 text-[0.9375rem] leading-snug font-medium text-foreground">{task.title}</div>
+                      {(task.assigned_to_name || task.sprint_name || task.story_points != null || (task.task_type && task.task_type !== 'feature')) && (
+                        <div className="mt-2 flex flex-wrap items-center gap-2.5 text-xs text-muted-foreground">
+                          {task.task_type && task.task_type !== 'feature' && <span style={{ color: TASK_TYPE_COLOR[task.task_type] }}>{TASK_TYPE_LABEL[task.task_type]}</span>}
+                          {task.assigned_to_name && (
+                            <span className="flex items-center gap-1">
+                              <User size={12} /> {task.assigned_to_name}
+                            </span>
+                          )}
+                          {task.sprint_name && <span>{task.sprint_name}</span>}
+                          {task.story_points != null && <span>{task.story_points} pts</span>}
+                        </div>
+                      )}
                     </div>
-                  )}
+                  ))}
                 </div>
-              ))}
-            </div>
-            {canCreate && (
-              <div className="projeto-board__add-task">
-                <button type="button" onClick={() => openAddTask(col.id)}>
-                  <Plus size={18} aria-hidden />
-                  Adicionar tarefa
-                </button>
+                {canCreate && (
+                  <div className="border-t border-border p-2">
+                    <button
+                      type="button"
+                      onClick={() => openAddTask(col.id)}
+                      className="flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+                    >
+                      <Plus size={18} /> Adicionar tarefa
+                    </button>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        ))}
-        {canEdit && (
-          <div className="projeto-board__new-column-wrap">
-            <button type="button" className="projeto-board__new-column" onClick={() => setAddColumnModal(true)}>
-              <Plus size={22} aria-hidden />
-              Nova coluna
-            </button>
-          </div>
-        )}
-      </div>
+            ))}
+          {canEdit && (
+            <div className="w-[280px] shrink-0">
+              <button
+                type="button"
+                onClick={() => setAddColumnModal(true)}
+                className="flex h-full min-h-[120px] w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border text-muted-foreground hover:border-[var(--purple)] hover:text-[var(--purple)]"
+              >
+                <Plus size={22} /> Nova coluna
+              </button>
+            </div>
+          )}
+        </div>
       )}
 
-      {selectedTaskId && project && (() => {
-        const task = project.tasks.find((t) => t.id === selectedTaskId);
-        if (!task) return null;
-        const col = project.columns.find((c) => c.id === task.column_id);
-        const formatDate = (s: string | null | undefined) => {
-          if (!s) return '—';
-          const d = parseProjectDate(s);
-          if (Number.isNaN(d.getTime())) return '—';
-          return d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
-        };
-        return (
-          <>
-            <div
-              className="projeto-drawer-backdrop"
-              onClick={() => setSelectedTaskId(null)}
-              aria-hidden="true"
-            />
-            <div className="projeto-drawer" onClick={(e) => e.stopPropagation()}>
-              <div className="projeto-drawer__accent" />
-              <div className="projeto-drawer__header">
-                <h2 className="projeto-drawer__title">{task.title}</h2>
-                <button type="button" className="projeto-drawer__close" onClick={() => setSelectedTaskId(null)} aria-label="Fechar">
-                  <X size={22} aria-hidden />
-                </button>
-              </div>
-              <div className="projeto-drawer__body">
-                <div className="projeto-drawer__field">
-                  <div className="projeto-drawer__field-label">Prioridade</div>
-                  <div className="projeto-drawer__field-value" style={{ color: PRIORITY_COLOR[task.priority] }}>{PRIORITY_LABEL[task.priority]}</div>
+      {/* Drawer de detalhes da tarefa */}
+      <Sheet open={!!selectedTask} onOpenChange={(open) => !open && setSelectedTaskId(null)}>
+        <SheetContent className="w-full gap-0 overflow-y-auto p-0 sm:max-w-[440px]">
+          {selectedTask && (
+            <>
+              <div className="h-1 shrink-0 bg-gradient-to-r from-[var(--purple)] to-[var(--blue)]" />
+              <SheetHeader className="border-b border-border p-5">
+                <SheetTitle className="pr-6 text-lg leading-snug">{selectedTask.title}</SheetTitle>
+              </SheetHeader>
+              <div className="p-5">
+                <div className="mb-4">
+                  <FieldLabel>Prioridade</FieldLabel>
+                  <div className="text-[0.9375rem]" style={{ color: PRIORITY_COLOR[selectedTask.priority] }}>
+                    {PRIORITY_LABEL[selectedTask.priority]}
+                  </div>
                 </div>
-                <div className="projeto-drawer__field">
-                  <div className="projeto-drawer__field-label">Tipo</div>
-                  <div className="projeto-drawer__field-value" style={{ color: TASK_TYPE_COLOR[task.task_type || 'feature'] }}>{TASK_TYPE_LABEL[task.task_type || 'feature']}</div>
+                <div className="mb-4">
+                  <FieldLabel>Tipo</FieldLabel>
+                  <div className="text-[0.9375rem]" style={{ color: TASK_TYPE_COLOR[selectedTask.task_type || 'feature'] }}>
+                    {TASK_TYPE_LABEL[selectedTask.task_type || 'feature']}
+                  </div>
                 </div>
-                {col && (
-                  <div className="projeto-drawer__field">
-                    <div className="projeto-drawer__field-label">Coluna</div>
-                    <div className="projeto-drawer__field-value">{col.name}</div>
+                {selectedTaskColumn && (
+                  <div className="mb-4">
+                    <FieldLabel>Coluna</FieldLabel>
+                    <div className="text-[0.9375rem] text-foreground">{selectedTaskColumn.name}</div>
                   </div>
                 )}
-                {task.description && (
-                  <div className="projeto-drawer__field">
-                    <div className="projeto-drawer__field-label">Descrição</div>
-                    <div className="markdown-body projeto-drawer__field-value" style={{ margin: 0, color: 'var(--text-secondary)' }}>
-                      <ReactMarkdown>{task.description}</ReactMarkdown>
+                {selectedTask.description && (
+                  <div className="mb-4">
+                    <FieldLabel>Descrição</FieldLabel>
+                    <div className="markdown-body text-[0.9375rem] text-muted-foreground">
+                      <ReactMarkdown>{selectedTask.description}</ReactMarkdown>
                     </div>
                   </div>
                 )}
-                {task.assigned_to_name && (
-                  <div className="projeto-drawer__field">
-                    <div className="projeto-drawer__meta-row">
-                      <User size={16} aria-hidden />
-                      <span>{task.assigned_to_name}</span>
-                    </div>
+                {selectedTask.assigned_to_name && (
+                  <div className="mb-4 flex items-center gap-2 text-sm text-muted-foreground">
+                    <User size={16} className="shrink-0 text-muted-foreground/70" />
+                    <span>{selectedTask.assigned_to_name}</span>
                   </div>
                 )}
-                {task.sprint_name && (
-                  <div className="projeto-drawer__field">
-                    <div className="projeto-drawer__meta-row">
-                      <ListTodo size={16} aria-hidden />
-                      <span>{task.sprint_name}</span>
-                    </div>
+                {selectedTask.sprint_name && (
+                  <div className="mb-4 flex items-center gap-2 text-sm text-muted-foreground">
+                    <ListTodo size={16} className="shrink-0 text-muted-foreground/70" />
+                    <span>{selectedTask.sprint_name}</span>
                   </div>
                 )}
-                {task.story_points != null && (
-                  <div className="projeto-drawer__field">
-                    <div className="projeto-drawer__meta-row">
-                      <Target size={16} aria-hidden />
-                      <span>{task.story_points} pontos</span>
-                    </div>
+                {selectedTask.story_points != null && (
+                  <div className="mb-4 flex items-center gap-2 text-sm text-muted-foreground">
+                    <Target size={16} className="shrink-0 text-muted-foreground/70" />
+                    <span>{selectedTask.story_points} pontos</span>
                   </div>
                 )}
-                {task.due_date && (
-                  <div className="projeto-drawer__field">
-                    <div className="projeto-drawer__meta-row">
-                      <Calendar size={16} aria-hidden />
-                      <span>Vencimento: {formatDate(task.due_date)}</span>
-                    </div>
+                {selectedTask.due_date && (
+                  <div className="mb-4 flex items-center gap-2 text-sm text-muted-foreground">
+                    <Calendar size={16} className="shrink-0 text-muted-foreground/70" />
+                    <span>Vencimento: {formatDate(selectedTask.due_date)}</span>
                   </div>
                 )}
-                <div className="projeto-drawer__dates">
-                  Criado em {formatDate(task.created_at)} · Atualizado em {formatDate(task.updated_at)}
+                <div className="mb-4 text-xs text-muted-foreground">
+                  Criado em {formatDate(selectedTask.created_at)} · Atualizado em {formatDate(selectedTask.updated_at)}
                 </div>
 
-                <div className="projeto-drawer__section">
-                  <div className="projeto-drawer__section-title">
-                    <ListTodo size={16} aria-hidden />
-                    Subtarefas
+                {/* Subtarefas */}
+                <div className="mt-5 border-t border-border pt-4">
+                  <div className="mb-2 flex items-center gap-1.5 text-[0.8125rem] font-semibold text-foreground">
+                    <ListTodo size={16} /> Subtarefas
                   </div>
-                  <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-                    {(subtasksByTaskId[task.id] || []).map((s) => (
-                      <li key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)', marginBottom: 'var(--spacing-xs)' }}>
-                        <button type="button" onClick={() => toggleSubtask(task.id, s.id, s.completed)} style={{ padding: 0, border: 'none', background: 'transparent', color: s.completed ? 'var(--green)' : 'var(--text-tertiary)', cursor: 'pointer' }}>
+                  <ul className="m-0 list-none p-0">
+                    {(subtasksByTaskId[selectedTask.id] || []).map((s) => (
+                      <li key={s.id} className="mb-1.5 flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => toggleSubtask(selectedTask.id, s.id, s.completed)}
+                          className={cn('shrink-0', s.completed ? 'text-[var(--green)]' : 'text-muted-foreground')}
+                        >
                           {s.completed ? <CheckSquare size={18} /> : <Square size={18} />}
                         </button>
-                        <span style={{ flex: 1, textDecoration: s.completed ? 'line-through' : 'none', color: s.completed ? 'var(--text-tertiary)' : 'var(--text-primary)', fontSize: '0.875rem' }}>{s.title}</span>
+                        <span className={cn('flex-1 text-sm', s.completed ? 'text-muted-foreground line-through' : 'text-foreground')}>{s.title}</span>
                         {canDelete && (
-                          <button type="button" onClick={() => deleteSubtask(task.id, s.id)} style={{ padding: '2px', border: 'none', background: 'transparent', color: 'var(--text-tertiary)', cursor: 'pointer' }}>
+                          <button type="button" onClick={() => deleteSubtask(selectedTask.id, s.id)} className="shrink-0 text-muted-foreground hover:text-destructive">
                             <Trash2 size={14} />
                           </button>
                         )}
@@ -1462,37 +1299,40 @@ style={{
                     ))}
                   </ul>
                   {canCreate && (
-                    <div style={{ display: 'flex', gap: 'var(--spacing-sm)', marginTop: 'var(--spacing-sm)' }}>
-                      <input
-                        type="text"
-                        value={selectedTaskId === task.id ? newSubtaskTitle : ''}
+                    <div className="mt-2 flex gap-2">
+                      <Input
+                        value={newSubtaskTitle}
                         onChange={(e) => setNewSubtaskTitle(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addSubtask(task.id); } }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            addSubtask(selectedTask.id);
+                          }
+                        }}
                         placeholder="Nova subtarefa..."
-                        className="input"
-                        style={{ flex: 1, padding: 'var(--spacing-sm)' }}
+                        className="flex-1"
                       />
-                      <button type="button" className="btn btn-secondary" style={{ padding: 'var(--spacing-sm)' }} onClick={() => addSubtask(task.id)} disabled={!newSubtaskTitle.trim()}>
+                      <Button variant="secondary" size="icon" onClick={() => addSubtask(selectedTask.id)} disabled={!newSubtaskTitle.trim()}>
                         <Plus size={16} />
-                      </button>
+                      </Button>
                     </div>
                   )}
                 </div>
 
-                <div className="projeto-drawer__section">
-                  <div className="projeto-drawer__section-title">
-                    <ClipboardCheck size={16} aria-hidden />
-                    Definição de Pronto (DoD)
+                {/* DoD */}
+                <div className="mt-5 border-t border-border pt-4">
+                  <div className="mb-2 flex items-center gap-1.5 text-[0.8125rem] font-semibold text-foreground">
+                    <ClipboardCheck size={16} /> Definição de Pronto (DoD)
                   </div>
-                  <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-                    {(dodByTaskId[task.id] || []).map((d) => (
-                      <li key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)', marginBottom: 'var(--spacing-xs)' }}>
-                        <button type="button" onClick={() => toggleDod(task.id, d.id, d.checked)} style={{ padding: 0, border: 'none', background: 'transparent', color: d.checked ? 'var(--green)' : 'var(--text-tertiary)', cursor: 'pointer' }}>
+                  <ul className="m-0 list-none p-0">
+                    {(dodByTaskId[selectedTask.id] || []).map((d) => (
+                      <li key={d.id} className="mb-1.5 flex items-center gap-2">
+                        <button type="button" onClick={() => toggleDod(selectedTask.id, d.id, d.checked)} className={cn('shrink-0', d.checked ? 'text-[var(--green)]' : 'text-muted-foreground')}>
                           {d.checked ? <CheckSquare size={18} /> : <Square size={18} />}
                         </button>
-                        <span style={{ flex: 1, textDecoration: d.checked ? 'line-through' : 'none', color: d.checked ? 'var(--text-tertiary)' : 'var(--text-primary)', fontSize: '0.875rem' }}>{d.label}</span>
+                        <span className={cn('flex-1 text-sm', d.checked ? 'text-muted-foreground line-through' : 'text-foreground')}>{d.label}</span>
                         {canDelete && (
-                          <button type="button" onClick={() => deleteDod(task.id, d.id)} style={{ padding: '2px', border: 'none', background: 'transparent', color: 'var(--text-tertiary)', cursor: 'pointer' }}>
+                          <button type="button" onClick={() => deleteDod(selectedTask.id, d.id)} className="shrink-0 text-muted-foreground hover:text-destructive">
                             <Trash2 size={14} />
                           </button>
                         )}
@@ -1500,71 +1340,76 @@ style={{
                     ))}
                   </ul>
                   {canCreate && (
-                    <div style={{ display: 'flex', gap: 'var(--spacing-sm)', marginTop: 'var(--spacing-sm)' }}>
-                      <input
-                        type="text"
-                        value={selectedTaskId === task.id ? newDodLabel : ''}
+                    <div className="mt-2 flex gap-2">
+                      <Input
+                        value={newDodLabel}
                         onChange={(e) => setNewDodLabel(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addDod(task.id); } }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            addDod(selectedTask.id);
+                          }
+                        }}
                         placeholder="Novo item DoD..."
-                        className="input"
-                        style={{ flex: 1, padding: 'var(--spacing-sm)' }}
+                        className="flex-1"
                       />
-                      <button type="button" className="btn btn-secondary" style={{ padding: 'var(--spacing-sm)' }} onClick={() => addDod(task.id)} disabled={!newDodLabel.trim()}>
+                      <Button variant="secondary" size="icon" onClick={() => addDod(selectedTask.id)} disabled={!newDodLabel.trim()}>
                         <Plus size={16} />
-                      </button>
+                      </Button>
                     </div>
                   )}
                 </div>
 
-                <div className="projeto-drawer__section">
-                  <div className="projeto-drawer__section-title">
-                    <MessageSquare size={16} aria-hidden />
-                    Comentários
+                {/* Comentários */}
+                <div className="mt-5 border-t border-border pt-4">
+                  <div className="mb-2 flex items-center gap-1.5 text-[0.8125rem] font-semibold text-foreground">
+                    <MessageSquare size={16} /> Comentários
                   </div>
-                  <div style={{ maxHeight: '160px', overflowY: 'auto', marginBottom: 'var(--spacing-sm)' }}>
-                    {(commentsByTaskId[task.id] || []).map((c) => (
-                      <div key={c.id} style={{ marginBottom: 'var(--spacing-sm)', padding: 'var(--spacing-sm)', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-md)' }}>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginBottom: '2px' }}>{c.user_name} · {formatDate(c.created_at)}</div>
-                        <div className="markdown-body" style={{ margin: 0, fontSize: '0.875rem', color: 'var(--text-primary)' }}>
+                  <div className="mb-2 max-h-[160px] overflow-y-auto">
+                    {(commentsByTaskId[selectedTask.id] || []).map((c) => (
+                      <div key={c.id} className="mb-2 rounded-lg bg-muted/60 p-2.5">
+                        <div className="mb-0.5 text-xs text-muted-foreground">
+                          {c.user_name} · {formatDate(c.created_at)}
+                        </div>
+                        <div className="markdown-body text-sm text-foreground">
                           <CommentBody message={c.message} />
                         </div>
                       </div>
                     ))}
                   </div>
                   {canCreate && (
-                    <div style={{ display: 'flex', gap: 'var(--spacing-sm)' }}>
-                      <textarea
-                        value={selectedTaskId === task.id ? newCommentMessage : ''}
+                    <div className="flex gap-2">
+                      <Textarea
+                        value={newCommentMessage}
                         onChange={(e) => setNewCommentMessage(e.target.value)}
                         placeholder="Escrever comentário... (use @Nome para mencionar)"
-                        className="input"
                         rows={2}
-                        style={{ flex: 1, resize: 'vertical', minHeight: '44px' }}
+                        className="min-h-[44px] flex-1"
                       />
-                      <button type="button" className="btn btn-secondary" style={{ alignSelf: 'flex-end', padding: 'var(--spacing-sm)' }} onClick={() => addComment(task.id)} disabled={!newCommentMessage.trim()}>
+                      <Button variant="secondary" className="self-end" onClick={() => addComment(selectedTask.id)} disabled={!newCommentMessage.trim()}>
                         Enviar
-                      </button>
+                      </Button>
                     </div>
                   )}
                 </div>
 
-                <div className="projeto-drawer__section">
-                  <div className="projeto-drawer__section-title">
-                    <Clock size={16} aria-hidden />
-                    Tempo registrado
-                    {(timeEntriesByTaskId[task.id] || []).length > 0 && (
-                      <span style={{ fontWeight: '500', color: 'var(--text-tertiary)' }}>
-                        ({(timeEntriesByTaskId[task.id] || []).reduce((sum, e) => sum + e.hours, 0).toFixed(1)} h)
-                      </span>
+                {/* Tempo registrado */}
+                <div className="mt-5 border-t border-border pt-4">
+                  <div className="mb-2 flex items-center gap-1.5 text-[0.8125rem] font-semibold text-foreground">
+                    <Clock size={16} /> Tempo registrado
+                    {(timeEntriesByTaskId[selectedTask.id] || []).length > 0 && (
+                      <span className="font-medium text-muted-foreground">({(timeEntriesByTaskId[selectedTask.id] || []).reduce((sum, e) => sum + e.hours, 0).toFixed(1)} h)</span>
                     )}
                   </div>
-                  <ul style={{ listStyle: 'none', padding: 0, margin: 0, marginBottom: 'var(--spacing-sm)' }}>
-                    {(timeEntriesByTaskId[task.id] || []).map((e) => (
-                      <li key={e.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'var(--spacing-xs) 0', borderBottom: '1px solid var(--border-primary)', fontSize: '0.875rem' }}>
-                        <span><strong>{e.hours}</strong> h · {formatDate(e.entry_date)} · {e.user_name}{e.note ? ` · ${e.note}` : ''}</span>
+                  <ul className="m-0 mb-2 list-none p-0">
+                    {(timeEntriesByTaskId[selectedTask.id] || []).map((e) => (
+                      <li key={e.id} className="flex items-center justify-between border-b border-border py-1.5 text-sm">
+                        <span>
+                          <strong>{e.hours}</strong> h · {formatDate(e.entry_date)} · {e.user_name}
+                          {e.note ? ` · ${e.note}` : ''}
+                        </span>
                         {canDelete && (
-                          <button type="button" onClick={() => deleteTimeEntry(task.id, e.id)} style={{ padding: '2px', border: 'none', background: 'transparent', color: 'var(--text-tertiary)', cursor: 'pointer' }}>
+                          <button type="button" onClick={() => deleteTimeEntry(selectedTask.id, e.id)} className="shrink-0 text-muted-foreground hover:text-destructive">
                             <Trash2 size={14} />
                           </button>
                         )}
@@ -1572,61 +1417,52 @@ style={{
                     ))}
                   </ul>
                   {canCreate && (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--spacing-sm)', alignItems: 'flex-end' }}>
-                      <input
+                    <div className="flex flex-wrap items-end gap-2">
+                      <Input
                         type="number"
                         min="0.25"
                         step="0.25"
                         placeholder="Horas"
-                        value={selectedTaskId === task.id ? timeEntryForm.hours : ''}
+                        value={timeEntryForm.hours}
                         onChange={(e) => setTimeEntryForm((f) => ({ ...f, hours: e.target.value }))}
-                        className="input"
-                        style={{ width: '70px' }}
+                        className="w-[75px]"
                       />
-                      <input
-                        type="date"
-                        value={timeEntryForm.entry_date}
-                        onChange={(e) => setTimeEntryForm((f) => ({ ...f, entry_date: e.target.value }))}
-                        className="input"
-                        style={{ width: '130px' }}
-                      />
-                      <input
-                        type="text"
+                      <Input type="date" value={timeEntryForm.entry_date} onChange={(e) => setTimeEntryForm((f) => ({ ...f, entry_date: e.target.value }))} className="w-[135px]" />
+                      <Input
                         placeholder="Nota (opcional)"
-                        value={selectedTaskId === task.id ? timeEntryForm.note : ''}
+                        value={timeEntryForm.note}
                         onChange={(e) => setTimeEntryForm((f) => ({ ...f, note: e.target.value }))}
-                        className="input"
-                        style={{ flex: 1, minWidth: '100px' }}
+                        className="min-w-[100px] flex-1"
                       />
-                      <button type="button" className="btn btn-secondary" onClick={() => addTimeEntry(task.id)} disabled={!timeEntryForm.hours || !timeEntryForm.entry_date || parseFloat(timeEntryForm.hours.replace(',', '.')) <= 0}>
+                      <Button
+                        variant="secondary"
+                        onClick={() => addTimeEntry(selectedTask.id)}
+                        disabled={!timeEntryForm.hours || !timeEntryForm.entry_date || parseFloat(timeEntryForm.hours.replace(',', '.')) <= 0}
+                      >
                         Adicionar
-                      </button>
+                      </Button>
                     </div>
                   )}
                 </div>
 
-                <div className="projeto-drawer__section">
-                  <div className="projeto-drawer__section-title">
-                    <Paperclip size={16} aria-hidden />
-                    Anexos
+                {/* Anexos */}
+                <div className="mt-5 border-t border-border pt-4">
+                  <div className="mb-2 flex items-center gap-1.5 text-[0.8125rem] font-semibold text-foreground">
+                    <Paperclip size={16} /> Anexos
                   </div>
-                  <ul style={{ listStyle: 'none', padding: 0, margin: 0, marginBottom: 'var(--spacing-sm)' }}>
-                    {(attachmentsByTaskId[task.id] || []).map((a) => (
-                      <li key={a.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'var(--spacing-xs) 0', borderBottom: '1px solid var(--border-primary)', fontSize: '0.875rem', gap: 'var(--spacing-sm)' }}>
+                  <ul className="m-0 mb-2 list-none p-0">
+                    {(attachmentsByTaskId[selectedTask.id] || []).map((a) => (
+                      <li key={a.id} className="flex items-center justify-between gap-2 border-b border-border py-1.5 text-sm">
                         <button
                           type="button"
-                          onClick={() => downloadAttachment(task.id, a.id, a.file_name)}
-                          style={{ flex: 1, minWidth: 0, textAlign: 'left', padding: 0, border: 'none', background: 'transparent', color: 'var(--purple)', cursor: 'pointer', textDecoration: 'none' }}
+                          onClick={() => downloadAttachment(selectedTask.id, a.id, a.file_name)}
+                          className="min-w-0 flex-1 truncate text-left text-[var(--purple)] hover:underline"
                         >
                           {a.file_name}
-                          {a.file_size != null && (
-                            <span style={{ color: 'var(--text-tertiary)', fontWeight: '400', marginLeft: 'var(--spacing-xs)' }}>
-                              ({(a.file_size / 1024).toFixed(1)} KB)
-                            </span>
-                          )}
+                          {a.file_size != null && <span className="ml-1.5 font-normal text-muted-foreground">({(a.file_size / 1024).toFixed(1)} KB)</span>}
                         </button>
                         {canDelete && (
-                          <button type="button" onClick={() => deleteAttachment(task.id, a.id)} style={{ padding: '2px', border: 'none', background: 'transparent', color: 'var(--text-tertiary)', cursor: 'pointer', flexShrink: 0 }}>
+                          <button type="button" onClick={() => deleteAttachment(selectedTask.id, a.id)} className="shrink-0 text-muted-foreground hover:text-destructive">
                             <Trash2 size={14} />
                           </button>
                         )}
@@ -1634,52 +1470,52 @@ style={{
                     ))}
                   </ul>
                   {canEdit && (
-                    <div style={{ marginTop: 'var(--spacing-sm)' }}>
+                    <div>
                       <input
                         type="file"
-                        id={`task-attachment-${task.id}`}
-                        style={{ display: 'none' }}
+                        id={`task-attachment-${selectedTask.id}`}
+                        className="hidden"
                         onChange={(e) => {
                           const f = e.target.files?.[0];
-                          if (f) uploadAttachment(task.id, f);
+                          if (f) uploadAttachment(selectedTask.id, f);
                           e.target.value = '';
                         }}
                         disabled={uploadingAttachment}
                       />
-                      <label htmlFor={`task-attachment-${task.id}`}>
-                        <span className="btn btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--spacing-xs)', cursor: uploadingAttachment ? 'not-allowed' : 'pointer' }}>
-                          <Plus size={16} />
-                          {uploadingAttachment ? 'A enviar...' : 'Anexar ficheiro'}
-                        </span>
+                      <label
+                        htmlFor={`task-attachment-${selectedTask.id}`}
+                        className={cn(buttonVariants({ variant: 'secondary' }), 'cursor-pointer', uploadingAttachment && 'pointer-events-none opacity-50')}
+                      >
+                        <Plus size={16} /> {uploadingAttachment ? 'A enviar...' : 'Anexar ficheiro'}
                       </label>
                     </div>
                   )}
                 </div>
 
-                <div className="projeto-drawer__section">
-                  <div className="projeto-drawer__section-title">
-                    <Link2 size={16} aria-hidden />
-                    Dependências
+                {/* Dependências */}
+                <div className="mt-5 border-t border-border pt-4">
+                  <div className="mb-2 flex items-center gap-1.5 text-[0.8125rem] font-semibold text-foreground">
+                    <Link2 size={16} /> Dependências
                   </div>
                   {(() => {
-                    const deps = dependenciesByTaskId[task.id] || { depends_on: [], blocked_by: [] };
-                    const otherTasks = (project?.tasks || []).filter((t) => t.id !== task.id);
+                    const deps = dependenciesByTaskId[selectedTask.id] || { depends_on: [], blocked_by: [] };
+                    const otherTasks = (project?.tasks || []).filter((t) => t.id !== selectedTask.id);
                     const canAdd = otherTasks.filter((t) => !deps.depends_on.includes(t.id));
                     return (
                       <>
                         {deps.depends_on.length > 0 && (
-                          <div style={{ marginBottom: 'var(--spacing-sm)' }}>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginBottom: '4px' }}>Depende de</div>
-                            <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                          <div className="mb-2">
+                            <div className="mb-1 text-xs text-muted-foreground">Depende de</div>
+                            <ul className="m-0 list-none p-0">
                               {deps.depends_on.map((tid) => {
                                 const t = project?.tasks.find((x) => x.id === tid);
                                 return t ? (
-                                  <li key={tid} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'var(--spacing-xs) 0', fontSize: '0.875rem', borderBottom: '1px solid var(--border-primary)' }}>
-                                    <button type="button" onClick={() => setSelectedTaskId(tid)} style={{ flex: 1, minWidth: 0, textAlign: 'left', padding: 0, border: 'none', background: 'transparent', color: 'var(--purple)', cursor: 'pointer' }}>
+                                  <li key={tid} className="flex items-center justify-between border-b border-border py-1.5 text-sm">
+                                    <button type="button" onClick={() => setSelectedTaskId(tid)} className="min-w-0 flex-1 truncate text-left text-[var(--purple)] hover:underline">
                                       {t.title}
                                     </button>
                                     {canEdit && (
-                                      <button type="button" onClick={() => removeDependency(task.id, tid)} style={{ padding: '2px', border: 'none', background: 'transparent', color: 'var(--text-tertiary)', cursor: 'pointer' }}>
+                                      <button type="button" onClick={() => removeDependency(selectedTask.id, tid)} className="shrink-0 text-muted-foreground hover:text-destructive">
                                         <Trash2 size={14} />
                                       </button>
                                     )}
@@ -1690,14 +1526,14 @@ style={{
                           </div>
                         )}
                         {deps.blocked_by.length > 0 && (
-                          <div style={{ marginBottom: 'var(--spacing-sm)' }}>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginBottom: '4px' }}>Bloqueia</div>
-                            <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                          <div className="mb-2">
+                            <div className="mb-1 text-xs text-muted-foreground">Bloqueia</div>
+                            <ul className="m-0 list-none p-0">
                               {deps.blocked_by.map((tid) => {
                                 const t = project?.tasks.find((x) => x.id === tid);
                                 return t ? (
-                                  <li key={tid} style={{ padding: 'var(--spacing-xs) 0', fontSize: '0.875rem', borderBottom: '1px solid var(--border-primary)' }}>
-                                    <button type="button" onClick={() => setSelectedTaskId(tid)} style={{ padding: 0, border: 'none', background: 'transparent', color: 'var(--purple)', cursor: 'pointer', textAlign: 'left' }}>
+                                  <li key={tid} className="border-b border-border py-1.5 text-sm">
+                                    <button type="button" onClick={() => setSelectedTaskId(tid)} className="text-left text-[var(--purple)] hover:underline">
                                       {t.title}
                                     </button>
                                   </li>
@@ -1707,572 +1543,253 @@ style={{
                           </div>
                         )}
                         {canEdit && canAdd.length > 0 && (
-                          <div style={{ display: 'flex', gap: 'var(--spacing-sm)', alignItems: 'center', flexWrap: 'wrap' }}>
-                            <select
-                              id={`dep-${task.id}`}
-                              className="input"
-                              style={{ flex: 1, minWidth: '120px', fontSize: '0.875rem' }}
-                              onChange={(e) => {
-                                const v = e.target.value;
-                                if (v) { addDependency(task.id, Number(v)); e.target.value = ''; }
-                              }}
-                              value=""
-                            >
-                              <option value="">Adicionar dependência...</option>
-                              {canAdd.map((t) => (
-                                <option key={t.id} value={t.id}>{t.title}</option>
-                              ))}
-                            </select>
-                          </div>
+                          <select
+                            className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm"
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              if (v) {
+                                addDependency(selectedTask.id, Number(v));
+                                e.target.value = '';
+                              }
+                            }}
+                            value=""
+                          >
+                            <option value="">Adicionar dependência...</option>
+                            {canAdd.map((t) => (
+                              <option key={t.id} value={t.id}>
+                                {t.title}
+                              </option>
+                            ))}
+                          </select>
                         )}
-                        {deps.depends_on.length === 0 && deps.blocked_by.length === 0 && !canEdit && (
-                          <span style={{ fontSize: '0.875rem', color: 'var(--text-tertiary)' }}>Nenhuma dependência.</span>
-                        )}
+                        {deps.depends_on.length === 0 && deps.blocked_by.length === 0 && !canEdit && <span className="text-sm text-muted-foreground">Nenhuma dependência.</span>}
                       </>
                     );
                   })()}
                 </div>
 
                 {canEdit && (
-                  <button
-                    type="button"
-                    className="btn"
-                    style={{ marginTop: 'var(--spacing-lg)', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--spacing-sm)' }}
-                    onClick={() => openEditTask(task)}
-                  >
-                    <Edit2 size={18} />
-                    Editar tarefa
-                  </button>
+                  <Button className="mt-5 w-full" onClick={() => openEditTask(selectedTask)}>
+                    <Edit2 size={18} /> Editar tarefa
+                  </Button>
                 )}
               </div>
-            </div>
-          </>
-        );
-      })()}
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
 
-      {taskMenuId && taskMenuPosition && project && (() => {
-        const task = project.tasks.find((t) => t.id === taskMenuId);
-        if (!task) return null;
-        return createPortal(
-          <>
-            <div
-              style={{
-                position: 'fixed',
-                inset: 0,
-                zIndex: 9999,
-              }}
-              onClick={() => setTaskMenuId(null)}
-              aria-hidden="true"
-            />
-            <div
-              role="menu"
-              className="card"
-              style={{
-                position: 'fixed',
-                top: taskMenuPosition.top,
-                left: taskMenuPosition.left,
-                minWidth: '140px',
-                padding: '4px',
-                zIndex: 10000,
-                border: '1px solid var(--border-primary)',
-                boxShadow: 'var(--shadow-lg)',
-              }}
-            >
-            {canEdit && (
-              <button
-                type="button"
-                style={{
-                  width: '100%',
-                  padding: '6px 8px',
-                  border: 'none',
-                  background: 'transparent',
-                  color: 'var(--text-primary)',
-                  cursor: 'pointer',
-                  fontSize: '0.8125rem',
-                  textAlign: 'left',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                }}
-                onClick={() => openEditTask(task)}
-              >
-                <Edit2 size={14} />
-                Editar
-              </button>
-            )}
-            {project.columns
-              .filter((c) => c.id !== task.column_id)
-              .map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  style={{
-                    width: '100%',
-                    padding: '6px 8px',
-                    border: 'none',
-                    background: 'transparent',
-                    color: 'var(--text-primary)',
-                    cursor: 'pointer',
-                    fontSize: '0.8125rem',
-                    textAlign: 'left',
-                  }}
-                  onClick={() => moveTask(task.id, c.id)}
-                >
-                  Mover para {c.name}
-                </button>
-              ))}
-            {canDelete && (
-              <button
-                type="button"
-                style={{
-                  width: '100%',
-                  padding: '6px 8px',
-                  border: 'none',
-                  background: 'transparent',
-                  color: 'var(--red)',
-                  cursor: 'pointer',
-                  fontSize: '0.8125rem',
-                  textAlign: 'left',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                }}
-                onClick={() => handleDeleteTask(task.id)}
-              >
-                <Trash2 size={14} />
-                Excluir
-              </button>
-            )}
-          </div>
-          </>,
-          document.body
-        );
-      })()}
-
-      {taskModalColumnId !== null && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.6)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000,
-          }}
-          onClick={() => !submitting && (setTaskModalColumnId(null), setEditingTaskId(null))}
-        >
-          <div
-            className="card"
-            style={{
-              width: '100%',
-              maxWidth: '420px',
-              padding: 'var(--spacing-xl)',
-              border: '1px solid var(--border-primary)',
-              borderRadius: 'var(--radius-lg)',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--spacing-lg)' }}>
-              <h2 style={{ fontSize: '1.25rem', fontWeight: '600', color: 'var(--text-primary)' }}>
-                {editingTaskId ? 'Editar tarefa' : 'Nova tarefa'}
-              </h2>
-              <button
-                type="button"
-                onClick={() => !submitting && (setTaskModalColumnId(null), setEditingTaskId(null))}
-                style={{ padding: '4px', border: 'none', background: 'transparent', color: 'var(--text-tertiary)', cursor: 'pointer' }}
-              >
-                <X size={22} />
-              </button>
+      {/* Modal nova/editar tarefa */}
+      <Dialog open={taskModalColumnId !== null} onOpenChange={(open) => !open && !submitting && (setTaskModalColumnId(null), setEditingTaskId(null))}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{editingTaskId ? 'Editar tarefa' : 'Nova tarefa'}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSaveTask} className="flex flex-col gap-4">
+            <div>
+              <Label className="mb-1.5">Título *</Label>
+              <Input value={taskForm.title} onChange={(e) => setTaskForm((f) => ({ ...f, title: e.target.value }))} placeholder="Título da tarefa" required />
             </div>
-            <form onSubmit={handleSaveTask}>
-              <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-                Título *
-              </label>
-              <input
-                type="text"
-                value={taskForm.title}
-                onChange={(e) => setTaskForm((f) => ({ ...f, title: e.target.value }))}
-                placeholder="Título da tarefa"
-                required
-                className="input"
-                style={{ width: '100%', marginBottom: 'var(--spacing-md)' }}
-              />
-              <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-                Descrição
-              </label>
-              <textarea
-                value={taskForm.description}
-                onChange={(e) => setTaskForm((f) => ({ ...f, description: e.target.value }))}
-                placeholder="Descrição (opcional)"
-                className="input"
-                rows={2}
-                style={{ width: '100%', marginBottom: 'var(--spacing-md)', resize: 'vertical' }}
-              />
-              <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-                Prioridade
-              </label>
-              <select
-                value={taskForm.priority}
-                onChange={(e) => setTaskForm((f) => ({ ...f, priority: e.target.value as ProjectTask['priority'] }))}
-                className="input"
-                style={{ width: '100%', marginBottom: 'var(--spacing-md)' }}
-              >
-                {(['low', 'medium', 'high', 'urgent'] as const).map((p) => (
-                  <option key={p} value={p}>
-                    {PRIORITY_LABEL[p]}
-                  </option>
-                ))}
-              </select>
-              <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-                Tipo
-              </label>
-              <select
-                value={taskForm.task_type ?? 'feature'}
-                onChange={(e) => setTaskForm((f) => ({ ...f, task_type: e.target.value as ProjectTask['task_type'] }))}
-                className="input"
-                style={{ width: '100%', marginBottom: 'var(--spacing-md)' }}
-              >
-                {(['feature', 'bug', 'tech_debt', 'chore'] as const).map((t) => (
-                  <option key={t} value={t}>
-                    {TASK_TYPE_LABEL[t]}
-                  </option>
-                ))}
-              </select>
-              <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-                Responsável
-              </label>
-              <select
-                value={taskForm.assigned_to ?? ''}
-                onChange={(e) => setTaskForm((f) => ({ ...f, assigned_to: e.target.value ? Number(e.target.value) : null }))}
-                className="input"
-                style={{ width: '100%', marginBottom: 'var(--spacing-lg)' }}
-              >
-                <option value="">Ninguém</option>
-                {users.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.name}
-                  </option>
-                ))}
-              </select>
-              {(project.sprints?.length ?? 0) > 0 && (
-                <>
-                  <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-                    Sprint
-                  </label>
-                  <select
-                    value={taskForm.sprint_id ?? ''}
-                    onChange={(e) => setTaskForm((f) => ({ ...f, sprint_id: e.target.value ? Number(e.target.value) : null }))}
-                    className="input"
-                    style={{ width: '100%', marginBottom: 'var(--spacing-md)' }}
-                  >
-                    <option value="">Nenhuma</option>
-                    {project.sprints?.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
+            <div>
+              <Label className="mb-1.5">Descrição</Label>
+              <Textarea value={taskForm.description} onChange={(e) => setTaskForm((f) => ({ ...f, description: e.target.value }))} placeholder="Descrição (opcional)" rows={2} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="mb-1.5">Prioridade</Label>
+                <Select value={taskForm.priority} onValueChange={(v) => setTaskForm((f) => ({ ...f, priority: v as ProjectTask['priority'] }))}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(['low', 'medium', 'high', 'urgent'] as const).map((p) => (
+                      <SelectItem key={p} value={p}>
+                        {PRIORITY_LABEL[p]}
+                      </SelectItem>
                     ))}
-                  </select>
-                </>
-              )}
-              <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-                Story points
-              </label>
-              <input
-                type="number"
-                min={0}
-                value={taskForm.story_points ?? ''}
-                onChange={(e) => setTaskForm((f) => ({ ...f, story_points: e.target.value === '' ? null : parseInt(e.target.value, 10) || null }))}
-                placeholder="Ex: 3"
-                className="input"
-                style={{ width: '100%', marginBottom: 'var(--spacing-md)' }}
-              />
-              <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-                Data de vencimento
-              </label>
-              <input
-                type="date"
-                value={taskForm.due_date ?? ''}
-                onChange={(e) => setTaskForm((f) => ({ ...f, due_date: e.target.value || null }))}
-                className="input"
-                style={{ width: '100%', marginBottom: 'var(--spacing-lg)' }}
-              />
-              <div style={{ display: 'flex', gap: 'var(--spacing-md)', justifyContent: 'flex-end' }}>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => !submitting && setTaskModalColumnId(null)}
-                >
-                  Cancelar
-                </button>
-                <button type="submit" className="btn" disabled={submitting || !taskForm.title.trim()}>
-                  {submitting ? (editingTaskId ? 'Salvando...' : 'Criando...') : (editingTaskId ? 'Salvar' : 'Criar')}
-                </button>
+                  </SelectContent>
+                </Select>
               </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {editColumnId !== null && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.6)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000,
-          }}
-          onClick={() => setEditColumnId(null)}
-        >
-          <div
-            className="card"
-            style={{
-              width: '100%',
-              maxWidth: '360px',
-              padding: 'var(--spacing-xl)',
-              border: '1px solid var(--border-primary)',
-              borderRadius: 'var(--radius-lg)',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 style={{ fontSize: '1.125rem', fontWeight: '600', color: 'var(--text-primary)', marginBottom: 'var(--spacing-md)' }}>
-              Editar nome da coluna
-            </h2>
-            <input
-              type="text"
-              value={editColumnName}
-              onChange={(e) => setEditColumnName(e.target.value)}
-              placeholder="Nome da coluna"
-              className="input"
-              style={{ width: '100%', marginBottom: 'var(--spacing-lg)' }}
-              autoFocus
-            />
-            <div style={{ display: 'flex', gap: 'var(--spacing-md)', justifyContent: 'flex-end' }}>
-              <button type="button" className="btn btn-secondary" onClick={() => setEditColumnId(null)}>
-                Cancelar
-              </button>
-              <button type="button" className="btn" onClick={handleSaveColumnName} disabled={!editColumnName.trim()}>
-                Salvar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {deleteColumnId !== null && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.6)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000,
-          }}
-          onClick={() => setDeleteColumnId(null)}
-        >
-          <div
-            className="card"
-            style={{
-              width: '100%',
-              maxWidth: '360px',
-              padding: 'var(--spacing-xl)',
-              border: '1px solid var(--border-primary)',
-              borderRadius: 'var(--radius-lg)',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <p style={{ color: 'var(--text-primary)', marginBottom: 'var(--spacing-lg)' }}>
-              Excluir esta coluna? As tarefas desta coluna serão excluídas.
-            </p>
-            <div style={{ display: 'flex', gap: 'var(--spacing-md)', justifyContent: 'flex-end' }}>
-              <button type="button" className="btn btn-secondary" onClick={() => setDeleteColumnId(null)}>
-                Cancelar
-              </button>
-              <button type="button" className="btn" style={{ background: 'var(--red)' }} onClick={handleDeleteColumn}>
-                Excluir
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {addColumnModal && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.6)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000,
-          }}
-          onClick={() => !submitting && setAddColumnModal(false)}
-        >
-          <div
-            className="card"
-            style={{
-              width: '100%',
-              maxWidth: '360px',
-              padding: 'var(--spacing-xl)',
-              border: '1px solid var(--border-primary)',
-              borderRadius: 'var(--radius-lg)',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 style={{ fontSize: '1.125rem', fontWeight: '600', color: 'var(--text-primary)', marginBottom: 'var(--spacing-md)' }}>
-              Nova coluna
-            </h2>
-            <form onSubmit={handleAddColumn}>
-              <input
-                type="text"
-                value={newColumnName}
-                onChange={(e) => setNewColumnName(e.target.value)}
-                placeholder="Ex: Em revisão"
-                className="input"
-                style={{ width: '100%', marginBottom: 'var(--spacing-lg)' }}
-                autoFocus
-              />
-              <div style={{ display: 'flex', gap: 'var(--spacing-md)', justifyContent: 'flex-end' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => !submitting && setAddColumnModal(false)}>
-                  Cancelar
-                </button>
-                <button type="submit" className="btn" disabled={submitting || !newColumnName.trim()}>
-                  {submitting ? 'Criando...' : 'Criar'}
-                </button>
+              <div>
+                <Label className="mb-1.5">Tipo</Label>
+                <Select value={taskForm.task_type ?? 'feature'} onValueChange={(v) => setTaskForm((f) => ({ ...f, task_type: v as ProjectTask['task_type'] }))}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(['feature', 'bug', 'tech_debt', 'chore'] as const).map((t) => (
+                      <SelectItem key={t} value={t}>
+                        {TASK_TYPE_LABEL[t]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {sprintsModalOpen && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.6)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000,
-          }}
-          onClick={() => !submitting && (setSprintsModalOpen(false), setEditingSprintId(null))}
-        >
-          <div
-            className="card"
-            style={{
-              width: '100%',
-              maxWidth: '480px',
-              maxHeight: '90vh',
-              overflow: 'auto',
-              padding: 'var(--spacing-xl)',
-              border: '1px solid var(--border-primary)',
-              borderRadius: 'var(--radius-lg)',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--spacing-lg)' }}>
-              <h2 style={{ fontSize: '1.25rem', fontWeight: '600', color: 'var(--text-primary)', margin: 0 }}>
-                Sprints
-              </h2>
-              <button type="button" onClick={() => !submitting && (setSprintsModalOpen(false), setEditingSprintId(null))} style={{ padding: '4px', border: 'none', background: 'transparent', color: 'var(--text-tertiary)', cursor: 'pointer' }}>
-                <X size={22} />
-              </button>
             </div>
-            <form onSubmit={handleSaveSprint} style={{ marginBottom: 'var(--spacing-lg)' }}>
-              <input
-                type="text"
-                value={sprintForm.name}
-                onChange={(e) => setSprintForm((f) => ({ ...f, name: e.target.value }))}
-                placeholder="Nome da sprint"
-                className="input"
-                style={{ width: '100%', marginBottom: 'var(--spacing-sm)' }}
-                required
-              />
-              <div style={{ display: 'flex', gap: 'var(--spacing-sm)', marginBottom: 'var(--spacing-sm)' }}>
-                <input
-                  type="date"
-                  value={sprintForm.start_date}
-                  onChange={(e) => setSprintForm((f) => ({ ...f, start_date: e.target.value }))}
-                  className="input"
-                  style={{ flex: 1 }}
-                />
-                <input
-                  type="date"
-                  value={sprintForm.end_date}
-                  onChange={(e) => setSprintForm((f) => ({ ...f, end_date: e.target.value }))}
-                  className="input"
-                  style={{ flex: 1 }}
+            <div>
+              <Label className="mb-1.5">Responsável</Label>
+              <Select value={taskForm.assigned_to ? String(taskForm.assigned_to) : '__none'} onValueChange={(v) => setTaskForm((f) => ({ ...f, assigned_to: v === '__none' ? null : Number(v) }))}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none">Ninguém</SelectItem>
+                  {users.map((u) => (
+                    <SelectItem key={u.id} value={String(u.id)}>
+                      {u.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {(project.sprints?.length ?? 0) > 0 && (
+              <div>
+                <Label className="mb-1.5">Sprint</Label>
+                <Select value={taskForm.sprint_id ? String(taskForm.sprint_id) : '__none'} onValueChange={(v) => setTaskForm((f) => ({ ...f, sprint_id: v === '__none' ? null : Number(v) }))}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none">Nenhuma</SelectItem>
+                    {project.sprints?.map((s) => (
+                      <SelectItem key={s.id} value={String(s.id)}>
+                        {s.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="mb-1.5">Story points</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={taskForm.story_points ?? ''}
+                  onChange={(e) => setTaskForm((f) => ({ ...f, story_points: e.target.value === '' ? null : parseInt(e.target.value, 10) || null }))}
+                  placeholder="Ex: 3"
                 />
               </div>
-              <div style={{ display: 'flex', gap: 'var(--spacing-sm)' }}>
-              <button type="submit" className="btn" disabled={submitting || !sprintForm.name.trim()}>
+              <div>
+                <Label className="mb-1.5">Vencimento</Label>
+                <Input type="date" value={taskForm.due_date ?? ''} onChange={(e) => setTaskForm((f) => ({ ...f, due_date: e.target.value || null }))} />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => !submitting && setTaskModalColumnId(null)}>
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={submitting || !taskForm.title.trim()}>
+                {submitting ? (editingTaskId ? 'Salvando...' : 'Criando...') : editingTaskId ? 'Salvar' : 'Criar'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Editar nome da coluna */}
+      <Dialog open={editColumnId !== null} onOpenChange={(open) => !open && setEditColumnId(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Editar nome da coluna</DialogTitle>
+          </DialogHeader>
+          <Input value={editColumnName} onChange={(e) => setEditColumnName(e.target.value)} placeholder="Nome da coluna" autoFocus />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditColumnId(null)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleSaveColumnName} disabled={!editColumnName.trim()}>
+              Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Nova coluna */}
+      <Dialog open={addColumnModal} onOpenChange={(open) => !open && !submitting && setAddColumnModal(false)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Nova coluna</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleAddColumn} className="flex flex-col gap-4">
+            <Input value={newColumnName} onChange={(e) => setNewColumnName(e.target.value)} placeholder="Ex: Em revisão" autoFocus />
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => !submitting && setAddColumnModal(false)}>
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={submitting || !newColumnName.trim()}>
+                {submitting ? 'Criando...' : 'Criar'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Sprints */}
+      <Dialog open={sprintsModalOpen} onOpenChange={(open) => !open && !submitting && (setSprintsModalOpen(false), setEditingSprintId(null))}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Sprints</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSaveSprint} className="mb-5 flex flex-col gap-3">
+            <Input value={sprintForm.name} onChange={(e) => setSprintForm((f) => ({ ...f, name: e.target.value }))} placeholder="Nome da sprint" required />
+            <div className="flex gap-2">
+              <Input type="date" value={sprintForm.start_date} onChange={(e) => setSprintForm((f) => ({ ...f, start_date: e.target.value }))} className="flex-1" />
+              <Input type="date" value={sprintForm.end_date} onChange={(e) => setSprintForm((f) => ({ ...f, end_date: e.target.value }))} className="flex-1" />
+            </div>
+            <div className="flex gap-2">
+              <Button type="submit" disabled={submitting || !sprintForm.name.trim()}>
                 {editingSprintId ? 'Salvar' : 'Criar sprint'}
-              </button>
+              </Button>
               {editingSprintId && (
-                <button
+                <Button
                   type="button"
-                  className="btn btn-secondary"
+                  variant="outline"
                   onClick={() => {
                     setEditingSprintId(null);
                     setSprintForm({ name: '', start_date: '', end_date: '' });
                   }}
                 >
                   Cancelar
-                </button>
+                </Button>
               )}
             </div>
-            </form>
-            <div style={{ borderTop: '1px solid var(--border-primary)', paddingTop: 'var(--spacing-md)' }}>
-              {(project.sprints?.length ?? 0) === 0 ? (
-                <p style={{ color: 'var(--text-tertiary)', fontSize: '0.875rem' }}>Nenhuma sprint criada.</p>
-              ) : (
-                <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-                  {project.sprints?.map((s) => (
-                    <li
-                      key={s.id}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        padding: 'var(--spacing-sm) 0',
-                        borderBottom: '1px solid var(--border-primary)',
-                      }}
-                    >
-                      <div>
-                        <span style={{ fontWeight: '500', color: 'var(--text-primary)' }}>{s.name}</span>
-                        {(s.start_date || s.end_date) && (
-                          <span style={{ fontSize: '0.8125rem', color: 'var(--text-tertiary)', marginLeft: 'var(--spacing-sm)' }}>
-                            {s.start_date && parseProjectDate(s.start_date).toLocaleDateString('pt-BR')}
-                            {s.start_date && s.end_date && ' – '}
-                            {s.end_date && parseProjectDate(s.end_date).toLocaleDateString('pt-BR')}
-                          </span>
-                        )}
-                      </div>
-                      <div style={{ display: 'flex', gap: 'var(--spacing-xs)' }}>
-                        <button type="button" className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: '0.8125rem' }} onClick={() => openEditSprint(s)}>
-                          Editar
-                        </button>
-                        {canDelete && (
-                          <button type="button" style={{ padding: '4px 8px', fontSize: '0.8125rem', background: 'var(--red-light)', color: 'var(--red)', border: 'none', borderRadius: 'var(--radius-md)', cursor: 'pointer' }} onClick={() => handleDeleteSprint(s.id)}>
-                            Excluir
-                          </button>
-                        )}
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+          </form>
+          <div className="border-t border-border pt-4">
+            {(project.sprints?.length ?? 0) === 0 ? (
+              <p className="text-sm text-muted-foreground">Nenhuma sprint criada.</p>
+            ) : (
+              <ul className="m-0 list-none p-0">
+                {project.sprints?.map((s) => (
+                  <li key={s.id} className="flex items-center justify-between gap-2 border-b border-border py-2.5">
+                    <div className="min-w-0">
+                      <span className="font-medium text-foreground">{s.name}</span>
+                      {(s.start_date || s.end_date) && (
+                        <span className="ml-2 text-[0.8125rem] text-muted-foreground">
+                          {s.start_date && parseProjectDate(s.start_date).toLocaleDateString('pt-BR')}
+                          {s.start_date && s.end_date && ' – '}
+                          {s.end_date && parseProjectDate(s.end_date).toLocaleDateString('pt-BR')}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex shrink-0 gap-1.5">
+                      <Button variant="secondary" size="sm" onClick={() => openEditSprint(s)}>
+                        Editar
+                      </Button>
+                      {canDelete && (
+                        <Button variant="destructive" size="sm" onClick={() => handleDeleteSprint(s.id)}>
+                          Excluir
+                        </Button>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
-        </div>
-      )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

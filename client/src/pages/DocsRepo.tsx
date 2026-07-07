@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { toast } from 'sonner';
 import {
   HardDrive,
   Folder,
@@ -8,7 +9,6 @@ import {
   FileText,
   StickyNote,
   Search,
-  Plus,
   X,
   ArrowLeft,
   Upload,
@@ -25,48 +25,40 @@ import {
   FileType,
   Image as ImageIcon,
 } from 'lucide-react';
-import type {
-  DocRepository,
-  DocEntry,
-  DocSearchResult,
-  DocRepositoryShare,
-  DocVisibility,
-} from './docs/docsData';
-import {
-  formatDate,
-  formatFileSize,
-  isPdfEntry,
-  canPreviewInBrowser,
-  getFilePreviewKind,
-} from './docs/docsData';
+import type { DocRepository, DocEntry, DocSearchResult, DocRepositoryShare, DocVisibility } from './docs/docsData';
+import { formatDate, formatFileSize, isPdfEntry, canPreviewInBrowser, getFilePreviewKind } from './docs/docsData';
 import type { FilePreviewKind } from './docs/previewUtils';
-import {
-  HighlightedText,
-  highlightTextInElement,
-  goToMatchInRoot,
-  countMarksInRoot,
-} from './docs/searchHighlight';
-import DocsUserAccessPicker, {
-  type AccessMember,
-  type UserOption,
-} from './docs/DocsUserAccessPicker';
+import { HighlightedText, highlightTextInElement, goToMatchInRoot, countMarksInRoot } from './docs/searchHighlight';
+import DocsUserAccessPicker, { type AccessMember, type UserOption } from './docs/DocsUserAccessPicker';
 import { useAuth } from '../contexts/AuthContext';
+import { cn } from '@/lib/utils';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 
 type BreadcrumbItem = { id: number | null; name: string };
 
 function sharedToMembers(shared: DocRepositoryShare[]): AccessMember[] {
-  return shared.map((s) => ({
-    user_id: s.user_id,
-    name: s.user_name,
-    email: s.user_email,
-    permission: s.permission,
-  }));
+  return shared.map((s) => ({ user_id: s.user_id, name: s.user_name, email: s.user_email, permission: s.permission }));
 }
+
+const ENTRY_ICON_STYLE: Record<string, string> = {
+  folder: 'text-[#f59e0b]',
+  note: 'text-[var(--green)]',
+  file: 'text-muted-foreground',
+};
 
 export default function DocsRepo() {
   const { repoId } = useParams<{ repoId: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const confirm = useConfirm();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [repo, setRepo] = useState<DocRepository | null>(null);
@@ -113,9 +105,7 @@ export default function DocsRepo() {
   const [previewMatchCount, setPreviewMatchCount] = useState(0);
 
   useEffect(() => {
-    if (!filePreview?.htmlContent || !filePreview.highlightQuery || !htmlPreviewRef.current) {
-      return;
-    }
+    if (!filePreview?.htmlContent || !filePreview.highlightQuery || !htmlPreviewRef.current) return;
     const t = setTimeout(() => {
       const root = htmlPreviewRef.current!;
       highlightTextInElement(root, filePreview.highlightQuery!);
@@ -187,9 +177,7 @@ export default function DocsRepo() {
     const timer = setTimeout(async () => {
       setSearching(true);
       try {
-        const res = await axios.get<DocSearchResult[]>(`/api/docs/repositories/${repoId}/search`, {
-          params: { q: searchTerm },
-        });
+        const res = await axios.get<DocSearchResult[]>(`/api/docs/repositories/${repoId}/search`, { params: { q: searchTerm } });
         setSearchResults(res.data);
       } catch {
         setSearchResults([]);
@@ -204,16 +192,10 @@ export default function DocsRepo() {
     if (isSearchMode) return false;
     const term = searchTerm.toLowerCase();
     if (!term) return true;
-    return (
-      e.name.toLowerCase().includes(term) ||
-      (e.description ?? '').toLowerCase().includes(term) ||
-      e.tags.some((t) => t.toLowerCase().includes(term))
-    );
+    return e.name.toLowerCase().includes(term) || (e.description ?? '').toLowerCase().includes(term) || e.tags.some((t) => t.toLowerCase().includes(term));
   });
 
-  const displayEntries: (DocEntry | DocSearchResult)[] = isSearchMode
-    ? searchResults ?? []
-    : filteredEntries;
+  const displayEntries: (DocEntry | DocSearchResult)[] = isSearchMode ? (searchResults ?? []) : filteredEntries;
 
   const handleBack = () => navigate('/docs');
 
@@ -235,14 +217,12 @@ export default function DocsRepo() {
         const form = new FormData();
         form.append('file', file);
         if (currentFolderId != null) form.append('parent_id', String(currentFolderId));
-        await axios.post(`/api/docs/repositories/${repoId}/upload`, form, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        });
+        await axios.post(`/api/docs/repositories/${repoId}/upload`, form, { headers: { 'Content-Type': 'multipart/form-data' } });
       }
       await refresh(currentFolderId);
     } catch (err: unknown) {
       const msg = axios.isAxiosError(err) ? err.response?.data?.error : 'Erro no upload';
-      alert(msg || 'Erro ao enviar arquivo');
+      toast.error(msg || 'Erro ao enviar arquivo');
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -253,16 +233,13 @@ export default function DocsRepo() {
     e.preventDefault();
     if (!folderName.trim()) return;
     try {
-      await axios.post(`/api/docs/repositories/${repoId}/folders`, {
-        name: folderName.trim(),
-        parent_id: currentFolderId,
-      });
+      await axios.post(`/api/docs/repositories/${repoId}/folders`, { name: folderName.trim(), parent_id: currentFolderId });
       setShowFolderModal(false);
       setFolderName('');
       await refresh(currentFolderId);
     } catch (err: unknown) {
       const msg = axios.isAxiosError(err) ? err.response?.data?.error : 'Erro';
-      alert(msg || 'Erro ao criar pasta');
+      toast.error(msg || 'Erro ao criar pasta');
     }
   };
 
@@ -271,45 +248,26 @@ export default function DocsRepo() {
     if (!noteName.trim()) return;
     try {
       if (editingNote) {
-        await axios.put(`/api/docs/entries/${editingNote.id}`, {
-          name: noteName.trim(),
-          content: noteContent,
-        });
+        await axios.put(`/api/docs/entries/${editingNote.id}`, { name: noteName.trim(), content: noteContent });
       } else {
-        await axios.post(`/api/docs/repositories/${repoId}/notes`, {
-          name: noteName.trim(),
-          content: noteContent,
-          parent_id: currentFolderId,
-        });
+        await axios.post(`/api/docs/repositories/${repoId}/notes`, { name: noteName.trim(), content: noteContent, parent_id: currentFolderId });
       }
       closeNoteModal();
       await refresh(currentFolderId);
     } catch (err: unknown) {
       const msg = axios.isAxiosError(err) ? err.response?.data?.error : 'Erro';
-      alert(msg || 'Erro ao salvar nota');
+      toast.error(msg || 'Erro ao salvar nota');
     }
   };
 
   const fetchPreviewBlob = async (entry: DocEntry) => {
-    const res = await axios.get(`/api/docs/entries/${entry.id}/preview`, {
-      responseType: 'blob',
-    });
-    const blob =
-      res.data instanceof Blob
-        ? res.data
-        : new Blob([res.data], { type: entry.mime_type || 'application/octet-stream' });
-    return blob;
+    const res = await axios.get(`/api/docs/entries/${entry.id}/preview`, { responseType: 'blob' });
+    return res.data instanceof Blob ? res.data : new Blob([res.data], { type: entry.mime_type || 'application/octet-stream' });
   };
 
   const fetchFileBlob = async (entry: DocEntry) => {
-    const res = await axios.get(`/api/docs/entries/${entry.id}/download`, {
-      responseType: 'blob',
-    });
-    const blob =
-      res.data instanceof Blob
-        ? res.data
-        : new Blob([res.data], { type: entry.mime_type || 'application/octet-stream' });
-    return blob;
+    const res = await axios.get(`/api/docs/entries/${entry.id}/download`, { responseType: 'blob' });
+    return res.data instanceof Blob ? res.data : new Blob([res.data], { type: entry.mime_type || 'application/octet-stream' });
   };
 
   const handleDownload = async (entry: DocEntry) => {
@@ -322,7 +280,7 @@ export default function DocsRepo() {
       a.click();
       window.URL.revokeObjectURL(url);
     } catch {
-      alert('Erro ao baixar arquivo');
+      toast.error('Erro ao baixar arquivo');
     }
   };
 
@@ -362,45 +320,31 @@ export default function DocsRepo() {
 
       if (kind === 'html') {
         const res = await axios.get<{ html: string }>(`/api/docs/entries/${entry.id}/preview-html`);
-        setFilePreview({
-          entry,
-          kind,
-          htmlContent: res.data.html,
-          highlightQuery: highlight,
-          extractedText,
-        });
+        setFilePreview({ entry, kind, htmlContent: res.data.html, highlightQuery: highlight, extractedText });
       } else if (kind === 'text' && entry.entry_type === 'note') {
-        setFilePreview({
-          entry,
-          kind,
-          textContent: entry.content || '',
-          highlightQuery: highlight,
-        });
+        setFilePreview({ entry, kind, textContent: entry.content || '', highlightQuery: highlight });
       } else if (kind === 'text') {
         const blob = await fetchPreviewBlob(entry);
         const text = await blob.text();
         setFilePreview({ entry, kind, textContent: text, highlightQuery: highlight });
       } else {
         const blob = await fetchPreviewBlob(entry);
-        const mime =
-          entry.mime_type ||
-          (kind === 'pdf' ? 'application/pdf' : blob.type || 'application/octet-stream');
+        const mime = entry.mime_type || (kind === 'pdf' ? 'application/pdf' : blob.type || 'application/octet-stream');
         const typed = blob.type ? blob : new Blob([blob], { type: mime });
         const url = window.URL.createObjectURL(typed);
         setFilePreview({ entry, kind, url, highlightQuery: highlight, extractedText });
       }
     } catch {
       closeFilePreview();
-      alert('Não foi possível abrir o arquivo no navegador.');
+      toast.error('Não foi possível abrir o arquivo no navegador.');
     } finally {
       setPreviewLoading(false);
     }
   };
 
   const handleOpenFile = (entry: DocEntry) => {
-    if (canPreviewInBrowser(entry)) {
-      openFilePreview(entry, isSearchMode ? searchTerm : undefined);
-    } else handleDownload(entry);
+    if (canPreviewInBrowser(entry)) openFilePreview(entry, isSearchMode ? searchTerm : undefined);
+    else handleDownload(entry);
   };
 
   const openViewNote = (entry: DocEntry, highlight?: string) => {
@@ -450,24 +394,32 @@ export default function DocsRepo() {
   }, [filePreview, viewingNote, closeFilePreview]);
 
   const handleDeleteEntry = async (entry: DocEntry) => {
-    if (!window.confirm(`Excluir "${entry.name}"?`)) return;
+    const ok = await confirm({ title: 'Excluir item', description: `Excluir "${entry.name}"?`, confirmLabel: 'Excluir', variant: 'destructive' });
+    if (!ok) return;
     try {
       await axios.delete(`/api/docs/entries/${entry.id}`);
       await refresh(currentFolderId);
     } catch (err: unknown) {
       const msg = axios.isAxiosError(err) ? err.response?.data?.error : 'Erro';
-      alert(msg || 'Erro ao excluir');
+      toast.error(msg || 'Erro ao excluir');
     }
   };
 
   const handleDeleteRepo = async () => {
-    if (!repo || !window.confirm(`Excluir "${repo.name}" e todo o conteúdo?`)) return;
+    if (!repo) return;
+    const ok = await confirm({
+      title: 'Excluir repositório',
+      description: `Excluir "${repo.name}" e todo o conteúdo?`,
+      confirmLabel: 'Excluir',
+      variant: 'destructive',
+    });
+    if (!ok) return;
     try {
       await axios.delete(`/api/docs/repositories/${repo.id}`);
       navigate('/docs');
     } catch (err: unknown) {
       const msg = axios.isAxiosError(err) ? err.response?.data?.error : 'Erro';
-      alert(msg || 'Erro ao excluir repositório');
+      toast.error(msg || 'Erro ao excluir repositório');
     }
   };
 
@@ -500,16 +452,9 @@ export default function DocsRepo() {
     e.preventDefault();
     if (!repo) return;
     try {
-      const payload: Record<string, unknown> = {
-        name: editRepoName.trim(),
-        description: editRepoDesc.trim(),
-        visibility: editRepoVisibility,
-      };
+      const payload: Record<string, unknown> = { name: editRepoName.trim(), description: editRepoDesc.trim(), visibility: editRepoVisibility };
       if (isOwner && editRepoVisibility === 'private') {
-        payload.members = accessMembers.map((m) => ({
-          user_id: m.user_id,
-          permission: m.permission,
-        }));
+        payload.members = accessMembers.map((m) => ({ user_id: m.user_id, permission: m.permission }));
       } else if (isOwner && editRepoVisibility === 'team') {
         payload.members = [];
       }
@@ -518,7 +463,7 @@ export default function DocsRepo() {
       setShowEditRepoModal(false);
     } catch (err: unknown) {
       const msg = axios.isAxiosError(err) ? err.response?.data?.error : 'Erro';
-      alert(msg || 'Erro ao salvar');
+      toast.error(msg || 'Erro ao salvar');
     }
   };
 
@@ -526,20 +471,14 @@ export default function DocsRepo() {
     if (!repoId) return;
     setSavingAccess(true);
     try {
-      const res = await axios.put<{ shared_with: DocRepositoryShare[] }>(
-        `/api/docs/repositories/${repoId}/access`,
-        {
-          members: accessMembers.map((m) => ({
-            user_id: m.user_id,
-            permission: m.permission,
-          })),
-        }
-      );
+      const res = await axios.put<{ shared_with: DocRepositoryShare[] }>(`/api/docs/repositories/${repoId}/access`, {
+        members: accessMembers.map((m) => ({ user_id: m.user_id, permission: m.permission })),
+      });
       setRepo((prev) => (prev ? { ...prev, shared_with: res.data.shared_with } : prev));
       setShowAccessModal(false);
     } catch (err: unknown) {
       const msg = axios.isAxiosError(err) ? err.response?.data?.error : 'Erro';
-      alert(msg || 'Erro ao salvar acessos');
+      toast.error(msg || 'Erro ao salvar acessos');
     } finally {
       setSavingAccess(false);
     }
@@ -567,162 +506,128 @@ export default function DocsRepo() {
 
   if (loading) {
     return (
-      <div className="docs-page">
-        <p className="docs-empty__text">Carregando...</p>
+      <div>
+        <p className="text-sm text-muted-foreground">Carregando...</p>
       </div>
     );
   }
 
   if (!repo) {
     return (
-      <div className="docs-page">
-        <button type="button" className="btn btn-secondary" onClick={handleBack}>
-          <ArrowLeft size={16} />
-          Voltar
-        </button>
-        <p style={{ marginTop: 'var(--spacing-lg)', color: 'var(--text-secondary)' }}>
-          Repositório não encontrado ou sem acesso.
-        </p>
+      <div>
+        <Button variant="secondary" onClick={handleBack}>
+          <ArrowLeft size={16} /> Voltar
+        </Button>
+        <p className="mt-4 text-sm text-muted-foreground">Repositório não encontrado ou sem acesso.</p>
       </div>
     );
   }
 
   return (
-    <div className="docs-page docs-page--repo">
-      <div className="docs-repo-top">
-        <button type="button" className="btn btn-secondary docs-back-btn" onClick={handleBack}>
-          <ArrowLeft size={18} />
-          Voltar para Arquivos
-        </button>
-      </div>
+    <div>
+      <Button variant="secondary" onClick={handleBack} className="mb-4">
+        <ArrowLeft size={18} /> Voltar para Arquivos
+      </Button>
 
-      <nav className="docs-breadcrumb">
-        <button type="button" className="docs-breadcrumb__link" onClick={handleBack}>
+      <nav className="mb-5 flex flex-wrap items-center gap-1.5 text-sm">
+        <button type="button" onClick={handleBack} className="text-muted-foreground hover:text-foreground hover:underline">
           Arquivos
         </button>
-        <span className="docs-breadcrumb__sep">/</span>
-        <button
-          type="button"
-          className="docs-breadcrumb__link"
-          onClick={() => goToBreadcrumb(0)}
-        >
+        <ChevronRight size={14} className="text-muted-foreground/50" />
+        <button type="button" onClick={() => goToBreadcrumb(0)} className="text-muted-foreground hover:text-foreground hover:underline">
           {repo.name}
         </button>
         {breadcrumb.slice(1).map((crumb, i) => (
-          <span key={crumb.id ?? i}>
-            <span className="docs-breadcrumb__sep">/</span>
-            <button
-              type="button"
-              className={
-                i === breadcrumb.length - 2
-                  ? 'docs-breadcrumb__current'
-                  : 'docs-breadcrumb__link'
-              }
-              onClick={() => goToBreadcrumb(i + 1)}
-            >
-              {crumb.name}
-            </button>
+          <span key={crumb.id ?? i} className="flex items-center gap-1.5">
+            <ChevronRight size={14} className="text-muted-foreground/50" />
+            {i === breadcrumb.length - 2 ? (
+              <span className="font-semibold text-foreground">{crumb.name}</span>
+            ) : (
+              <button type="button" onClick={() => goToBreadcrumb(i + 1)} className="text-muted-foreground hover:text-foreground hover:underline">
+                {crumb.name}
+              </button>
+            )}
           </span>
         ))}
       </nav>
 
-      <header className="docs-repo-header">
-        <div className="docs-repo-header__icon">
+      <header className="mb-6 flex flex-wrap items-center gap-4">
+        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[var(--purple)] to-[var(--blue)] text-white">
           <HardDrive size={28} />
         </div>
-        <div className="docs-repo-header__text">
-          <h1 className="docs-repo-header__title">{repo.name}</h1>
-          <p className="docs-repo-header__desc">{repo.description || 'Sem descrição'}</p>
-          <div className="docs-repo-header__meta">
-            <span>
-              {repo.visibility === 'team' ? <Users size={14} /> : <Lock size={14} />}
+        <div className="min-w-0 flex-1">
+          <h1 className="text-2xl font-extrabold tracking-tight text-foreground">{repo.name}</h1>
+          <p className="mb-1.5 text-sm text-muted-foreground">{repo.description || 'Sem descrição'}</p>
+          <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1">
+              {repo.visibility === 'team' ? <Users size={13} /> : <Lock size={13} />}
               {repo.visibility === 'team' ? 'Equipe' : 'Privado'}
             </span>
-            <span>
-              <FileText size={14} />
+            <span className="flex items-center gap-1">
+              <FileText size={13} />
               {repo.item_count} itens no total
             </span>
             <span>Por {repo.owner_name}</span>
             {repo.visibility === 'private' && isOwner && (
-              <span>
-                <Users size={14} />
-                {(repo.shared_with?.length ?? 0) === 0
-                  ? 'Só você'
-                  : `${repo.shared_with!.length} usuário(s) com acesso`}
+              <span className="flex items-center gap-1">
+                <Users size={13} />
+                {(repo.shared_with?.length ?? 0) === 0 ? 'Só você' : `${repo.shared_with!.length} usuário(s) com acesso`}
               </span>
             )}
           </div>
         </div>
-        <div className="docs-repo-header__actions">
+        <div className="flex shrink-0 gap-2">
           {isOwner && repo.visibility === 'private' && (
-            <button type="button" className="btn btn-secondary" onClick={openAccessModal}>
-              <Share2 size={16} />
-              Gerenciar acesso
-            </button>
+            <Button variant="secondary" onClick={openAccessModal}>
+              <Share2 size={16} /> Gerenciar acesso
+            </Button>
           )}
           {canEdit && (
-            <button type="button" className="btn btn-secondary" onClick={openEditRepoModal}>
-              <Pencil size={16} />
-              Editar
-            </button>
+            <Button variant="secondary" onClick={openEditRepoModal}>
+              <Pencil size={16} /> Editar
+            </Button>
           )}
           {isOwner && (
-            <button type="button" className="btn btn-danger" onClick={handleDeleteRepo}>
-              <Trash2 size={16} />
-              Excluir
-            </button>
+            <Button variant="destructive" onClick={handleDeleteRepo}>
+              <Trash2 size={16} /> Excluir
+            </Button>
           )}
         </div>
       </header>
 
-      <div className="docs-toolbar">
-        <div className="docs-search">
-          <Search size={18} className="docs-search__icon" />
-          <input
-            type="text"
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div className="relative min-w-[300px] max-w-[560px] flex-1">
+          <Search size={18} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted-foreground" />
+          <Input
             placeholder="Buscar em todo o repositório (nome, notas, PDF, DOCX, TXT…)"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="docs-search__input"
+            className="pl-10"
           />
         </div>
         {canEdit && (
-          <div className="docs-toolbar-actions">
-            <button type="button" className="btn btn-secondary" onClick={() => setShowFolderModal(true)}>
-              <FolderPlus size={18} />
-              Nova pasta
-            </button>
-            <button type="button" className="btn btn-secondary" onClick={openNewNoteModal}>
-              <StickyNote size={18} />
-              Nova nota
-            </button>
-            <button
-              type="button"
-              className="btn btn-primary"
-              disabled={uploading}
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <Upload size={18} />
-              {uploading ? 'Enviando...' : 'Enviar arquivo'}
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              hidden
-              onChange={(e) => handleUpload(e.target.files)}
-            />
+          <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" onClick={() => setShowFolderModal(true)}>
+              <FolderPlus size={18} /> Nova pasta
+            </Button>
+            <Button variant="secondary" onClick={openNewNoteModal}>
+              <StickyNote size={18} /> Nova nota
+            </Button>
+            <Button disabled={uploading} onClick={() => fileInputRef.current?.click()}>
+              <Upload size={18} /> {uploading ? 'Enviando...' : 'Enviar arquivo'}
+            </Button>
+            <input ref={fileInputRef} type="file" multiple hidden onChange={(e) => handleUpload(e.target.files)} />
           </div>
         )}
       </div>
 
-      <div className="card docs-card">
-        <div className="docs-card__head">
-          <div className="docs-card__head-title">
+      <Card className="gap-0 px-0 py-0">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-5 py-3.5">
+          <div className="flex items-center gap-2 font-semibold text-foreground">
             <Home size={18} />
             <span>{breadcrumb[breadcrumb.length - 1]?.name || 'Raiz'}</span>
           </div>
-          <div className="docs-card__head-meta">
+          <div className="text-sm text-muted-foreground">
             {isSearchMode
               ? searching
                 ? 'Buscando...'
@@ -731,16 +636,12 @@ export default function DocsRepo() {
             {!canEdit && ' · Somente leitura'}
           </div>
         </div>
-        <div className="docs-card__body">
+        <div className="px-5 py-5">
           {displayEntries.length === 0 ? (
-            <div className="docs-empty">
-              <div className="docs-empty__icon">
-                <Folder size={40} />
-              </div>
-              <h3 className="docs-empty__title">
-                {isSearchMode ? 'Nenhum resultado' : 'Pasta vazia'}
-              </h3>
-              <p className="docs-empty__text">
+            <div className="flex flex-col items-center px-4 py-12 text-center">
+              <Folder size={40} strokeWidth={1.5} className="mb-3 text-muted-foreground opacity-50" />
+              <h3 className="mb-1.5 text-base font-bold text-foreground">{isSearchMode ? 'Nenhum resultado' : 'Pasta vazia'}</h3>
+              <p className="max-w-[420px] text-sm text-muted-foreground">
                 {isSearchMode
                   ? 'Tente outras palavras. A busca inclui PDF, DOCX, TXT e notas (mínimo 2 caracteres).'
                   : canEdit
@@ -749,102 +650,85 @@ export default function DocsRepo() {
               </p>
             </div>
           ) : isSearchMode ? (
-            <ul className="docs-search-results">
+            <ul className="flex flex-col gap-2" role="list">
               {(displayEntries as DocSearchResult[]).map((item) => (
                 <li key={item.id}>
                   <button
                     type="button"
-                    className="docs-search-result"
                     onClick={() => openSearchResult(item)}
+                    className="flex w-full flex-col gap-1 rounded-lg border border-border px-4 py-3 text-left transition-colors hover:border-[var(--purple)] hover:bg-muted/40"
                   >
-                    <span className="docs-search-result__name">{item.name}</span>
-                    <span className="docs-search-result__path">
-                      {(item.path?.length ? item.path.join(' / ') : 'Raiz') +
-                        ` · ${item.entry_type === 'note' ? 'Nota' : 'Arquivo'}`}
+                    <span className="font-semibold text-foreground">{item.name}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {(item.path?.length ? item.path.join(' / ') : 'Raiz') + ` · ${item.entry_type === 'note' ? 'Nota' : 'Arquivo'}`}
                     </span>
                     {item.snippet && (
-                      <span className="docs-search-result__snippet">
+                      <span className="text-sm text-muted-foreground">
                         <HighlightedText text={item.snippet} query={searchTerm} />
                       </span>
                     )}
                     {item.match_count != null && item.match_count > 0 && (
-                      <span className="docs-search-result__matches">
+                      <Badge variant="outline" className="w-fit text-[0.65rem]">
                         {item.match_count} ocorrência{item.match_count === 1 ? '' : 's'}
-                      </span>
+                      </Badge>
                     )}
                   </button>
                 </li>
               ))}
             </ul>
           ) : (
-            <div className="docs-file-grid">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
               {displayEntries.map((entry) => {
-                const Icon = entryIcon(entry);
+                const Icon = entryIcon(entry as DocEntry);
                 return (
                   <div
                     key={entry.id}
-                    className={`docs-file-card docs-file-card--${entry.entry_type}`}
                     onClick={() => handleOpenEntry(entry as DocEntry)}
                     role="button"
                     tabIndex={0}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter') handleOpenEntry(entry);
+                      if (e.key === 'Enter') handleOpenEntry(entry as DocEntry);
                     }}
+                    className="group flex cursor-pointer flex-col items-center rounded-lg border border-border bg-muted/30 px-3 py-5 text-center transition-all hover:border-[var(--purple)] hover:shadow-md"
                   >
-                    <div className="docs-file-card__icon">
-                      <Icon size={32} />
-                    </div>
-                    <div className="docs-file-card__name" title={entry.name}>
+                    <Icon size={32} className={cn('mb-2', ENTRY_ICON_STYLE[entry.entry_type])} />
+                    <div className="w-full truncate text-sm font-medium text-foreground" title={entry.name}>
                       {entry.name}
                     </div>
-                    <div className="docs-file-card__meta">
-                      {entry.entry_type === 'file' && isPdfEntry(entry) && 'PDF · '}
-                      {entry.entry_type === 'file' && formatFileSize(entry.size_bytes)}
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {entry.entry_type === 'file' && isPdfEntry(entry as DocEntry) && 'PDF · '}
+                      {entry.entry_type === 'file' && formatFileSize((entry as DocEntry).size_bytes)}
                       {entry.entry_type === 'folder' && 'Pasta'}
                       {entry.entry_type === 'note' && 'Nota'}
                       {' · '}
                       {formatDate(entry.updated_at)}
                     </div>
-                    <div className="docs-file-card__actions" onClick={(e) => e.stopPropagation()}>
-                      {entry.entry_type === 'file' && canPreviewInBrowser(entry) && (
-                        <button
-                          type="button"
-                          className="docs-file-card__btn"
-                          title="Visualizar no navegador"
-                          onClick={() => openFilePreview(entry)}
-                        >
-                          <Eye size={16} />
-                        </button>
+                    <div className="mt-2.5 flex gap-1.5 opacity-0 transition-opacity group-hover:opacity-100" onClick={(e) => e.stopPropagation()}>
+                      {entry.entry_type === 'file' && canPreviewInBrowser(entry as DocEntry) && (
+                        <Button variant="secondary" size="icon-sm" title="Visualizar no navegador" onClick={() => openFilePreview(entry as DocEntry)}>
+                          <Eye size={14} />
+                        </Button>
                       )}
                       {entry.entry_type === 'file' && (
-                        <button
-                          type="button"
-                          className="docs-file-card__btn"
-                          title="Download"
-                          onClick={() => handleDownload(entry)}
-                        >
-                          <Download size={16} />
-                        </button>
+                        <Button variant="secondary" size="icon-sm" title="Download" onClick={() => handleDownload(entry as DocEntry)}>
+                          <Download size={14} />
+                        </Button>
                       )}
                       {entry.entry_type === 'note' && canEdit && (
-                        <button
-                          type="button"
-                          className="docs-file-card__btn"
-                          title="Editar nota"
-                          onClick={() => openEditNote(entry)}
-                        >
-                          <Pencil size={16} />
-                        </button>
+                        <Button variant="secondary" size="icon-sm" title="Editar nota" onClick={() => openEditNote(entry as DocEntry)}>
+                          <Pencil size={14} />
+                        </Button>
                       )}
                       {canEdit && (
-                        <button
-                          type="button"
-                          className="docs-file-card__btn docs-file-card__btn--danger"
+                        <Button
+                          variant="secondary"
+                          size="icon-sm"
                           title="Excluir"
-                          onClick={() => handleDeleteEntry(entry)}
+                          onClick={() => handleDeleteEntry(entry as DocEntry)}
+                          className="hover:bg-destructive/15 hover:text-destructive"
                         >
-                          <Trash2 size={16} />
-                        </button>
+                          <Trash2 size={14} />
+                        </Button>
                       )}
                     </div>
                   </div>
@@ -853,373 +737,248 @@ export default function DocsRepo() {
             </div>
           )}
         </div>
-      </div>
+      </Card>
 
-      {filePreview && (
-        <div className="docs-file-preview-backdrop" onClick={closeFilePreview}>
-          <div className="docs-file-preview" onClick={(e) => e.stopPropagation()}>
-            <header className="docs-file-preview__head">
-              <div className="docs-file-preview__title">
-                <FileType size={20} />
-                <span title={filePreview.entry.name}>{filePreview.entry.name}</span>
-              </div>
-              <div className="docs-file-preview__actions">
-                {filePreview.highlightQuery && previewMatchCount > 0 && (
-                  <div className="docs-search-match-nav">
-                    <span className="docs-search-match-nav__count">
-                      {previewMatchCount} ocorrência{previewMatchCount === 1 ? '' : 's'}
-                    </span>
-                    <button
-                      type="button"
-                      className="btn btn-secondary btn-sm"
-                      onClick={() => goToPreviewMatch(-1)}
-                      title="Ocorrência anterior"
-                    >
-                      ↑
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-secondary btn-sm"
-                      onClick={() => goToPreviewMatch(1)}
-                      title="Próxima ocorrência"
-                    >
-                      ↓
-                    </button>
-                  </div>
-                )}
-                {filePreview.entry.entry_type === 'file' && (
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    onClick={() => handleDownload(filePreview.entry)}
-                  >
-                    <Download size={16} />
-                    Baixar
-                  </button>
-                )}
-                <button
-                  type="button"
-                  className="docs-modal__close"
-                  onClick={closeFilePreview}
-                  aria-label="Fechar visualizador"
-                >
-                  <X size={20} />
-                </button>
-              </div>
-            </header>
-            <div
-              ref={previewBodyRef}
-              className={`docs-file-preview__body${filePreview.kind === 'pdf' && filePreview.highlightQuery && filePreview.extractedText != null ? ' docs-file-preview__body--split' : ''}`}
-            >
-              {previewLoading ? (
-                <div className="docs-file-preview__loading">Carregando...</div>
-              ) : filePreview.kind === 'pdf' && filePreview.url ? (
-                <>
-                  <iframe
-                    src={filePreview.url}
-                    title={`Visualização: ${filePreview.entry.name}`}
-                    className="docs-file-preview__iframe"
-                  />
-                  {filePreview.highlightQuery && filePreview.extractedText != null && (
-                    <div className="docs-file-preview__text-panel">
-                      <p className="docs-file-preview__text-panel-label">
-                        Texto do documento (termo pesquisado destacado)
-                      </p>
-                      <HighlightedText
-                        text={filePreview.extractedText}
-                        query={filePreview.highlightQuery}
-                        className="docs-file-preview__text"
-                        as="pre"
-                      />
+      {/* Visualizador de arquivo */}
+      <Dialog open={!!filePreview} onOpenChange={(open) => !open && closeFilePreview()}>
+        <DialogContent className="flex h-[90vh] max-h-[90vh] w-full max-w-6xl! flex-col gap-0 overflow-hidden p-0">
+          {filePreview && (
+            <>
+              <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-5 py-3.5">
+                <div className="flex min-w-0 items-center gap-2 font-semibold text-foreground">
+                  <FileType size={20} className="shrink-0" />
+                  <span className="truncate" title={filePreview.entry.name}>
+                    {filePreview.entry.name}
+                  </span>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  {filePreview.highlightQuery && previewMatchCount > 0 && (
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs text-muted-foreground">
+                        {previewMatchCount} ocorrência{previewMatchCount === 1 ? '' : 's'}
+                      </span>
+                      <Button variant="secondary" size="icon-sm" onClick={() => goToPreviewMatch(-1)} title="Ocorrência anterior">
+                        ↑
+                      </Button>
+                      <Button variant="secondary" size="icon-sm" onClick={() => goToPreviewMatch(1)} title="Próxima ocorrência">
+                        ↓
+                      </Button>
                     </div>
                   )}
-                </>
-              ) : filePreview.kind === 'image' && filePreview.url ? (
-                <img
-                  src={filePreview.url}
-                  alt={filePreview.entry.name}
-                  className="docs-file-preview__img"
-                />
-              ) : filePreview.kind === 'html' && filePreview.htmlContent ? (
-                <div
-                  ref={htmlPreviewRef}
-                  className="docs-file-preview__html"
-                  dangerouslySetInnerHTML={{ __html: filePreview.htmlContent }}
-                />
-              ) : filePreview.kind === 'text' && filePreview.textContent != null ? (
-                filePreview.highlightQuery ? (
-                  <HighlightedText
-                    text={filePreview.textContent}
-                    query={filePreview.highlightQuery}
-                    className="docs-file-preview__text"
-                    as="pre"
-                  />
-                ) : (
-                  <pre className="docs-file-preview__text">{filePreview.textContent}</pre>
-                )
-              ) : (
-                <div className="docs-file-preview__loading">Não foi possível exibir o arquivo.</div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showFolderModal && (
-        <div className="docs-modal-backdrop" onClick={() => setShowFolderModal(false)}>
-          <div className="docs-modal docs-modal--sm" onClick={(e) => e.stopPropagation()}>
-            <div className="docs-modal__head">
-              <h2 className="docs-modal__title">Nova pasta</h2>
-              <button type="button" className="docs-modal__close" onClick={() => setShowFolderModal(false)}>
-                <X size={20} />
-              </button>
-            </div>
-            <form onSubmit={handleCreateFolder} className="docs-modal__form">
-              <div className="docs-form-group docs-form-group--full">
-                <label className="docs-form-label">Nome da pasta</label>
-                <input
-                  type="text"
-                  required
-                  value={folderName}
-                  onChange={(e) => setFolderName(e.target.value)}
-                  className="docs-form-input"
-                  autoFocus
-                />
-              </div>
-              <div className="docs-modal-footer">
-                <div className="docs-modal-footer__actions">
-                  <button type="button" className="btn btn-secondary" onClick={() => setShowFolderModal(false)}>
-                    Cancelar
-                  </button>
-                  <button type="submit" className="btn btn-primary">
-                    Criar
-                  </button>
-                </div>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {viewingNote && (
-        <div className="docs-modal-backdrop" onClick={closeViewNote}>
-          <div className="docs-modal docs-modal--view" onClick={(e) => e.stopPropagation()}>
-            <div className="docs-modal__head">
-              <div className="docs-detail-header">
-                <span className="docs-detail-type">
-                  <StickyNote size={18} />
-                  Nota
-                </span>
-                <h2 className="docs-modal__title">{viewingNote.name}</h2>
-              </div>
-              <button type="button" className="docs-modal__close" onClick={closeViewNote} aria-label="Fechar">
-                <X size={20} />
-              </button>
-            </div>
-            <div className="docs-modal__body docs-note-view">
-              {viewingNote.description && (
-                <div className="docs-detail-block">
-                  <label className="docs-form-label">Descrição</label>
-                  <p className="docs-detail-text">{viewingNote.description}</p>
-                </div>
-              )}
-              <div className="docs-detail-block">
-                <label className="docs-form-label">Conteúdo</label>
-                <pre className="docs-note-view__content">
-                  {noteHighlightQuery && viewingNote.content?.trim() ? (
-                    <HighlightedText
-                      text={viewingNote.content}
-                      query={noteHighlightQuery}
-                      className="docs-note-view__content"
-                      as="p"
-                    />
-                  ) : (
-                    viewingNote.content?.trim() || '(Nota vazia)'
+                  {filePreview.entry.entry_type === 'file' && (
+                    <Button variant="secondary" size="sm" onClick={() => handleDownload(filePreview.entry)}>
+                      <Download size={16} /> Baixar
+                    </Button>
                   )}
-                </pre>
+                </div>
+              </header>
+              <div
+                ref={previewBodyRef}
+                className={cn('flex-1 overflow-auto', filePreview.kind === 'pdf' && filePreview.highlightQuery && filePreview.extractedText != null && 'grid grid-cols-2')}
+              >
+                {previewLoading ? (
+                  <div className="flex h-full items-center justify-center text-sm text-muted-foreground">Carregando...</div>
+                ) : filePreview.kind === 'pdf' && filePreview.url ? (
+                  <>
+                    <iframe src={filePreview.url} title={`Visualização: ${filePreview.entry.name}`} className="h-full w-full border-0" />
+                    {filePreview.highlightQuery && filePreview.extractedText != null && (
+                      <div className="overflow-auto border-l border-border p-4">
+                        <p className="mb-2 text-xs font-medium text-muted-foreground">Texto do documento (termo pesquisado destacado)</p>
+                        <HighlightedText text={filePreview.extractedText} query={filePreview.highlightQuery} className="text-sm whitespace-pre-wrap text-foreground" as="pre" />
+                      </div>
+                    )}
+                  </>
+                ) : filePreview.kind === 'image' && filePreview.url ? (
+                  <div className="flex h-full items-center justify-center p-4">
+                    <img src={filePreview.url} alt={filePreview.entry.name} className="max-h-full max-w-full object-contain" />
+                  </div>
+                ) : filePreview.kind === 'html' && filePreview.htmlContent ? (
+                  <div ref={htmlPreviewRef} className="p-5" dangerouslySetInnerHTML={{ __html: filePreview.htmlContent }} />
+                ) : filePreview.kind === 'text' && filePreview.textContent != null ? (
+                  filePreview.highlightQuery ? (
+                    <HighlightedText text={filePreview.textContent} query={filePreview.highlightQuery} className="p-5 text-sm whitespace-pre-wrap text-foreground" as="pre" />
+                  ) : (
+                    <pre className="p-5 text-sm whitespace-pre-wrap text-foreground">{filePreview.textContent}</pre>
+                  )
+                ) : (
+                  <div className="flex h-full items-center justify-center text-sm text-muted-foreground">Não foi possível exibir o arquivo.</div>
+                )}
               </div>
-              {viewingNote.tags.length > 0 && (
-                <div className="docs-detail-block">
-                  <label className="docs-form-label">Tags</label>
-                  <div className="docs-detail-tags">
-                    {viewingNote.tags.map((t) => (
-                      <span key={t} className="docs-tag">
-                        {t}
-                      </span>
-                    ))}
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Visualizar nota */}
+      <Dialog open={!!viewingNote} onOpenChange={(open) => !open && closeViewNote()}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+          {viewingNote && (
+            <>
+              <DialogHeader>
+                <span className="flex items-center gap-1.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                  <StickyNote size={15} /> Nota
+                </span>
+                <DialogTitle>{viewingNote.name}</DialogTitle>
+              </DialogHeader>
+              <div className="flex flex-col gap-4">
+                {viewingNote.description && (
+                  <div>
+                    <Label className="mb-1">Descrição</Label>
+                    <p className="text-sm text-muted-foreground">{viewingNote.description}</p>
+                  </div>
+                )}
+                <div>
+                  <Label className="mb-1">Conteúdo</Label>
+                  <div className="rounded-lg border border-border bg-muted/40 p-3 text-sm whitespace-pre-wrap text-foreground">
+                    {noteHighlightQuery && viewingNote.content?.trim() ? (
+                      <HighlightedText text={viewingNote.content} query={noteHighlightQuery} as="p" />
+                    ) : (
+                      viewingNote.content?.trim() || '(Nota vazia)'
+                    )}
                   </div>
                 </div>
-              )}
-              <div className="docs-detail-meta">
-                Criado em {formatDate(viewingNote.created_at)}
-                {viewingNote.updated_at !== viewingNote.created_at &&
-                  ` · Atualizado em ${formatDate(viewingNote.updated_at)}`}
-                {viewingNote.created_by_name && ` · Por ${viewingNote.created_by_name}`}
-              </div>
-              <div className="docs-detail-footer">
-                {canEdit && (
-                  <button type="button" className="btn btn-secondary" onClick={openEditNoteFromView}>
-                    <Pencil size={16} />
-                    Editar
-                  </button>
+                {viewingNote.tags.length > 0 && (
+                  <div>
+                    <Label className="mb-1.5">Tags</Label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {viewingNote.tags.map((t) => (
+                        <Badge key={t} variant="outline">
+                          {t}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
                 )}
-                <button type="button" className="btn btn-secondary" onClick={closeViewNote}>
+                <div className="text-xs text-muted-foreground">
+                  Criado em {formatDate(viewingNote.created_at)}
+                  {viewingNote.updated_at !== viewingNote.created_at && ` · Atualizado em ${formatDate(viewingNote.updated_at)}`}
+                  {viewingNote.created_by_name && ` · Por ${viewingNote.created_by_name}`}
+                </div>
+              </div>
+              <DialogFooter>
+                {canEdit && (
+                  <Button variant="secondary" onClick={openEditNoteFromView}>
+                    <Pencil size={16} /> Editar
+                  </Button>
+                )}
+                <Button variant="outline" onClick={closeViewNote}>
                   Fechar
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
 
-      {showNoteModal && (
-        <div className="docs-modal-backdrop" onClick={closeNoteModal}>
-          <div className="docs-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="docs-modal__head">
-              <h2 className="docs-modal__title">{editingNote ? 'Editar nota' : 'Nova nota'}</h2>
-              <button type="button" className="docs-modal__close" onClick={closeNoteModal}>
-                <X size={20} />
-              </button>
+      {/* Nova pasta */}
+      <Dialog open={showFolderModal} onOpenChange={setShowFolderModal}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Nova pasta</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleCreateFolder} className="flex flex-col gap-4">
+            <div>
+              <Label className="mb-1.5">Nome da pasta</Label>
+              <Input required value={folderName} onChange={(e) => setFolderName(e.target.value)} autoFocus />
             </div>
-            <form onSubmit={handleSaveNote} className="docs-modal__form">
-              <div className="docs-form-group docs-form-group--full">
-                <label className="docs-form-label">Título</label>
-                <input
-                  type="text"
-                  required
-                  value={noteName}
-                  onChange={(e) => setNoteName(e.target.value)}
-                  className="docs-form-input"
-                />
-              </div>
-              <div className="docs-form-group docs-form-group--full">
-                <label className="docs-form-label">Conteúdo</label>
-                <textarea
-                  rows={8}
-                  value={noteContent}
-                  onChange={(e) => setNoteContent(e.target.value)}
-                  className="docs-form-input docs-form-textarea"
-                  placeholder="Texto, instruções, links..."
-                />
-              </div>
-              <div className="docs-modal-footer">
-                <div className="docs-modal-footer__actions">
-                  <button type="button" className="btn btn-secondary" onClick={closeNoteModal}>
-                    Cancelar
-                  </button>
-                  <button type="submit" className="btn btn-primary">
-                    Salvar
-                  </button>
-                </div>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setShowFolderModal(false)}>
+                Cancelar
+              </Button>
+              <Button type="submit">Criar</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
-      {showEditRepoModal && (
-        <div className="docs-modal-backdrop" onClick={() => setShowEditRepoModal(false)}>
-          <div className="docs-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="docs-modal__head">
-              <h2 className="docs-modal__title">Editar repositório</h2>
-              <button type="button" className="docs-modal__close" onClick={() => setShowEditRepoModal(false)}>
-                <X size={20} />
-              </button>
+      {/* Nova/editar nota */}
+      <Dialog open={showNoteModal} onOpenChange={(open) => !open && closeNoteModal()}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{editingNote ? 'Editar nota' : 'Nova nota'}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSaveNote} className="flex flex-col gap-4">
+            <div>
+              <Label className="mb-1.5">Título</Label>
+              <Input required value={noteName} onChange={(e) => setNoteName(e.target.value)} />
             </div>
-            <form onSubmit={handleSaveEditRepo} className="docs-modal__form">
-              <div className="docs-form-group docs-form-group--full">
-                <label className="docs-form-label">Nome</label>
-                <input
-                  type="text"
-                  required
-                  value={editRepoName}
-                  onChange={(e) => setEditRepoName(e.target.value)}
-                  className="docs-form-input"
-                />
-              </div>
-              <div className="docs-form-group docs-form-group--full">
-                <label className="docs-form-label">Descrição</label>
-                <textarea
-                  rows={3}
-                  value={editRepoDesc}
-                  onChange={(e) => setEditRepoDesc(e.target.value)}
-                  className="docs-form-input docs-form-textarea"
-                />
-              </div>
-              <div className="docs-form-group docs-form-group--full">
-                <label className="docs-form-label">Quem pode acessar</label>
-                <select
-                  value={editRepoVisibility}
-                  onChange={(e) => setEditRepoVisibility(e.target.value as DocVisibility)}
-                  className="docs-form-input"
-                >
-                  <option value="private">Usuários selecionados</option>
-                  <option value="team">Toda a equipe</option>
-                </select>
-              </div>
-              {isOwner && editRepoVisibility === 'private' && (
-                <div className="docs-form-group docs-form-group--full">
-                  <DocsUserAccessPicker
-                    users={allUsers}
-                    value={accessMembers}
-                    onChange={setAccessMembers}
-                    excludeUserIds={repo.owner_id ? [repo.owner_id] : []}
-                  />
-                </div>
-              )}
-              <div className="docs-modal-footer">
-                <div className="docs-modal-footer__actions">
-                  <button type="button" className="btn btn-secondary" onClick={() => setShowEditRepoModal(false)}>
-                    Cancelar
-                  </button>
-                  <button type="submit" className="btn btn-primary">
-                    Salvar
-                  </button>
-                </div>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+            <div>
+              <Label className="mb-1.5">Conteúdo</Label>
+              <Textarea rows={8} value={noteContent} onChange={(e) => setNoteContent(e.target.value)} placeholder="Texto, instruções, links..." />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={closeNoteModal}>
+                Cancelar
+              </Button>
+              <Button type="submit">Salvar</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
-      {showAccessModal && (
-        <div className="docs-modal-backdrop" onClick={() => setShowAccessModal(false)}>
-          <div className="docs-modal docs-modal--wide" onClick={(e) => e.stopPropagation()}>
-            <div className="docs-modal__head">
-              <div>
-                <h2 className="docs-modal__title">Quem tem acesso</h2>
-                <p className="docs-modal__subtitle">
-                  Selecione os usuários que podem ver ou editar arquivos neste repositório.
-                </p>
-              </div>
-              <button type="button" className="docs-modal__close" onClick={() => setShowAccessModal(false)}>
-                <X size={20} />
-              </button>
+      {/* Editar repositório */}
+      <Dialog open={showEditRepoModal} onOpenChange={setShowEditRepoModal}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Editar repositório</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSaveEditRepo} className="flex flex-col gap-4">
+            <div>
+              <Label className="mb-1.5">Nome</Label>
+              <Input required value={editRepoName} onChange={(e) => setEditRepoName(e.target.value)} />
             </div>
-            <DocsUserAccessPicker
-              users={allUsers}
-              value={accessMembers}
-              onChange={setAccessMembers}
-              excludeUserIds={[repo.owner_id, user?.id].filter((id): id is number => id != null)}
-            />
-            <div className="docs-modal-footer">
-              <div className="docs-modal-footer__actions" style={{ marginLeft: 'auto' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setShowAccessModal(false)}>
-                  Cancelar
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  disabled={savingAccess}
-                  onClick={handleSaveAccess}
-                >
-                  {savingAccess ? 'Salvando...' : 'Salvar acessos'}
-                </button>
-              </div>
+            <div>
+              <Label className="mb-1.5">Descrição</Label>
+              <Textarea rows={3} value={editRepoDesc} onChange={(e) => setEditRepoDesc(e.target.value)} />
             </div>
-          </div>
-        </div>
-      )}
+            <div>
+              <Label className="mb-1.5">Quem pode acessar</Label>
+              <Select value={editRepoVisibility} onValueChange={(v) => setEditRepoVisibility(v as DocVisibility)}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="private">Usuários selecionados</SelectItem>
+                  <SelectItem value="team">Toda a equipe</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {isOwner && editRepoVisibility === 'private' && (
+              <DocsUserAccessPicker users={allUsers} value={accessMembers} onChange={setAccessMembers} excludeUserIds={repo.owner_id ? [repo.owner_id] : []} />
+            )}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setShowEditRepoModal(false)}>
+                Cancelar
+              </Button>
+              <Button type="submit">Salvar</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Gerenciar acesso */}
+      <Dialog open={showAccessModal} onOpenChange={setShowAccessModal}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Quem tem acesso</DialogTitle>
+            <p className="text-sm text-muted-foreground">Selecione os usuários que podem ver ou editar arquivos neste repositório.</p>
+          </DialogHeader>
+          <DocsUserAccessPicker
+            users={allUsers}
+            value={accessMembers}
+            onChange={setAccessMembers}
+            excludeUserIds={[repo.owner_id, user?.id].filter((id): id is number => id != null)}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAccessModal(false)}>
+              Cancelar
+            </Button>
+            <Button disabled={savingAccess} onClick={handleSaveAccess}>
+              {savingAccess ? 'Salvando...' : 'Salvar acessos'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

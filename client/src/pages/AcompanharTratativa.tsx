@@ -1,7 +1,15 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Eye, Search, Clock, User, Ticket, TrendingUp, X, FileText, MessageSquare, Download, CheckCircle, XCircle } from 'lucide-react';
+import { toast } from 'sonner';
+import { Eye, Search, Clock, User, Ticket, TrendingUp, FileText, MessageSquare, Download, CheckCircle, XCircle } from 'lucide-react';
 import { formatDateBR, formatTicketTitle } from '../utils/dateUtils';
+import { cn } from '@/lib/utils';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader } from '@/components/ui/dialog';
 
 interface TicketDetail {
   id: number;
@@ -30,22 +38,6 @@ interface FormAttachment {
   field_label?: string;
 }
 
-// Função para formatar ID do ticket para exibição (com barras)
-function formatTicketId(ticket: TicketDetail): string {
-  if (!ticket.ticket_number || !ticket.created_at) {
-    return `#${ticket.id}`;
-  }
-  
-  const date = new Date(ticket.created_at);
-  // Usar timezone de Brasília para extrair ano, mês e dia
-  const year = parseInt(date.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo', year: 'numeric' }));
-  const month = parseInt(date.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo', month: '2-digit' }));
-  const day = parseInt(date.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo', day: '2-digit' }));
-  const number = String(ticket.ticket_number).padStart(3, '0');
-  
-  return `${year}/${String(month).padStart(2, '0')}/${String(day).padStart(2, '0')}/${number}`;
-}
-
 interface TicketMessage {
   id: number;
   ticket_id: number;
@@ -67,6 +59,88 @@ interface MessageAttachment {
   mime_type: string;
 }
 
+// Função para formatar ID do ticket para exibição (com barras)
+function formatTicketId(ticket: TicketDetail): string {
+  if (!ticket.ticket_number || !ticket.created_at) {
+    return `#${ticket.id}`;
+  }
+  const date = new Date(ticket.created_at);
+  const year = parseInt(date.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo', year: 'numeric' }));
+  const month = parseInt(date.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo', month: '2-digit' }));
+  const day = parseInt(date.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo', day: '2-digit' }));
+  const number = String(ticket.ticket_number).padStart(3, '0');
+  return `${year}/${String(month).padStart(2, '0')}/${String(day).padStart(2, '0')}/${number}`;
+}
+
+const PRIORITY_STYLE: Record<string, string> = {
+  Alta: 'bg-[var(--red-light)] text-[var(--red)]',
+  Média: 'bg-[var(--orange-light)] text-[var(--orange)]',
+  Baixa: 'bg-[var(--blue-light)] text-[var(--blue)]',
+};
+
+const STATUS_STYLE: Record<string, string> = {
+  'Em Tratamento': 'bg-[var(--orange-light)] text-[var(--orange)]',
+  Aberto: 'bg-[var(--red-light)] text-[var(--red)]',
+  Finalizado: 'bg-[var(--green-light)] text-[var(--green)]',
+  Rejeitado: 'bg-[var(--red-light)] text-[var(--red)]',
+};
+
+function StatCard({ icon: Icon, accent, label, value }: { icon: typeof Eye; accent: 'blue' | 'orange' | 'green' | 'red'; label: string; value: number }) {
+  const styles: Record<string, { chip: string; text: string }> = {
+    blue: { chip: 'bg-[var(--blue)]', text: 'text-[var(--blue)]' },
+    orange: { chip: 'bg-[var(--orange)]', text: 'text-[var(--orange)]' },
+    green: { chip: 'bg-[var(--green)]', text: 'text-[var(--green)]' },
+    red: { chip: 'bg-[var(--red)]', text: 'text-[var(--red)]' },
+  };
+  return (
+    <Card className="gap-0 px-5 py-5">
+      <div className={cn('mb-4 flex h-11 w-11 items-center justify-center rounded-lg text-white', styles[accent].chip)}>
+        <Icon size={22} strokeWidth={2} />
+      </div>
+      <h3 className="mb-1.5 text-[0.8125rem] font-medium tracking-wide text-muted-foreground uppercase">{label}</h3>
+      <div className={cn('text-4xl leading-none font-extrabold', styles[accent].text)}>{value}</div>
+    </Card>
+  );
+}
+
+function AttachmentCard({ fileName, fileSize, onDownload }: { fileName: string; fileSize: number; onDownload: () => void }) {
+  const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+  };
+  return (
+    <div className="flex items-center gap-2 rounded-md bg-muted p-2">
+      <FileText size={18} className="shrink-0 text-[var(--purple)]" />
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-[0.8125rem] font-medium text-foreground">{fileName}</div>
+        <div className="text-xs text-muted-foreground">{formatFileSize(fileSize)}</div>
+      </div>
+      <Button size="icon-sm" onClick={onDownload} className="shrink-0 bg-[var(--purple)] text-white hover:bg-[var(--purple)]/90">
+        <Download size={14} />
+      </Button>
+    </div>
+  );
+}
+
+function ChatBubble({ children, time }: { children: React.ReactNode; time: string }) {
+  return (
+    <div className="ticket-chat__row">
+      <div className="ticket-chat__row-inner">
+        <div className="ticket-chat__avatar">
+          <FileText size={16} color="#FFFFFF" />
+        </div>
+        <div>
+          <div className="ticket-chat__bubble ticket-chat__bubble--other">{children}</div>
+          <div className="ticket-chat__time" style={{ paddingLeft: '0.5rem', marginTop: '0.25rem' }}>
+            {time}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function AcompanharTratativa() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
@@ -85,7 +159,6 @@ export default function AcompanharTratativa() {
     try {
       const response = await axios.get('/api/tickets/in-treatment');
       const tickets = response.data.map((ticket: any) => {
-        // Formatar ID do ticket usando timezone de Brasília
         let ticketId = `#${ticket.id}`;
         if (ticket.ticket_number && ticket.created_at) {
           const date = new Date(ticket.created_at);
@@ -101,11 +174,16 @@ export default function AcompanharTratativa() {
           ticket: ticketId,
           title: formatTicketTitle(ticket.title),
           agent: ticket.assigned_name || 'Não atribuído',
-          status: ticket.status === 'in_progress' ? 'Em Tratamento' : 
-                  ticket.status === 'open' ? 'Aberto' : 
-                  ticket.status === 'closed' ? 'Finalizado' : 
-                  ticket.status === 'rejected' ? 'Rejeitado' :
-                  ticket.status,
+          status:
+            ticket.status === 'in_progress'
+              ? 'Em Tratamento'
+              : ticket.status === 'open'
+                ? 'Aberto'
+                : ticket.status === 'closed'
+                  ? 'Finalizado'
+                  : ticket.status === 'rejected'
+                    ? 'Rejeitado'
+                    : ticket.status,
           priority: ticket.priority === 'high' || ticket.priority === 'urgent' ? 'Alta' : ticket.priority === 'medium' ? 'Média' : 'Baixa',
           createdAt: ticket.created_at,
           lastUpdate: ticket.updated_at,
@@ -113,7 +191,7 @@ export default function AcompanharTratativa() {
           source: ticket.form_id ? 'formulário' : undefined,
           formName: ticket.form_name,
           wasApproved: ticket.needs_approval === 1 && ticket.status === 'open',
-          isClosed: ticket.status === 'closed' || ticket.status === 'rejected'
+          isClosed: ticket.status === 'closed' || ticket.status === 'rejected',
         };
       });
       setTreatments(tickets);
@@ -128,29 +206,23 @@ export default function AcompanharTratativa() {
     const now = new Date();
     const start = new Date(startAt);
     let diffMs = now.getTime() - start.getTime();
-    // Subtrair tempo em pausa (não contabilizado)
     if (totalPauseSeconds != null && totalPauseSeconds > 0) {
       diffMs -= totalPauseSeconds * 1000;
     }
     const diff = Math.max(0, diffMs);
     const hours = Math.floor(diff / (1000 * 60 * 60));
     const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-    
-    if (hours > 0) {
-      return `${hours}h ${minutes}min`;
-    }
+    if (hours > 0) return `${hours}h ${minutes}min`;
     return `${minutes}min`;
   };
 
   const handleViewDetails = async (ticketId: number) => {
     setLoadingDetails(true);
     try {
-      // Buscar detalhes do ticket
       const ticketResponse = await axios.get(`/api/tickets/${ticketId}`);
       const ticket = ticketResponse.data;
       setSelectedTicket(ticket);
 
-      // Buscar anexos do formulário se houver
       if (ticket.form_submission_id) {
         try {
           const attachmentsResponse = await axios.get(`/api/tickets/${ticketId}/attachments`);
@@ -163,7 +235,6 @@ export default function AcompanharTratativa() {
         setAttachments([]);
       }
 
-      // Buscar mensagens do ticket
       try {
         const messagesResponse = await axios.get(`/api/ticket-messages/ticket/${ticketId}`);
         setTicketMessages(messagesResponse.data);
@@ -173,15 +244,13 @@ export default function AcompanharTratativa() {
       }
     } catch (error) {
       console.error('Erro ao buscar detalhes do ticket:', error);
-      alert('Erro ao carregar detalhes do ticket');
+      toast.error('Erro ao carregar detalhes do ticket');
     } finally {
       setLoadingDetails(false);
     }
   };
 
-  const formatDate = (dateString: string) => {
-    return formatDateBR(dateString, { includeTime: true });
-  };
+  const formatDate = (dateString: string) => formatDateBR(dateString, { includeTime: true });
 
   // Função para parsear descrição markdown e extrair dados do formulário
   const parseFormDescription = (description: string) => {
@@ -192,16 +261,14 @@ export default function AcompanharTratativa() {
 
     lines.forEach((line) => {
       const trimmedLine = line.trim();
-      
+
       if (trimmedLine.includes('**Arquivos anexados:**') || trimmedLine.includes('**Arquivos anexados::**')) {
         inAttachmentsSection = true;
         return;
       }
-      
+
       if (inAttachmentsSection) {
-        if (trimmedLine.startsWith('- ')) {
-          attachmentsList.push(trimmedLine.substring(2));
-        }
+        if (trimmedLine.startsWith('- ')) attachmentsList.push(trimmedLine.substring(2));
         return;
       }
 
@@ -209,11 +276,7 @@ export default function AcompanharTratativa() {
       if (match) {
         const label = match[1].trim();
         let value = match[2].trim();
-        
-        if (value.startsWith('[Arquivo]')) {
-          value = value.replace('[Arquivo]', '').trim();
-        }
-        
+        if (value.startsWith('[Arquivo]')) value = value.replace('[Arquivo]', '').trim();
         formData.push({ label, value });
       }
     });
@@ -221,19 +284,9 @@ export default function AcompanharTratativa() {
     return { formData, attachmentsList };
   };
 
-  // Formatar tamanho do arquivo
-  const formatFileSize = (bytes: number): string => {
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
-    return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
-  };
-
-  // Download de arquivo
   const handleDownload = async (attachment: FormAttachment) => {
     try {
-      const response = await axios.get(`/api/forms/attachments/${attachment.id}`, {
-        responseType: 'blob'
-      });
+      const response = await axios.get(`/api/forms/attachments/${attachment.id}`, { responseType: 'blob' });
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
@@ -244,16 +297,13 @@ export default function AcompanharTratativa() {
       window.URL.revokeObjectURL(url);
     } catch (err: any) {
       console.error('Erro ao baixar arquivo:', err);
-      alert('Erro ao baixar arquivo');
+      toast.error('Erro ao baixar arquivo');
     }
   };
 
-  // Download de anexo de mensagem
   const handleDownloadMessageAttachment = async (attachment: MessageAttachment) => {
     try {
-      const response = await axios.get(`/api/ticket-messages/attachments/${attachment.id}`, {
-        responseType: 'blob'
-      });
+      const response = await axios.get(`/api/ticket-messages/attachments/${attachment.id}`, { responseType: 'blob' });
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
@@ -264,930 +314,255 @@ export default function AcompanharTratativa() {
       window.URL.revokeObjectURL(url);
     } catch (err: any) {
       console.error('Erro ao baixar arquivo:', err);
-      alert('Erro ao baixar arquivo');
+      toast.error('Erro ao baixar arquivo');
     }
   };
 
-  const filteredTreatments = treatments.filter(treatment => {
-    const matchesSearch = 
+  const filteredTreatments = treatments.filter((treatment) => {
+    const matchesSearch =
       treatment.ticket.toLowerCase().includes(searchTerm.toLowerCase()) ||
       treatment.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       treatment.agent.toLowerCase().includes(searchTerm.toLowerCase());
-    
     const matchesFilter = filterStatus === 'all' || treatment.status === filterStatus;
-    
     return matchesSearch && matchesFilter;
   });
 
+  const closeModal = () => {
+    setSelectedTicket(null);
+    setTicketMessages([]);
+    setAttachments([]);
+  };
+
   return (
     <div>
-      <div style={{ marginBottom: 'var(--spacing-2xl)' }}>
-        <h1 style={{ 
-          fontSize: '2.5rem', 
-          fontWeight: '800', 
-          marginBottom: 'var(--spacing-sm)',
-          background: 'linear-gradient(135deg, var(--text-primary) 0%, var(--text-secondary) 100%)',
-          WebkitBackgroundClip: 'text',
-          WebkitTextFillColor: 'transparent',
-          backgroundClip: 'text',
-          letterSpacing: '-0.03em'
-        }}>
+      <div className="mb-8">
+        <h1 className="mb-1.5 bg-gradient-to-br from-foreground to-muted-foreground bg-clip-text text-[2.5rem] font-extrabold tracking-tight text-transparent">
           Acompanhar Tratativa
         </h1>
-        <p style={{
-          color: 'var(--text-secondary)',
-          fontSize: '1rem',
-          fontWeight: '400'
-        }}>
-          Acompanhe o progresso das tratativas de tickets em andamento
-        </p>
+        <p className="text-base text-muted-foreground">Acompanhe o progresso das tratativas de tickets em andamento</p>
       </div>
 
       {/* Filtros */}
-      <div className="card" style={{ 
-        border: '1px solid var(--border-primary)',
-        marginBottom: 'var(--spacing-lg)',
-        padding: 'var(--spacing-md)'
-      }}>
-        <div style={{ 
-          display: 'flex', 
-          gap: 'var(--spacing-md)',
-          flexWrap: 'wrap',
-          alignItems: 'center'
-        }}>
-          <div style={{ 
-          position: 'relative',
-          flex: '1',
-          minWidth: '300px',
-          maxWidth: '500px'
-        }}>
-          <Search 
-            size={20} 
-            style={{ 
-              position: 'absolute', 
-              left: 'var(--spacing-md)', 
-              top: '50%', 
-              transform: 'translateY(-50%)',
-              color: 'var(--text-tertiary)',
-              pointerEvents: 'none'
-            }} 
-          />
-          <input
-            type="text"
-            className="input"
-            placeholder="Buscar por ticket, título ou agente..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            style={{ paddingLeft: '2.75rem' }}
-          />
-        </div>
-          <div style={{ minWidth: '200px' }}>
-            <select
-              className="select"
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
-            >
-              <option value="all">Todos os Status</option>
-              <option value="Em Tratamento">Em Tratamento</option>
-              <option value="Aberto">Aberto</option>
-              <option value="Finalizado">Finalizado</option>
-              <option value="Rejeitado">Rejeitado</option>
-            </select>
+      <Card className="mb-5 px-4 py-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative min-w-[300px] max-w-[500px] flex-1">
+            <Search size={18} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Buscar por ticket, título ou agente..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10"
+            />
           </div>
+          <Select value={filterStatus} onValueChange={setFilterStatus}>
+            <SelectTrigger className="w-[200px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os Status</SelectItem>
+              <SelectItem value="Em Tratamento">Em Tratamento</SelectItem>
+              <SelectItem value="Aberto">Aberto</SelectItem>
+              <SelectItem value="Finalizado">Finalizado</SelectItem>
+              <SelectItem value="Rejeitado">Rejeitado</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
+      </Card>
+
+      {/* Cards de estatísticas */}
+      <div className="mb-5 grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatCard icon={Eye} accent="blue" label="Em Acompanhamento" value={treatments.length} />
+        <StatCard icon={TrendingUp} accent="orange" label="Em Tratamento" value={treatments.filter((t) => t.status === 'Em Tratamento').length} />
+        <StatCard icon={CheckCircle} accent="green" label="Finalizados" value={treatments.filter((t) => t.status === 'Finalizado').length} />
+        <StatCard icon={XCircle} accent="red" label="Rejeitados" value={treatments.filter((t) => t.status === 'Rejeitado').length} />
       </div>
 
-      {/* Cards de Estatísticas */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-        gap: 'var(--spacing-lg)',
-        marginBottom: 'var(--spacing-lg)'
-      }}>
-        <div className="card slide-in" style={{ 
-          border: '1px solid var(--border-primary)',
-          animationDelay: '0ms'
-        }}>
-          <div style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: 'space-between',
-            marginBottom: 'var(--spacing-md)' 
-          }}>
-            <div style={{
-              padding: 'var(--spacing-md)',
-              background: 'var(--blue-light)',
-              borderRadius: 'var(--radius-md)',
-              border: '1px solid rgba(59, 130, 246, 0.2)'
-            }}>
-              <Eye size={24} color="var(--blue)" strokeWidth={2} />
-            </div>
-          </div>
-          <h3 style={{ 
-            fontSize: '0.8125rem', 
-            color: 'var(--text-secondary)',
-            fontWeight: '500',
-            marginBottom: 'var(--spacing-sm)',
-            textTransform: 'uppercase',
-            letterSpacing: '0.05em'
-          }}>
-            Em Acompanhamento
-          </h3>
-          <div style={{ 
-            fontSize: '2.5rem', 
-            fontWeight: '800',
-            color: 'var(--blue)',
-            lineHeight: '1'
-          }}>
-            {treatments.length}
-          </div>
-        </div>
-
-        <div className="card slide-in" style={{ 
-          border: '1px solid var(--border-primary)',
-          animationDelay: '100ms'
-        }}>
-          <div style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: 'space-between',
-            marginBottom: 'var(--spacing-md)' 
-          }}>
-            <div style={{
-              padding: 'var(--spacing-md)',
-              background: 'var(--orange-light)',
-              borderRadius: 'var(--radius-md)',
-              border: '1px solid rgba(245, 158, 11, 0.2)'
-            }}>
-              <TrendingUp size={24} color="var(--orange)" strokeWidth={2} />
-            </div>
-          </div>
-          <h3 style={{ 
-            fontSize: '0.8125rem', 
-            color: 'var(--text-secondary)',
-            fontWeight: '500',
-            marginBottom: 'var(--spacing-sm)',
-            textTransform: 'uppercase',
-            letterSpacing: '0.05em'
-          }}>
-            Em Tratamento
-          </h3>
-          <div style={{ 
-            fontSize: '2.5rem', 
-            fontWeight: '800',
-            color: 'var(--orange)',
-            lineHeight: '1'
-          }}>
-            {treatments.filter(t => t.status === 'Em Tratamento').length}
-          </div>
-        </div>
-
-        <div className="card slide-in" style={{ 
-          border: '1px solid var(--border-primary)',
-          animationDelay: '200ms'
-        }}>
-          <div style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: 'space-between',
-            marginBottom: 'var(--spacing-md)' 
-          }}>
-            <div style={{
-              padding: 'var(--spacing-md)',
-              background: 'rgba(34, 197, 94, 0.15)',
-              borderRadius: 'var(--radius-md)',
-              border: '1px solid rgba(34, 197, 94, 0.2)'
-            }}>
-              <CheckCircle size={24} color="var(--green)" strokeWidth={2} />
-            </div>
-          </div>
-          <h3 style={{ 
-            fontSize: '0.8125rem', 
-            color: 'var(--text-secondary)',
-            fontWeight: '500',
-            marginBottom: 'var(--spacing-sm)',
-            textTransform: 'uppercase',
-            letterSpacing: '0.05em'
-          }}>
-            Finalizados
-          </h3>
-          <div style={{ 
-            fontSize: '2.5rem', 
-            fontWeight: '800',
-            color: 'var(--green)',
-            lineHeight: '1'
-          }}>
-            {treatments.filter(t => t.status === 'Finalizado').length}
-          </div>
-        </div>
-
-        <div className="card slide-in" style={{ 
-          border: '1px solid var(--border-primary)',
-          animationDelay: '300ms'
-        }}>
-          <div style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: 'space-between',
-            marginBottom: 'var(--spacing-md)' 
-          }}>
-            <div style={{
-              padding: 'var(--spacing-md)',
-              background: 'var(--red-light)',
-              borderRadius: 'var(--radius-md)',
-              border: '1px solid rgba(239, 68, 68, 0.2)'
-            }}>
-              <XCircle size={24} color="var(--red)" strokeWidth={2} />
-            </div>
-          </div>
-          <h3 style={{ 
-            fontSize: '0.8125rem', 
-            color: 'var(--text-secondary)',
-            fontWeight: '500',
-            marginBottom: 'var(--spacing-sm)',
-            textTransform: 'uppercase',
-            letterSpacing: '0.05em'
-          }}>
-            Rejeitados
-          </h3>
-          <div style={{ 
-            fontSize: '2.5rem', 
-            fontWeight: '800',
-            color: 'var(--red)',
-            lineHeight: '1'
-          }}>
-            {treatments.filter(t => t.status === 'Rejeitado').length}
-          </div>
-        </div>
-      </div>
-
-      {/* Lista de Tratativas */}
+      {/* Lista de tratativas */}
       {loading ? (
-        <div className="card" style={{ 
-          textAlign: 'center', 
-          padding: 'var(--spacing-2xl)',
-          border: '1px solid var(--border-primary)'
-        }}>
-          <p style={{ color: 'var(--text-secondary)' }}>Carregando tratativas...</p>
-        </div>
+        <Card className="px-4 py-16 text-center">
+          <p className="text-sm text-muted-foreground">Carregando tratativas...</p>
+        </Card>
+      ) : filteredTreatments.length === 0 ? (
+        <Card className="flex flex-col items-center px-4 py-16 text-center">
+          <Eye size={48} strokeWidth={1.5} className="mb-4 text-muted-foreground opacity-50" />
+          <p className="text-base text-muted-foreground">{searchTerm || filterStatus !== 'all' ? 'Nenhuma tratativa encontrada' : 'Nenhuma tratativa em acompanhamento'}</p>
+        </Card>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
-          {filteredTreatments.length === 0 ? (
-          <div className="card" style={{ 
-            textAlign: 'center', 
-            padding: 'var(--spacing-2xl)',
-            border: '1px solid var(--border-primary)'
-          }}>
-            <Eye size={48} color="var(--text-tertiary)" style={{ marginBottom: 'var(--spacing-md)' }} />
-            <p style={{ 
-              color: 'var(--text-secondary)',
-              fontSize: '1rem',
-              marginBottom: 'var(--spacing-sm)'
-            }}>
-              {searchTerm || filterStatus !== 'all' 
-                ? 'Nenhuma tratativa encontrada' 
-                : 'Nenhuma tratativa em acompanhamento'}
-            </p>
-          </div>
-        ) : (
-          filteredTreatments.map((treatment) => (
-            <div key={treatment.id} className="card" style={{ 
-              border: '1px solid var(--border-primary)',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              transition: 'all var(--transition-base)'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.borderColor = 'var(--border-secondary)';
-              e.currentTarget.style.boxShadow = 'var(--shadow-md)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.borderColor = 'var(--border-primary)';
-              e.currentTarget.style.boxShadow = 'var(--shadow)';
-            }}
-            >
-              <div style={{ flex: 1 }}>
-                <div style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: 'var(--spacing-md)',
-                  marginBottom: 'var(--spacing-xs)'
-                }}>
-                  <Ticket size={20} color="var(--purple)" />
-                  <h3 style={{ 
-                    fontSize: '1.125rem', 
-                    fontWeight: '600',
-                    color: 'var(--text-primary)'
-                  }}>
+        <div className="flex flex-col gap-3">
+          {filteredTreatments.map((treatment) => (
+            <Card key={treatment.id} className="flex-row flex-wrap items-center justify-between gap-4 px-4 py-4 transition-all hover:-translate-y-0.5 hover:shadow-md">
+              <div className="min-w-0 flex-1">
+                <div className="mb-1 flex flex-wrap items-center gap-2.5">
+                  <Ticket size={20} className="shrink-0 text-[var(--purple)]" />
+                  <h3 className="text-[1.0625rem] font-semibold text-foreground">
                     {treatment.ticket} - {treatment.title}
                   </h3>
-                  <span style={{
-                    fontSize: '0.75rem',
-                    padding: '0.25rem 0.5rem',
-                    borderRadius: 'var(--radius-full)',
-                    background: treatment.priority === 'Alta' 
-                      ? 'var(--red-light)' 
-                      : treatment.priority === 'Média'
-                      ? 'var(--orange-light)'
-                      : 'var(--blue-light)',
-                    color: treatment.priority === 'Alta' 
-                      ? 'var(--red)' 
-                      : treatment.priority === 'Média'
-                      ? 'var(--orange)'
-                      : 'var(--blue)',
-                    fontWeight: '600',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.05em'
-                  }}>
-                    {treatment.priority}
-                  </span>
+                  <Badge className={cn('border-0 font-semibold tracking-wide uppercase', PRIORITY_STYLE[treatment.priority])}>{treatment.priority}</Badge>
                 </div>
-                <div style={{ 
-                  display: 'flex', 
-                  gap: 'var(--spacing-lg)',
-                  fontSize: '0.875rem',
-                  color: 'var(--text-secondary)',
-                  marginLeft: '2.25rem',
-                  flexWrap: 'wrap'
-                }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                    <User size={14} />
-                    {treatment.agent}
+                <div className="ml-9 flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
+                  <span className="flex items-center gap-1">
+                    <User size={14} /> {treatment.agent}
                   </span>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                    <Clock size={14} />
-                    {treatment.timeElapsed}
+                  <span className="flex items-center gap-1">
+                    <Clock size={14} /> {treatment.timeElapsed}
                   </span>
-                  <span style={{
-                    fontSize: '0.75rem',
-                    padding: '0.25rem 0.5rem',
-                    borderRadius: 'var(--radius-full)',
-                    background: treatment.status === 'Em Tratamento' 
-                      ? 'var(--orange-light)' 
-                      : treatment.status === 'Aberto'
-                      ? 'var(--red-light)'
-                      : treatment.status === 'Finalizado'
-                      ? 'rgba(34, 197, 94, 0.15)'
-                      : treatment.status === 'Rejeitado'
-                      ? 'var(--red-light)'
-                      : 'var(--purple-light)',
-                    color: treatment.status === 'Em Tratamento' 
-                      ? 'var(--orange)' 
-                      : treatment.status === 'Aberto'
-                      ? 'var(--red)'
-                      : treatment.status === 'Finalizado'
-                      ? 'var(--green)'
-                      : treatment.status === 'Rejeitado'
-                      ? 'var(--red)'
-                      : 'var(--purple)',
-                    fontWeight: '600'
-                  }}>
+                  <Badge className={cn('border-0 font-semibold', STATUS_STYLE[treatment.status] || 'bg-[var(--purple-light)] text-[var(--purple)]')}>
                     {treatment.status}
-                  </span>
-                  <span style={{ fontSize: '0.8125rem' }}>
-                    Última atualização: {formatDateBR(treatment.lastUpdate, { includeTime: true })}
-                  </span>
+                  </Badge>
+                  <span className="text-[0.8125rem]">Última atualização: {formatDateBR(treatment.lastUpdate, { includeTime: true })}</span>
                   {treatment.source === 'formulário' && (
-                    <span style={{
-                      fontSize: '0.75rem',
-                      padding: '0.25rem 0.5rem',
-                      borderRadius: 'var(--radius-full)',
-                      background: 'var(--purple-light)',
-                      color: 'var(--purple)',
-                      fontWeight: '600',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.25rem'
-                    }}>
+                    <Badge className="gap-1 border-0 bg-[var(--purple-light)] text-[var(--purple)]">
                       <Ticket size={12} />
                       {treatment.formName}
                       {treatment.wasApproved && ' (Aprovado)'}
-                    </span>
+                    </Badge>
                   )}
                 </div>
               </div>
-              <div style={{ 
-                display: 'flex', 
-                gap: 'var(--spacing-sm)'
-              }}>
-                <button 
-                  className="btn btn-primary btn-sm"
-                  onClick={() => handleViewDetails(treatment.id)}
-                >
-                  <Eye size={16} />
-                  Ver Detalhes
-                </button>
-              </div>
-            </div>
-          ))
-          )}
+              <Button size="sm" onClick={() => handleViewDetails(treatment.id)}>
+                <Eye size={15} /> Ver Detalhes
+              </Button>
+            </Card>
+          ))}
         </div>
       )}
 
-      {/* Modal de Detalhes do Ticket */}
-      {selectedTicket && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.7)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000,
-          padding: 'var(--spacing-xl)',
-          overflowY: 'auto'
-        }}
-        onClick={(e) => {
-          if (e.target === e.currentTarget) {
-            setSelectedTicket(null);
-            setTicketMessages([]);
-          }
-        }}
-        >
-          <div style={{
-            backgroundColor: 'var(--bg-secondary)',
-            borderRadius: 'var(--radius-lg)',
-            width: '100%',
-            maxWidth: '1200px',
-            maxHeight: '90vh',
-            display: 'flex',
-            flexDirection: 'column',
-            boxShadow: 'var(--shadow-xl)',
-            border: '1px solid var(--border-primary)',
-            overflow: 'hidden'
-          }}
-          onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header do Modal */}
-            <div style={{
-              padding: 'var(--spacing-lg)',
-              borderBottom: '1px solid var(--border-primary)',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              flexShrink: 0
-            }}>
-              <div style={{ flex: 1 }}>
-                <div style={{
-                  fontSize: '0.875rem',
-                  color: 'var(--text-secondary)',
-                  marginBottom: 'var(--spacing-xs)'
-                }}>
-                  <strong>ID:</strong> {formatTicketId(selectedTicket)}
+      {/* Modal de detalhes do ticket */}
+      <Dialog open={!!selectedTicket} onOpenChange={(open) => !open && closeModal()}>
+        <DialogContent className="flex h-[90vh] max-h-[90vh] w-full max-w-5xl! flex-col gap-0 overflow-hidden p-0">
+          {selectedTicket && (
+            <>
+              <DialogHeader className="shrink-0 border-b border-border px-5 py-4">
+                <div className="mb-1 text-sm text-muted-foreground">
+                  <strong className="text-foreground">ID:</strong> {formatTicketId(selectedTicket)}
                 </div>
-                <h2 style={{
-                  fontSize: '1.5rem',
-                  fontWeight: '700',
-                  color: 'var(--text-primary)',
-                  marginBottom: 'var(--spacing-xs)'
-                }}>
-                  {formatTicketTitle(selectedTicket.title)}
-                </h2>
-                <div style={{
-                  display: 'flex',
-                  gap: 'var(--spacing-md)',
-                  fontSize: '0.875rem',
-                  color: 'var(--text-secondary)',
-                  flexWrap: 'wrap'
-                }}>
-                  <span><strong>Criado por:</strong> {selectedTicket.user_name}</span>
-                  {selectedTicket.assigned_name && <span><strong>Atribuído a:</strong> {selectedTicket.assigned_name}</span>}
-                  {selectedTicket.form_name && (
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                      <FileText size={12} />
-                      <strong>Formulário:</strong> {selectedTicket.form_name}
+                <h2 className="mb-1 text-xl font-bold text-foreground">{formatTicketTitle(selectedTicket.title)}</h2>
+                <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
+                  <span>
+                    <strong className="text-foreground">Criado por:</strong> {selectedTicket.user_name}
+                  </span>
+                  {selectedTicket.assigned_name && (
+                    <span>
+                      <strong className="text-foreground">Atribuído a:</strong> {selectedTicket.assigned_name}
                     </span>
                   )}
-                  <span><strong>Status:</strong> {selectedTicket.status}</span>
-                  <span><strong>Prioridade:</strong> {selectedTicket.priority}</span>
-                </div>
-              </div>
-              <button
-                className="btn btn-secondary btn-sm"
-                onClick={() => {
-                  setSelectedTicket(null);
-                  setTicketMessages([]);
-                  setAttachments([]);
-                }}
-                style={{ padding: 'var(--spacing-xs) var(--spacing-sm)' }}
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            {/* Conteúdo do Modal - Estilo WhatsApp */}
-            <div style={{
-              flex: 1,
-              overflowY: 'auto',
-              background: 'linear-gradient(180deg, var(--bg-primary) 0%, #0F0F11 100%)',
-              backgroundImage: 'radial-gradient(circle at 20% 50%, rgba(145, 71, 255, 0.03) 0%, transparent 50%), radial-gradient(circle at 80% 80%, rgba(145, 71, 255, 0.03) 0%, transparent 50%)',
-              padding: 'var(--spacing-md)',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 'var(--spacing-sm)'
-            }}>
-              {loadingDetails ? (
-                <div style={{ textAlign: 'center', padding: 'var(--spacing-2xl)' }}>
-                  <p style={{ color: 'var(--text-secondary)' }}>Carregando detalhes...</p>
-                </div>
-              ) : (
-                <>
-                  {/* Mensagem inicial (descrição do ticket) - Estilo WhatsApp */}
-                  {selectedTicket.form_name || attachments.length > 0 ? (
-                    (() => {
-                      const { formData } = parseFormDescription(selectedTicket.description);
-                      return (
-                        <>
-                          {/* Mensagem de boas-vindas do formulário */}
-                  <div style={{
-                            display: 'flex',
-                            justifyContent: 'flex-start',
-                            marginBottom: 'var(--spacing-xs)'
-                  }}>
-                    <div style={{
-                              maxWidth: '75%',
-                              display: 'flex',
-                              gap: 'var(--spacing-xs)',
-                              alignItems: 'flex-end'
-                            }}>
-                              <div style={{
-                                width: '32px',
-                                height: '32px',
-                                borderRadius: '50%',
-                                backgroundColor: 'var(--purple)',
-                      display: 'flex',
-                      alignItems: 'center',
-                                justifyContent: 'center',
-                                flexShrink: 0,
-                                marginBottom: '2px'
-                              }}>
-                                <FileText size={16} color="#FFFFFF" />
-                    </div>
-                              <div>
-                    <div style={{
-                                  backgroundColor: '#1E1E22',
-                                  padding: '0.5rem 0.75rem',
-                                  borderRadius: '0.5rem 0.5rem 0.5rem 0.125rem',
-                      color: 'var(--text-primary)',
-                                  fontSize: '0.875rem',
-                                  lineHeight: '1.4',
-                                  boxShadow: '0 1px 2px rgba(0, 0, 0, 0.3)'
-                                }}>
-                                  <strong style={{ color: 'var(--purple)' }}>
-                                    {selectedTicket.form_name ? `Formulário: ${selectedTicket.form_name}` : 'Dados do Formulário'}
-                                  </strong>
-                                  <p style={{ marginTop: '0.25rem', color: 'var(--text-secondary)' }}>
-                                    Olá! Recebemos sua submissão. Abaixo estão os detalhes:
-                                  </p>
-                                </div>
-                                <div style={{
-                                  fontSize: '0.6875rem',
-                                  color: 'var(--text-tertiary)',
-                                  paddingLeft: '0.5rem',
-                                  marginTop: '0.25rem'
-                                }}>
-                                  {formatDate(selectedTicket.created_at)}
-                                </div>
-                              </div>
-                    </div>
-                  </div>
-
-                          {/* Dados do formulário em mensagens separadas */}
-                          {formData.map((item, index) => {
-                            const fileNameMatch = item.value.match(/([^\s(]+\.(png|jpg|jpeg|gif|pdf|doc|docx|xls|xlsx|zip|rar|txt|mp4|mp3|avi|mov|webp|svg|bmp|ico|jfif|heic|heif))/i);
-                            const fileName = fileNameMatch ? fileNameMatch[1] : null;
-                            
-                            const attachment = attachments.find(att => {
-                              if (fileName && att.file_name === fileName) return true;
-                              if (fileName && att.file_name.replace(/\.[^/.]+$/, '') === fileName.replace(/\.[^/.]+$/, '')) return true;
-                              if (att.field_label === item.label) return true;
-                              if (item.value.includes(att.file_name)) return true;
-                              return false;
-                            });
-
-                            return (
-                              <div key={index} style={{
-                                display: 'flex',
-                                justifyContent: 'flex-start',
-                                marginBottom: 'var(--spacing-xs)'
-                              }}>
-                                <div style={{
-                                  maxWidth: '75%',
-                                  display: 'flex',
-                                  gap: 'var(--spacing-xs)',
-                                  alignItems: 'flex-end'
-                                }}>
-                                  <div style={{ width: '32px', flexShrink: 0 }} />
-                                  <div style={{ flex: 1 }}>
-                                    {attachment ? (
-                                      <div style={{
-                                        backgroundColor: '#1E1E22',
-                                        padding: '0.5rem 0.75rem',
-                                        borderRadius: '0.5rem 0.5rem 0.5rem 0.125rem',
-                                        color: 'var(--text-primary)',
-                                        fontSize: '0.875rem',
-                                        boxShadow: '0 1px 2px rgba(0, 0, 0, 0.3)',
-                                        overflow: 'hidden'
-                                      }}>
-                                        <div style={{
-                                          fontSize: '0.8125rem',
-                                          fontWeight: '600',
-                                          marginBottom: '0.5rem',
-                                          color: 'var(--text-primary)'
-                                        }}>
-                                          {item.label}
-                                          <div style={{
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '0.5rem',
-                                            padding: '0.5rem',
-                    backgroundColor: 'var(--bg-tertiary)',
-                                            borderRadius: '0.375rem',
-                                            marginTop: '0.5rem'
-                  }}>
-                                            <FileText size={18} color="var(--purple)" />
-                                            <div style={{ flex: 1 }}>
-                    <div style={{
-                                                fontSize: '0.8125rem',
-                                                fontWeight: '500',
-                                                color: 'var(--text-primary)'
-                                              }}>
-                                                {attachment.file_name}
-                                              </div>
-                                              <div style={{
-                                                fontSize: '0.75rem',
-                                                color: 'var(--text-tertiary)'
-                                              }}>
-                                                {formatFileSize(attachment.file_size)}
-                                              </div>
-                                            </div>
-                                            <button
-                                              onClick={() => handleDownload(attachment)}
-                                              style={{
-                                                padding: '0.375rem',
-                                                backgroundColor: 'var(--purple)',
-                                                border: 'none',
-                                                borderRadius: '0.25rem',
-                                                color: '#FFFFFF',
-                                                cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                                                transition: 'all 0.2s'
-                                              }}
-                                            >
-                                              <Download size={14} />
-                                            </button>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    ) : (
-                                      <div style={{
-                                        backgroundColor: '#1E1E22',
-                                        padding: '0.5rem 0.75rem',
-                                        borderRadius: '0.5rem 0.5rem 0.5rem 0.125rem',
-                                        color: 'var(--text-primary)',
-                                        fontSize: '0.875rem',
-                                        boxShadow: '0 1px 2px rgba(0, 0, 0, 0.3)'
-                                      }}>
-                                        <div style={{
-                                          fontSize: '0.8125rem',
-                                          fontWeight: '600',
-                                          marginBottom: '0.25rem',
-                                          color: 'var(--purple)'
-                                        }}>
-                                          {item.label}
-                                        </div>
-                                        <div style={{
-                                          fontSize: '0.875rem',
-                                          color: 'var(--text-secondary)',
-                                          whiteSpace: 'pre-wrap',
-                                          wordBreak: 'break-word'
-                                        }}>
-                                          {item.value}
-                                        </div>
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </>
-                      );
-                    })()
-                  ) : (
-                    // Mensagem normal (não é formulário)
-                    <div style={{
-                      display: 'flex',
-                      justifyContent: 'flex-start',
-                      marginBottom: 'var(--spacing-sm)'
-                    }}>
-                      <div style={{
-                        maxWidth: '75%',
-                        display: 'flex',
-                        gap: 'var(--spacing-xs)',
-                        alignItems: 'flex-end'
-                      }}>
-                        <div style={{
-                          width: '32px',
-                          height: '32px',
-                          borderRadius: '50%',
-                          backgroundColor: 'var(--purple)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          flexShrink: 0,
-                          marginBottom: '2px'
-                        }}>
-                          <User size={16} color="#FFFFFF" />
-                    </div>
-                        <div>
-                    <div style={{
-                            backgroundColor: '#1E1E22',
-                            padding: '0.5rem 0.75rem',
-                            borderRadius: '0.5rem 0.5rem 0.5rem 0.125rem',
-                      color: 'var(--text-primary)',
-                            fontSize: '0.875rem',
-                            lineHeight: '1.4',
-                            boxShadow: '0 1px 2px rgba(0, 0, 0, 0.3)',
-                      whiteSpace: 'pre-wrap',
-                            wordBreak: 'break-word'
-                    }}>
-                      {selectedTicket.description}
-                    </div>
-                          <div style={{
-                            fontSize: '0.6875rem',
-                            color: 'var(--text-tertiary)',
-                            paddingLeft: '0.5rem',
-                            marginTop: '0.25rem'
-                          }}>
-                            {formatDate(selectedTicket.created_at)}
-                  </div>
-                        </div>
-                      </div>
-                    </div>
+                  {selectedTicket.form_name && (
+                    <span className="flex items-center gap-1">
+                      <FileText size={12} />
+                      <strong className="text-foreground">Formulário:</strong> {selectedTicket.form_name}
+                    </span>
                   )}
+                  <span>
+                    <strong className="text-foreground">Status:</strong> {selectedTicket.status}
+                  </span>
+                  <span>
+                    <strong className="text-foreground">Prioridade:</strong> {selectedTicket.priority}
+                  </span>
+                </div>
+              </DialogHeader>
 
-                  {/* Mensagens do Chat - Estilo WhatsApp */}
-                  {ticketMessages.map((message) => {
-                    const isOwnMessage = false; // Sempre à esquerda no modal de visualização
-                    
-                    return (
-                      <div key={message.id} style={{
-                        display: 'flex',
-                        justifyContent: 'flex-start',
-                              marginBottom: 'var(--spacing-xs)'
-                            }}>
-                        <div style={{
-                          maxWidth: '75%',
-                          display: 'flex',
-                          gap: 'var(--spacing-xs)',
-                          alignItems: 'flex-end',
-                          flexDirection: 'row'
-                        }}>
-                          {!isOwnMessage && (
-                            <div style={{
-                              width: '32px',
-                              height: '32px',
-                              borderRadius: '50%',
-                              backgroundColor: 'var(--purple)',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              flexShrink: 0,
-                              marginBottom: '2px'
-                            }}>
-                              <User size={16} color="#FFFFFF" />
-                            </div>
-                          )}
-                          <div style={{ flex: 1 }}>
-                            <div style={{
-                              backgroundColor: '#1E1E22',
-                              padding: '0.5rem 0.75rem',
-                              borderRadius: '0.5rem 0.5rem 0.5rem 0.125rem',
-                        color: 'var(--text-primary)',
-                              fontSize: '0.875rem',
-                              lineHeight: '1.4',
-                              boxShadow: '0 1px 2px rgba(0, 0, 0, 0.3)',
-                              whiteSpace: 'pre-wrap',
-                              wordBreak: 'break-word',
-                              position: 'relative',
-                              overflow: 'hidden'
-                            }}>
-                              {/* Preview de imagens anexadas */}
-                              {message.attachments && message.attachments.length > 0 && (
-                                <div style={{
-                                  display: 'flex',
-                                  flexDirection: 'column',
-                                  gap: '0.25rem',
-                                  marginBottom: message.message ? '0.5rem' : '0'
-                                }}>
-                                  {message.attachments.map((attachment) => (
-                                    <div key={attachment.id}>
-                                      <div style={{
-                                        padding: '0.5rem 0.75rem',
-                                        backgroundColor: '#1E1E22',
-                        display: 'flex',
-                        alignItems: 'center',
-                                        gap: '0.5rem',
-                                        borderRadius: '0.375rem'
-                      }}>
-                                        <FileText size={16} color="var(--purple)" />
-                                        <div style={{ flex: 1 }}>
-                                          <div style={{
-                                            fontSize: '0.8125rem',
-                                            fontWeight: '500',
-                                            color: 'var(--text-primary)',
-                                            marginBottom: '0.25rem'
-                          }}>
-                                            {attachment.file_name}
-                                          </div>
-                            <div style={{
-                                            fontSize: '0.75rem',
-                                            opacity: 0.8,
-                                            color: 'var(--text-tertiary)'
-                                          }}>
-                                            {formatFileSize(attachment.file_size)}
-                                          </div>
-                                        </div>
-                                        <button
-                                          onClick={() => handleDownloadMessageAttachment(attachment)}
-                                          style={{
-                                            padding: '0.375rem',
-                                            backgroundColor: 'rgba(255, 255, 255, 0.2)',
-                                            border: 'none',
-                                            borderRadius: '0.25rem',
-                                            color: '#FFFFFF',
-                                            cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                                            transition: 'all 0.2s',
-                                            flexShrink: 0
-                                          }}
-                                        >
-                                          <Download size={14} />
-                                        </button>
-                                      </div>
+              <div className="ticket-chat">
+                {loadingDetails ? (
+                  <div className="py-16 text-center">
+                    <p className="text-sm text-muted-foreground">Carregando detalhes...</p>
+                  </div>
+                ) : (
+                  <>
+                    {selectedTicket.form_name || attachments.length > 0 ? (
+                      (() => {
+                        const { formData } = parseFormDescription(selectedTicket.description);
+                        return (
+                          <>
+                            <ChatBubble time={formatDate(selectedTicket.created_at)}>
+                              <strong className="text-[var(--purple)]">
+                                {selectedTicket.form_name ? `Formulário: ${selectedTicket.form_name}` : 'Dados do Formulário'}
+                              </strong>
+                              <p className="mt-1 text-muted-foreground">Olá! Recebemos sua submissão. Abaixo estão os detalhes:</p>
+                            </ChatBubble>
+
+                            {formData.map((item, index) => {
+                              const fileNameMatch = item.value.match(/([^\s(]+\.(png|jpg|jpeg|gif|pdf|doc|docx|xls|xlsx|zip|rar|txt|mp4|mp3|avi|mov|webp|svg|bmp|ico|jfif|heic|heif))/i);
+                              const fileName = fileNameMatch ? fileNameMatch[1] : null;
+
+                              const attachment = attachments.find((att) => {
+                                if (fileName && att.file_name === fileName) return true;
+                                if (fileName && att.file_name.replace(/\.[^/.]+$/, '') === fileName.replace(/\.[^/.]+$/, '')) return true;
+                                if (att.field_label === item.label) return true;
+                                if (item.value.includes(att.file_name)) return true;
+                                return false;
+                              });
+
+                              return (
+                                <ChatBubble key={index} time={formatDate(selectedTicket.created_at)}>
+                                  {attachment ? (
+                                    <div>
+                                      <div className="mb-2 text-[0.8125rem] font-semibold">{item.label}</div>
+                                      <AttachmentCard fileName={attachment.file_name} fileSize={attachment.file_size} onDownload={() => handleDownload(attachment)} />
                                     </div>
+                                  ) : (
+                                    <div>
+                                      <div className="mb-1 text-[0.8125rem] font-semibold text-[var(--purple)]">{item.label}</div>
+                                      <div className="text-muted-foreground">{item.value}</div>
+                                    </div>
+                                  )}
+                                </ChatBubble>
+                              );
+                            })}
+                          </>
+                        );
+                      })()
+                    ) : (
+                      <ChatBubble time={formatDate(selectedTicket.created_at)}>{selectedTicket.description}</ChatBubble>
+                    )}
+
+                    {ticketMessages.map((message) => (
+                      <div key={message.id} className="ticket-chat__row">
+                        <div className="ticket-chat__row-inner">
+                          <div className="ticket-chat__avatar">
+                            <User size={16} color="#FFFFFF" />
+                          </div>
+                          <div className="flex-1">
+                            <div className="ticket-chat__bubble ticket-chat__bubble--other">
+                              {message.attachments && message.attachments.length > 0 && (
+                                <div className={cn('flex flex-col gap-1', message.message && 'mb-2')}>
+                                  {message.attachments.map((attachment) => (
+                                    <AttachmentCard
+                                      key={attachment.id}
+                                      fileName={attachment.file_name}
+                                      fileSize={attachment.file_size}
+                                      onDownload={() => handleDownloadMessageAttachment(attachment)}
+                                    />
                                   ))}
                                 </div>
                               )}
-                              
-                              {/* Texto da mensagem */}
                               {message.message && (
-                                <div style={{
-                                  padding: message.attachments && message.attachments.length > 0 ? '0.5rem 0.75rem' : '0',
-                                  paddingTop: message.attachments && message.attachments.length > 0 ? '0.5rem' : '0'
-                                }}>
+                                <div>
                                   {message.message}
-                              {message.updated_at !== message.created_at && (
-                                    <span style={{
-                                      fontSize: '0.6875rem',
-                                      opacity: 0.7,
-                                      marginLeft: '0.5rem',
-                                      fontStyle: 'italic'
-                                    }}>
-                                  (editado)
-                                </span>
-                                  )}
+                                  {message.updated_at !== message.created_at && <span className="ml-2 text-[0.6875rem] italic opacity-70">(editado)</span>}
                                 </div>
                               )}
                             </div>
-                            <div style={{
-                              fontSize: '0.6875rem',
-                              color: 'var(--text-tertiary)',
-                              paddingLeft: '0.5rem',
-                              marginTop: '0.25rem',
-                              textAlign: 'left'
-                            }}>
+                            <div className="ticket-chat__time" style={{ paddingLeft: '0.5rem', marginTop: '0.25rem' }}>
                               <strong>{message.user_name}</strong> • {formatDate(message.created_at)}
                             </div>
                           </div>
+                        </div>
                       </div>
-                    </div>
-                    );
-                  })}
+                    ))}
 
-                  {ticketMessages.length === 0 && (
-                    <div style={{
-                      textAlign: 'center',
-                      padding: 'var(--spacing-xl)',
-                      color: 'var(--text-secondary)'
-                    }}>
-                      <MessageSquare size={32} style={{ marginBottom: 'var(--spacing-sm)', opacity: 0.5 }} />
-                      <p>Nenhuma mensagem adicional ainda</p>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+                    {ticketMessages.length === 0 && (
+                      <div className="py-8 text-center text-muted-foreground">
+                        <MessageSquare size={32} className="mx-auto mb-2 opacity-50" />
+                        <p>Nenhuma mensagem adicional ainda</p>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

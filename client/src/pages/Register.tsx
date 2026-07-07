@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 export default function Register() {
   const [name, setName] = useState('');
@@ -27,67 +30,22 @@ export default function Register() {
   };
 
   return (
-    <div style={{
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      minHeight: '100vh',
-      backgroundColor: 'var(--bg-primary)',
-      padding: '1.5rem'
-    }}>
-      <div className="card" style={{ 
-        width: '100%', 
-        maxWidth: '420px',
-        border: '1px solid var(--border-primary)'
-      }}>
-        <h1 style={{ 
-          fontSize: '2rem', 
-          fontWeight: '700', 
-          marginBottom: '0.5rem', 
-          textAlign: 'center', 
-          color: 'var(--purple)',
-          letterSpacing: '-0.025em'
-        }}>
-          Criar Conta
-        </h1>
-        <p style={{ 
-          textAlign: 'center', 
-          color: 'var(--text-secondary)', 
-          marginBottom: '2rem',
-          fontSize: '0.9375rem'
-        }}>
-          Cadastre-se no TIDESK
-        </p>
+    <div className="flex min-h-screen items-center justify-center bg-background p-6">
+      <div className="w-full max-w-[420px] rounded-2xl bg-card p-8 shadow-xl ring-1 ring-foreground/5">
+        <h1 className="text-center text-3xl font-bold tracking-tight text-primary">Criar Conta</h1>
+        <p className="mt-1.5 mb-6 text-center text-sm text-muted-foreground">Cadastre-se no TIDESK</p>
 
         {error && (
-          <div style={{
-            padding: '0.875rem',
-            backgroundColor: 'rgba(255, 0, 0, 0.15)',
-            color: 'var(--red)',
-            borderRadius: '0.375rem',
-            marginBottom: '1.5rem',
-            fontSize: '0.875rem',
-            border: '1px solid rgba(255, 0, 0, 0.3)',
-            fontWeight: '500'
-          }}>
+          <div className="mb-5 rounded-lg bg-destructive/10 px-3.5 py-2.5 text-sm font-medium text-destructive">
             {error}
           </div>
         )}
 
-        <form onSubmit={handleSubmit}>
-          <div style={{ marginBottom: '1.25rem' }}>
-            <label style={{ 
-              display: 'block', 
-              marginBottom: '0.5rem', 
-              fontSize: '0.875rem', 
-              fontWeight: '500',
-              color: 'var(--text-secondary)'
-            }}>
-              Nome
-            </label>
-            <input
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <div>
+            <Label className="mb-1.5">Nome</Label>
+            <Input
               type="text"
-              className="input"
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
@@ -95,19 +53,10 @@ export default function Register() {
             />
           </div>
 
-          <div style={{ marginBottom: '1.25rem' }}>
-            <label style={{ 
-              display: 'block', 
-              marginBottom: '0.5rem', 
-              fontSize: '0.875rem', 
-              fontWeight: '500',
-              color: 'var(--text-secondary)'
-            }}>
-              Email
-            </label>
-            <input
+          <div>
+            <Label className="mb-1.5">Email</Label>
+            <Input
               type="email"
-              className="input"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
@@ -115,19 +64,10 @@ export default function Register() {
             />
           </div>
 
-          <div style={{ marginBottom: '1.5rem' }}>
-            <label style={{ 
-              display: 'block', 
-              marginBottom: '0.5rem', 
-              fontSize: '0.875rem', 
-              fontWeight: '500',
-              color: 'var(--text-secondary)'
-            }}>
-              Senha
-            </label>
-            <input
+          <div>
+            <Label className="mb-1.5">Senha</Label>
+            <Input
               type="password"
-              className="input"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
@@ -136,28 +76,14 @@ export default function Register() {
             />
           </div>
 
-          <button
-            type="submit"
-            className="btn btn-primary"
-            style={{ width: '100%' }}
-            disabled={loading}
-          >
+          <Button type="submit" disabled={loading} className="mt-1 h-10 w-full">
             {loading ? 'Criando conta...' : 'Criar Conta'}
-          </button>
+          </Button>
         </form>
 
-        <p style={{ 
-          textAlign: 'center', 
-          marginTop: '1.5rem', 
-          fontSize: '0.875rem', 
-          color: 'var(--text-secondary)' 
-        }}>
+        <p className="mt-6 text-center text-sm text-muted-foreground">
           Já tem uma conta?{' '}
-          <Link to="/login" style={{ 
-            color: 'var(--purple)', 
-            textDecoration: 'none',
-            fontWeight: '600'
-          }}>
+          <Link to="/login" className="font-semibold text-primary hover:underline">
             Entrar
           </Link>
         </p>

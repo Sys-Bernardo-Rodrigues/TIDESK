@@ -1,8 +1,15 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { toast } from 'sonner';
 import { FileEdit, Plus, Search, Edit, Trash2, Eye, Copy, Link as LinkIcon, Users, User } from 'lucide-react';
 import { formatDateBR } from '../utils/dateUtils';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 
 interface FormField {
   id: string;
@@ -32,8 +39,26 @@ interface Form {
   created: string;
 }
 
+function FormRowSkeleton() {
+  return (
+    <Card className="flex-row items-center justify-between gap-4 px-4 py-4">
+      <div className="min-w-0 flex-1">
+        <Skeleton className="mb-2 h-5 w-1/3" />
+        <Skeleton className="mb-3 h-3.5 w-2/3" />
+        <div className="flex gap-4">
+          <Skeleton className="h-3.5 w-16" />
+          <Skeleton className="h-3.5 w-16" />
+          <Skeleton className="h-3.5 w-24" />
+        </div>
+      </div>
+      <Skeleton className="h-8 w-[300px] shrink-0" />
+    </Card>
+  );
+}
+
 export default function Forms() {
   const navigate = useNavigate();
+  const confirm = useConfirm();
   const [searchTerm, setSearchTerm] = useState('');
   const [forms, setForms] = useState<Form[]>([]);
   const [loading, setLoading] = useState(true);
@@ -56,7 +81,7 @@ export default function Forms() {
         linkedUserName: form.linked_user_name,
         linkedGroupName: form.linked_group_name,
         submissions: form.submissions_count || 0,
-        created: form.created_at
+        created: form.created_at,
       }));
       setForms(formsData);
     } catch (error) {
@@ -67,30 +92,35 @@ export default function Forms() {
   };
 
   const handleDelete = async (formId: number) => {
-    if (!window.confirm('Tem certeza que deseja excluir este formulário?')) {
-      return;
-    }
+    const ok = await confirm({
+      title: 'Excluir formulário',
+      description: 'Tem certeza que deseja excluir este formulário?',
+      confirmLabel: 'Excluir',
+      variant: 'destructive',
+    });
+    if (!ok) return;
 
     try {
       await axios.delete(`/api/forms/${formId}`);
-      setForms(forms.filter(f => f.id !== formId));
-      alert('Formulário excluído com sucesso!');
+      setForms(forms.filter((f) => f.id !== formId));
+      toast.success('Formulário excluído com sucesso!');
     } catch (error: any) {
       console.error('Erro ao excluir formulário:', error);
-      alert(error.response?.data?.error || 'Erro ao excluir formulário');
+      toast.error(error.response?.data?.error || 'Erro ao excluir formulário');
     }
   };
 
-  const filteredForms = forms.filter(form =>
-    form.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    form.description.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredForms = forms.filter(
+    (form) =>
+      form.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      form.description.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const copyUrl = async (url: string) => {
     const fullUrl = `${window.location.origin}${url}`;
     try {
       await navigator.clipboard.writeText(fullUrl);
-      alert('URL copiada para a área de transferência!');
+      toast.success('URL copiada para a área de transferência!');
     } catch {
       const textArea = document.createElement('textarea');
       textArea.value = fullUrl;
@@ -104,263 +134,120 @@ export default function Forms() {
       try {
         const ok = document.execCommand('copy');
         document.body.removeChild(textArea);
-        if (ok) {
-          alert('URL copiada para a área de transferência!');
-        } else {
-          alert('Não foi possível copiar. Copie manualmente: ' + fullUrl);
-        }
+        if (ok) toast.success('URL copiada para a área de transferência!');
+        else toast.error('Não foi possível copiar. Copie manualmente: ' + fullUrl);
       } catch {
         document.body.removeChild(textArea);
-        alert('Não foi possível copiar. Copie manualmente: ' + fullUrl);
+        toast.error('Não foi possível copiar. Copie manualmente: ' + fullUrl);
       }
     }
   };
 
-  const startCreatingForm = () => {
-    navigate('/create/forms/builder');
-  };
-
-  const handleEdit = (formId: number) => {
-    navigate(`/create/forms/builder/${formId}`);
-  };
+  const startCreatingForm = () => navigate('/create/forms/builder');
+  const handleEdit = (formId: number) => navigate(`/create/forms/builder/${formId}`);
 
   return (
     <div>
-      <div style={{ marginBottom: 'var(--spacing-2xl)' }}>
-        <h1 style={{ 
-          fontSize: '2.5rem', 
-          fontWeight: '800', 
-          marginBottom: 'var(--spacing-sm)',
-          background: 'linear-gradient(135deg, var(--text-primary) 0%, var(--text-secondary) 100%)',
-          WebkitBackgroundClip: 'text',
-          WebkitTextFillColor: 'transparent',
-          backgroundClip: 'text',
-          letterSpacing: '-0.03em'
-        }}>
+      <div className="mb-8">
+        <h1 className="mb-1.5 bg-gradient-to-br from-foreground to-muted-foreground bg-clip-text text-[2.5rem] font-extrabold tracking-tight text-transparent">
           Formulários
         </h1>
-        <p style={{
-          color: 'var(--text-secondary)',
-          fontSize: '1rem',
-          fontWeight: '400'
-        }}>
+        <p className="text-base text-muted-foreground">
           Crie formulários públicos e gerencie submissões que geram tickets automaticamente
         </p>
       </div>
 
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center', 
-        marginBottom: 'var(--spacing-lg)',
-        gap: 'var(--spacing-md)',
-        flexWrap: 'wrap'
-      }}>
-        <div style={{ 
-          position: 'relative',
-          flex: '1',
-          minWidth: '300px',
-          maxWidth: '500px'
-        }}>
-          <Search 
-            size={20} 
-            style={{ 
-              position: 'absolute', 
-              left: 'var(--spacing-md)', 
-              top: '50%', 
-              transform: 'translateY(-50%)',
-              color: 'var(--text-tertiary)',
-              pointerEvents: 'none'
-            }} 
-          />
-          <input
-            type="text"
-            className="input"
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <div className="relative min-w-[300px] max-w-[500px] flex-1">
+          <Search size={18} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted-foreground" />
+          <Input
             placeholder="Buscar formulários..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            style={{ paddingLeft: '2.75rem' }}
+            className="pl-10"
           />
         </div>
-        <button 
-          className="btn btn-primary"
-          onClick={startCreatingForm}
-        >
-          <Plus size={20} />
-          Novo Formulário
-        </button>
+        <Button onClick={startCreatingForm}>
+          <Plus size={18} /> Novo Formulário
+        </Button>
       </div>
 
       {loading ? (
-        <div className="card" style={{ 
-          textAlign: 'center', 
-          padding: 'var(--spacing-2xl)',
-          border: '1px solid var(--border-primary)'
-        }}>
-          <p style={{ color: 'var(--text-secondary)' }}>Carregando formulários...</p>
+        <div className="flex flex-col gap-3">
+          {[1, 2, 3].map((i) => (
+            <FormRowSkeleton key={i} />
+          ))}
         </div>
+      ) : filteredForms.length === 0 ? (
+        <Card className="flex flex-col items-center px-4 py-16 text-center">
+          <FileEdit size={48} strokeWidth={1.5} className="mb-4 text-muted-foreground opacity-50" />
+          <p className="mb-4 text-base text-muted-foreground">
+            {searchTerm ? 'Nenhum formulário encontrado' : 'Nenhum formulário criado ainda'}
+          </p>
+          {!searchTerm && (
+            <Button onClick={startCreatingForm}>
+              <Plus size={18} /> Criar Primeiro Formulário
+            </Button>
+          )}
+        </Card>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
-          {filteredForms.length === 0 ? (
-          <div className="card" style={{ 
-            textAlign: 'center', 
-            padding: 'var(--spacing-2xl)',
-            border: '1px solid var(--border-primary)'
-          }}>
-            <FileEdit size={48} color="var(--text-tertiary)" style={{ marginBottom: 'var(--spacing-md)' }} />
-            <p style={{ 
-              color: 'var(--text-secondary)',
-              fontSize: '1rem',
-              marginBottom: 'var(--spacing-sm)'
-            }}>
-              {searchTerm ? 'Nenhum formulário encontrado' : 'Nenhum formulário criado ainda'}
-            </p>
-            {!searchTerm && (
-              <button 
-                className="btn btn-primary" 
-                style={{ marginTop: 'var(--spacing-md)' }}
-                onClick={startCreatingForm}
-              >
-                <Plus size={20} />
-                Criar Primeiro Formulário
-              </button>
-            )}
-          </div>
-        ) : (
-          filteredForms.map((form) => (
-            <div key={form.id} className="card" style={{ 
-              border: '1px solid var(--border-primary)',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              transition: 'all var(--transition-base)'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.borderColor = 'var(--border-secondary)';
-              e.currentTarget.style.boxShadow = 'var(--shadow-md)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.borderColor = 'var(--border-primary)';
-              e.currentTarget.style.boxShadow = 'var(--shadow)';
-            }}
+        <div className="flex flex-col gap-3">
+          {filteredForms.map((form) => (
+            <Card
+              key={form.id}
+              className="flex-row flex-wrap items-center justify-between gap-4 px-4 py-4 transition-shadow hover:shadow-md"
             >
-              <div style={{ flex: 1 }}>
-                <div style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: 'var(--spacing-md)',
-                  marginBottom: 'var(--spacing-xs)'
-                }}>
-                  <FileEdit size={20} color="var(--blue)" />
-                  <h3 style={{ 
-                    fontSize: '1.125rem', 
-                    fontWeight: '600',
-                    color: 'var(--text-primary)'
-                  }}>
-                    {form.name}
-                  </h3>
+              <div className="min-w-0 flex-1">
+                <div className="mb-1 flex flex-wrap items-center gap-2.5">
+                  <FileEdit size={20} className="shrink-0 text-[var(--blue)]" />
+                  <h3 className="text-[1.0625rem] font-semibold text-foreground">{form.name}</h3>
                   {form.linkedUserId && (
-                    <span style={{
-                      fontSize: '0.75rem',
-                      padding: '0.25rem 0.5rem',
-                      borderRadius: 'var(--radius-full)',
-                      background: 'var(--purple-light)',
-                      color: 'var(--purple)',
-                      fontWeight: '600',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.25rem'
-                    }}>
-                      <User size={12} />
-                      {form.linkedUserName}
-                    </span>
+                    <Badge className="border-0 bg-[var(--purple-light)] text-[var(--purple)]">
+                      <User size={12} /> {form.linkedUserName}
+                    </Badge>
                   )}
                   {form.linkedGroupId && (
-                    <span style={{
-                      fontSize: '0.75rem',
-                      padding: '0.25rem 0.5rem',
-                      borderRadius: 'var(--radius-full)',
-                      background: 'var(--blue-light)',
-                      color: 'var(--blue)',
-                      fontWeight: '600',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.25rem'
-                    }}>
-                      <Users size={12} />
-                      {form.linkedGroupName}
-                    </span>
+                    <Badge className="border-0 bg-[var(--blue-light)] text-[var(--blue)]">
+                      <Users size={12} /> {form.linkedGroupName}
+                    </Badge>
                   )}
                 </div>
-                <p style={{ 
-                  fontSize: '0.875rem',
-                  color: 'var(--text-secondary)',
-                  marginLeft: '2.25rem',
-                  marginBottom: 'var(--spacing-xs)'
-                }}>
-                  {form.description}
-                </p>
-                <div style={{ 
-                  display: 'flex', 
-                  gap: 'var(--spacing-lg)',
-                  fontSize: '0.875rem',
-                  color: 'var(--text-secondary)',
-                  marginLeft: '2.25rem',
-                  flexWrap: 'wrap'
-                }}>
-                  <span><strong>{form.fields.length}</strong> campos</span>
-                  <span><strong>{form.submissions}</strong> submissões</span>
-                  <span><strong>Criado:</strong> {formatDateBR(form.created)}</span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-xs)' }}>
-                    <LinkIcon size={14} />
-                    <span style={{ 
-                      color: 'var(--purple)',
-                      textDecoration: 'underline',
-                      cursor: 'pointer'
-                    }}
+                <p className="mb-1.5 ml-9 text-sm text-muted-foreground">{form.description}</p>
+                <div className="ml-9 flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
+                  <span>
+                    <strong className="text-foreground">{form.fields.length}</strong> campos
+                  </span>
+                  <span>
+                    <strong className="text-foreground">{form.submissions}</strong> submissões
+                  </span>
+                  <span>
+                    <strong className="text-foreground">Criado:</strong> {formatDateBR(form.created)}
+                  </span>
+                  <button
+                    type="button"
                     onClick={() => copyUrl(form.publicUrl)}
-                    >
-                      {form.publicUrl}
-                    </span>
-                  </div>
+                    className="flex items-center gap-1 text-[var(--purple)] underline-offset-2 hover:underline"
+                  >
+                    <LinkIcon size={14} /> {form.publicUrl}
+                  </button>
                 </div>
               </div>
-              <div style={{ 
-                display: 'flex', 
-                gap: 'var(--spacing-sm)'
-              }}>
-                <button 
-                  className="btn btn-info btn-sm"
-                  onClick={() => window.open(form.publicUrl, '_blank')}
-                >
-                  <Eye size={16} />
-                  Visualizar
-                </button>
-                <button 
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => copyUrl(form.publicUrl)}
-                >
-                  <Copy size={16} />
-                  Copiar URL
-                </button>
-                <button 
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => handleEdit(form.id)}
-                >
-                  <Edit size={16} />
-                  Editar
-                </button>
-                <button 
-                  className="btn btn-danger btn-sm"
-                  onClick={() => handleDelete(form.id)}
-                >
-                  <Trash2 size={16} />
-                  Excluir
-                </button>
+              <div className="flex flex-wrap gap-1.5">
+                <Button variant="secondary" size="sm" onClick={() => window.open(form.publicUrl, '_blank')}>
+                  <Eye size={15} /> Visualizar
+                </Button>
+                <Button variant="secondary" size="sm" onClick={() => copyUrl(form.publicUrl)}>
+                  <Copy size={15} /> Copiar URL
+                </Button>
+                <Button variant="secondary" size="sm" onClick={() => handleEdit(form.id)}>
+                  <Edit size={15} /> Editar
+                </Button>
+                <Button variant="destructive" size="sm" onClick={() => handleDelete(form.id)}>
+                  <Trash2 size={15} /> Excluir
+                </Button>
               </div>
-            </div>
-          ))
-          )}
+            </Card>
+          ))}
         </div>
       )}
     </div>

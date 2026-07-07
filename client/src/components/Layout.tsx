@@ -25,15 +25,27 @@ import {
   History,
   Webhook,
   FolderKanban,
-  Palette,
+  Sun,
+  Moon,
+  Monitor,
   LayoutDashboard,
   Database,
   RefreshCw,
-  Pin,
+  Menu,
 } from 'lucide-react';
-import { useState, useEffect, useRef } from 'react';
+import { useState } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { APP_VERSION_LABEL } from '../constants/appVersion';
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 
 type NavChild = { path: string; label: string; icon: LucideIcon; permission?: string };
 
@@ -126,8 +138,7 @@ export default function Layout() {
     const saved = localStorage.getItem('sidebarCollapsed');
     return saved !== 'false';
   });
-  const [themeMenuOpen, setThemeMenuOpen] = useState(false);
-  const themeMenuRef = useRef<HTMLDivElement>(null);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     create: location.pathname.startsWith('/create'),
     agenda: location.pathname.startsWith('/agenda'),
@@ -148,33 +159,9 @@ export default function Layout() {
     });
   };
 
-  const toggleGroup = (key: string) => {
-    setOpenGroups((prev) => ({ ...prev, [key]: !prev[key] }));
+  const toggleGroup = (key: string, forceOpen = false) => {
+    setOpenGroups((prev) => ({ ...prev, [key]: forceOpen ? true : !prev[key] }));
   };
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (themeMenuRef.current && !themeMenuRef.current.contains(e.target as Node)) {
-        setThemeMenuOpen(false);
-      }
-    };
-    if (themeMenuOpen) document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [themeMenuOpen]);
-
-  useEffect(() => {
-    if (sidebarCollapsed) {
-      setThemeMenuOpen(false);
-      setOpenGroups({ create: false, agenda: false, acompanhar: false, config: false });
-    } else {
-      setOpenGroups({
-        create: location.pathname.startsWith('/create'),
-        agenda: location.pathname.startsWith('/agenda'),
-        acompanhar: location.pathname.startsWith('/acompanhar'),
-        config: location.pathname.startsWith('/config'),
-      });
-    }
-  }, [sidebarCollapsed, location.pathname]);
 
   const hasAnyAccess = (permission?: string, children?: NavChild[]) => {
     if (permission && hasPageAccess(permission)) return true;
@@ -186,23 +173,37 @@ export default function Layout() {
     return name.split(' ').map((n) => n[0]).slice(0, 2).join('').toUpperCase();
   };
 
-  const renderNavLink = (path: string, label: string, Icon: LucideIcon, active: boolean) => (
-    <Link
-      key={path}
-      to={path}
-      className={`sidebar-rail-item ${active ? 'sidebar-rail-item--active' : ''}`}
-      title={sidebarCollapsed ? label : undefined}
-      data-tooltip={sidebarCollapsed ? label : undefined}
-    >
-      <span className="sidebar-rail-item__icon-wrap">
-        <Icon size={18} strokeWidth={active ? 2.5 : 2} />
-      </span>
-      {!sidebarCollapsed && <span className="sidebar-rail-item__label">{label}</span>}
-      {active && <span className="sidebar-rail-item__glow" aria-hidden />}
-    </Link>
-  );
+  const themeIcon = theme === 'light' ? Sun : theme === 'dark' ? Moon : Monitor;
+  const ThemeIcon = themeIcon;
 
-  const renderFlyoutGroup = (item: NavItem) => {
+  const renderNavLink = (path: string, label: string, Icon: LucideIcon, active: boolean, collapsed: boolean, onNavigate?: () => void) => {
+    const link = (
+      <Link
+        key={path}
+        to={path}
+        onClick={onNavigate}
+        className={cn(
+          'group flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground',
+          active && 'bg-primary/10 text-primary hover:bg-primary/10 hover:text-primary',
+          collapsed && 'justify-center px-0'
+        )}
+      >
+        <Icon size={18} strokeWidth={active ? 2.5 : 2} className="shrink-0" />
+        {!collapsed && <span className="truncate">{label}</span>}
+      </Link>
+    );
+
+    if (!collapsed) return link;
+
+    return (
+      <Tooltip key={path} delayDuration={200}>
+        <TooltipTrigger asChild>{link}</TooltipTrigger>
+        <TooltipContent side="right">{label}</TooltipContent>
+      </Tooltip>
+    );
+  };
+
+  const renderGroup = (item: NavItem, collapsed: boolean, onNavigate?: () => void) => {
     const groupKey = item.path.replace('/', '');
     const children = (item.children || []).filter((c) => c.permission && hasPageAccess(c.permission));
     if (!children.length) return null;
@@ -210,68 +211,58 @@ export default function Layout() {
     const isActive = children.some((c) => pathActive(location.pathname, c.path));
     const isOpen = openGroups[groupKey];
 
-    if (sidebarCollapsed) {
-      return (
-        <div key={item.path} className="sidebar-flyout-wrap">
-          <button
-            type="button"
-            className={`sidebar-rail-item sidebar-rail-item--group ${isActive ? 'sidebar-rail-item--active' : ''}`}
-            title={item.label}
-          >
-            <span className="sidebar-rail-item__icon-wrap">
-              <item.icon size={18} strokeWidth={isActive ? 2.5 : 2} />
-            </span>
-            {isActive && <span className="sidebar-rail-item__glow" aria-hidden />}
-          </button>
-          <div className="sidebar-flyout">
-            <div className="sidebar-flyout__head">{item.label}</div>
-            <div className="sidebar-flyout__links">
-              {children.map((child) => {
-                const childActive = pathActive(location.pathname, child.path);
-                return (
-                  <Link
-                    key={child.path}
-                    to={child.path}
-                    className={`sidebar-flyout__link ${childActive ? 'sidebar-flyout__link--active' : ''}`}
-                  >
-                    <child.icon size={15} strokeWidth={childActive ? 2.5 : 2} />
-                    {child.label}
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      );
-    }
+    const trigger = (
+      <button
+        type="button"
+        onClick={() => {
+          if (collapsed) {
+            setSidebarCollapsed(false);
+            localStorage.setItem('sidebarCollapsed', 'false');
+          }
+          toggleGroup(groupKey, collapsed);
+        }}
+        className={cn(
+          'flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground',
+          isActive && 'text-primary',
+          collapsed && 'justify-center px-0'
+        )}
+      >
+        <item.icon size={18} strokeWidth={isActive ? 2.5 : 2} className="shrink-0" />
+        {!collapsed && (
+          <>
+            <span className="flex-1 truncate text-left">{item.label}</span>
+            {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          </>
+        )}
+      </button>
+    );
 
     return (
-      <div key={item.path} className="sidebar-group">
-        <button
-          type="button"
-          className={`sidebar-rail-item sidebar-rail-item--group ${isActive ? 'sidebar-rail-item--active' : ''}`}
-          onClick={() => toggleGroup(groupKey)}
-        >
-          <span className="sidebar-rail-item__icon-wrap">
-            <item.icon size={18} strokeWidth={isActive ? 2.5 : 2} />
-          </span>
-          <span className="sidebar-rail-item__label">{item.label}</span>
-          <span className="sidebar-rail-item__chevron">
-            {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-          </span>
-        </button>
-        {isOpen && (
-          <div className="sidebar-submenu">
+      <div key={item.path}>
+        {collapsed ? (
+          <Tooltip delayDuration={200}>
+            <TooltipTrigger asChild>{trigger}</TooltipTrigger>
+            <TooltipContent side="right">{item.label}</TooltipContent>
+          </Tooltip>
+        ) : (
+          trigger
+        )}
+        {!collapsed && isOpen && (
+          <div className="mt-0.5 ml-4 flex flex-col gap-0.5 border-l border-border pl-3">
             {children.map((child) => {
               const childActive = pathActive(location.pathname, child.path);
               return (
                 <Link
                   key={child.path}
                   to={child.path}
-                  className={`sidebar-submenu__link ${childActive ? 'sidebar-submenu__link--active' : ''}`}
+                  onClick={onNavigate}
+                  className={cn(
+                    'flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground',
+                    childActive && 'bg-primary/10 text-primary hover:bg-primary/10 hover:text-primary'
+                  )}
                 >
                   <child.icon size={14} strokeWidth={childActive ? 2.5 : 2} />
-                  {child.label}
+                  <span className="truncate">{child.label}</span>
                 </Link>
               );
             })}
@@ -281,127 +272,136 @@ export default function Layout() {
     );
   };
 
+  const renderNavContent = (collapsed: boolean, onNavigate?: () => void) => (
+    <nav className="flex flex-1 flex-col gap-4 overflow-y-auto px-3 py-3">
+      {MENU_STRUCTURE.map((section) => {
+        const visibleItems = section.items.filter((item) => hasAnyAccess(item.permission, item.children));
+        if (!visibleItems.length) return null;
+
+        return (
+          <div key={section.label} className="flex flex-col gap-0.5">
+            {!collapsed && (
+              <div className="px-2.5 pb-1 text-[11px] font-semibold tracking-wide text-muted-foreground/70 uppercase">
+                {section.label}
+              </div>
+            )}
+            {visibleItems.map((item) => {
+              if (item.children) return renderGroup(item, collapsed, onNavigate);
+              if (!item.permission || !hasPageAccess(item.permission)) return null;
+              const active = pathActive(location.pathname, item.path);
+              return renderNavLink(item.path, item.label, item.icon, active, collapsed, onNavigate);
+            })}
+          </div>
+        );
+      })}
+    </nav>
+  );
+
+  const brand = (collapsed: boolean) => (
+    <div className="flex items-center gap-2.5 overflow-hidden">
+      <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary">
+        <LayoutDashboard size={16} className="text-primary-foreground" strokeWidth={2.5} />
+      </div>
+      {!collapsed && (
+        <div className="flex min-w-0 flex-col leading-tight">
+          <span className="truncate text-sm font-semibold text-foreground">TIDESK</span>
+          <span className="truncate text-[11px] text-muted-foreground">{APP_VERSION_LABEL}</span>
+        </div>
+      )}
+    </div>
+  );
+
+  const footer = (collapsed: boolean, onNavigate?: () => void) => (
+    <div className="flex flex-col gap-2 border-t border-border p-3">
+      <div className={cn('flex items-center gap-2.5', collapsed && 'justify-center')}>
+        <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-semibold text-primary">
+          {getInitials(user?.name)}
+        </div>
+        {!collapsed && (
+          <div className="flex min-w-0 flex-col leading-tight">
+            <span className="truncate text-sm font-medium text-foreground">{user?.name}</span>
+            <span className="truncate text-xs text-muted-foreground capitalize">{user?.role}</span>
+          </div>
+        )}
+      </div>
+      <div className={cn('flex gap-1.5', collapsed && 'flex-col items-center')}>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size={collapsed ? 'icon-sm' : 'sm'} className={cn(!collapsed && 'flex-1 justify-start gap-2')}>
+              <ThemeIcon size={15} />
+              {!collapsed && <span>Tema</span>}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" side="top">
+            <DropdownMenuItem onClick={() => setTheme('light')}>
+              <Sun size={14} /> Claro
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setTheme('dark')}>
+              <Moon size={14} /> Escuro
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setTheme('system')}>
+              <Monitor size={14} /> Sistema
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <Button
+          variant="ghost"
+          size={collapsed ? 'icon-sm' : 'sm'}
+          className={cn(!collapsed && 'flex-1 justify-start gap-2', 'text-destructive hover:text-destructive')}
+          onClick={() => {
+            onNavigate?.();
+            handleLogout();
+          }}
+        >
+          <LogOut size={15} />
+          {!collapsed && <span>Sair</span>}
+        </Button>
+      </div>
+    </div>
+  );
+
   return (
-    <div className="app-shell">
-      <aside className={`sidebar-rail ${sidebarCollapsed ? 'sidebar-rail--collapsed' : 'sidebar-rail--expanded'}`}>
-        <div className="sidebar-rail__accent" aria-hidden />
-
-        <header className="sidebar-rail__header">
-          <div className="sidebar-rail__brand">
-            <div className="sidebar-rail__logo">
-              <LayoutDashboard size={sidebarCollapsed ? 18 : 16} color="#fff" strokeWidth={2.5} />
-            </div>
-            {!sidebarCollapsed && (
-              <div className="sidebar-rail__brand-text">
-                <span className="sidebar-rail__brand-name">TIDESK</span>
-                <span className="sidebar-rail__brand-ver">{APP_VERSION_LABEL}</span>
-              </div>
-            )}
-          </div>
-          <button
-            type="button"
-            className="sidebar-rail__pin"
-            onClick={toggleSidebar}
-            title={sidebarCollapsed ? 'Expandir menu' : 'Recolher menu'}
-          >
+    <div className="flex h-screen overflow-hidden bg-background text-foreground">
+      {/* Desktop sidebar */}
+      <aside
+        className={cn(
+          'hidden shrink-0 flex-col border-r border-border bg-card transition-[width] duration-200 md:flex',
+          sidebarCollapsed ? 'w-16' : 'w-64'
+        )}
+      >
+        <div className="flex items-center justify-between gap-2 border-b border-border p-3">
+          {brand(sidebarCollapsed)}
+          <Button variant="ghost" size="icon-sm" onClick={toggleSidebar} className="shrink-0">
             {sidebarCollapsed ? <PanelLeft size={16} /> : <PanelLeftClose size={16} />}
-          </button>
-        </header>
-
-        <nav className="sidebar-rail__nav">
-          {MENU_STRUCTURE.map((section, sIdx) => {
-            const visibleItems = section.items.filter((item) => hasAnyAccess(item.permission, item.children));
-            if (!visibleItems.length) return null;
-
-            return (
-              <div key={section.label} className="sidebar-rail__section">
-                {!sidebarCollapsed && (
-                  <div className="sidebar-rail__section-label">{section.label}</div>
-                )}
-                {sidebarCollapsed && sIdx > 0 && <div className="sidebar-rail__divider" />}
-                <div className="sidebar-rail__section-items">
-                  {visibleItems.map((item) => {
-                    if (item.children) return renderFlyoutGroup(item);
-                    if (!item.permission || !hasPageAccess(item.permission)) return null;
-                    const active = pathActive(location.pathname, item.path);
-                    return renderNavLink(item.path, item.label, item.icon, active);
-                  })}
-                </div>
-              </div>
-            );
-          })}
-        </nav>
-
-        <footer className="sidebar-rail__footer">
-          <div className={`sidebar-rail__user ${sidebarCollapsed ? 'sidebar-rail__user--compact' : ''}`}>
-            <div className="sidebar-rail__avatar">{getInitials(user?.name)}</div>
-            {!sidebarCollapsed && (
-              <div className="sidebar-rail__user-info">
-                <span className="sidebar-rail__user-name">{user?.name}</span>
-                <span className="sidebar-rail__user-role">{user?.role}</span>
-              </div>
-            )}
-          </div>
-
-          <div className={`sidebar-rail__actions ${sidebarCollapsed ? 'sidebar-rail__actions--compact' : ''}`}>
-            <div className="sidebar-rail__theme-wrap" ref={themeMenuRef}>
-              <button
-                type="button"
-                className="sidebar-rail__action"
-                onClick={() => setThemeMenuOpen(!themeMenuOpen)}
-                title="Tema"
-              >
-                <Palette size={16} />
-                {!sidebarCollapsed && (
-                  <span>{theme === 'light' ? 'Claro' : theme === 'dark' ? 'Escuro' : 'Sistema'}</span>
-                )}
-              </button>
-              {themeMenuOpen && (
-                <div className="sidebar-rail__theme-menu">
-                  <select
-                    value={theme}
-                    onChange={(e) => {
-                      setTheme(e.target.value as 'light' | 'dark' | 'system');
-                      setThemeMenuOpen(false);
-                    }}
-                    autoFocus
-                  >
-                    <option value="light">Claro</option>
-                    <option value="dark">Escuro</option>
-                    <option value="system">Sistema</option>
-                  </select>
-                </div>
-              )}
-            </div>
-            <button
-              type="button"
-              className="sidebar-rail__action sidebar-rail__action--logout"
-              onClick={handleLogout}
-              title="Sair"
-            >
-              <LogOut size={16} />
-              {!sidebarCollapsed && <span>Sair</span>}
-            </button>
-          </div>
-
-          {sidebarCollapsed && (
-            <button
-              type="button"
-              className="sidebar-rail__expand-hint"
-              onClick={toggleSidebar}
-              title="Fixar menu expandido"
-            >
-              <Pin size={12} />
-            </button>
-          )}
-        </footer>
+          </Button>
+        </div>
+        {renderNavContent(sidebarCollapsed)}
+        {footer(sidebarCollapsed)}
       </aside>
 
-      <main className="app-main">
-        <div className="fade-in">
+      {/* Mobile drawer */}
+      <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
+        <SheetContent side="left" className="flex w-72 flex-col p-0 sm:max-w-xs">
+          <SheetTitle className="sr-only">Menu</SheetTitle>
+          <div className="flex items-center gap-2.5 border-b border-border p-3">{brand(false)}</div>
+          {renderNavContent(false, () => setMobileNavOpen(false))}
+          {footer(false, () => setMobileNavOpen(false))}
+        </SheetContent>
+      </Sheet>
+
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        {/* Mobile topbar */}
+        <header className="flex items-center gap-3 border-b border-border p-3 md:hidden">
+          <Button variant="ghost" size="icon-sm" onClick={() => setMobileNavOpen(true)}>
+            <Menu size={18} />
+          </Button>
+          {brand(false)}
+        </header>
+
+        <main className="flex-1 overflow-y-auto p-4 md:p-6">
           <Outlet />
-        </div>
-      </main>
+        </main>
+      </div>
     </div>
   );
 }

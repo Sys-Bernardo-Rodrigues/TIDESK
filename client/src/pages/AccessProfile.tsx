@@ -1,13 +1,44 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Shield, Plus, Search, Edit, Trash2, Users, X, Save, CheckSquare, Square, Home, Ticket, FileEdit, FileText, User, Database, RefreshCw, CheckCircle, Eye, History, FileBarChart, Calendar, CalendarDays, Webhook, FolderKanban, BookOpen } from 'lucide-react';
+import { toast } from 'sonner';
+import {
+  Shield,
+  Plus,
+  Search,
+  Edit,
+  Trash2,
+  Users,
+  Save,
+  Home,
+  Ticket,
+  FileEdit,
+  FileText,
+  User,
+  Database,
+  RefreshCw,
+  CheckCircle,
+  Eye,
+  History,
+  FileBarChart,
+  Calendar,
+  CalendarDays,
+  Webhook,
+  FolderKanban,
+  BookOpen,
+} from 'lucide-react';
 import { RESOURCES, ACTIONS } from '../hooks/usePermissions';
 import { formatDateBR } from '../utils/dateUtils';
-import {
-  applyPageToggle,
-  applyPermissionToggle,
-  normalizeProfileAccess,
-} from '../utils/accessProfileSync';
+import { applyPageToggle, applyPermissionToggle, normalizeProfileAccess } from '../utils/accessProfileSync';
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Card } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useConfirm } from '@/components/ui/confirm-dialog';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 interface Permission {
   resource: string;
@@ -38,7 +69,7 @@ const RESOURCE_LABELS: Record<string, string> = {
   agenda: 'Agenda',
   webhooks: 'Webhooks',
   projects: 'Projetos',
-  docs: 'Arquivos'
+  docs: 'Arquivos',
 };
 
 const ACTION_LABELS: Record<string, string> = {
@@ -47,10 +78,9 @@ const ACTION_LABELS: Record<string, string> = {
   edit: 'Editar',
   delete: 'Excluir',
   approve: 'Aprovar',
-  reject: 'Rejeitar'
+  reject: 'Rejeitar',
 };
 
-// Lista de páginas do sistema com seus ícones
 const SYSTEM_PAGES = [
   { path: '/', label: 'Dashboard', Icon: Home },
   { path: '/tickets', label: 'Tickets', Icon: Ticket },
@@ -69,10 +99,11 @@ const SYSTEM_PAGES = [
   { path: '/historico', label: 'Histórico', Icon: History },
   { path: '/relatorios', label: 'Relatórios', Icon: FileBarChart },
   { path: '/agenda/calendario-de-servico', label: 'Calendário de Serviço', Icon: Calendar },
-  { path: '/agenda/calendario-de-plantoes', label: 'Calendário de Plantões', Icon: CalendarDays }
+  { path: '/agenda/calendario-de-plantoes', label: 'Calendário de Plantões', Icon: CalendarDays },
 ];
 
 export default function AccessProfile() {
+  const confirm = useConfirm();
   const [searchTerm, setSearchTerm] = useState('');
   const [profiles, setProfiles] = useState<AccessProfile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -82,7 +113,7 @@ export default function AccessProfile() {
     name: '',
     description: '',
     permissions: [] as Permission[],
-    pages: [] as string[]
+    pages: [] as string[],
   });
 
   useEffect(() => {
@@ -95,19 +126,14 @@ export default function AccessProfile() {
       setProfiles(response.data);
     } catch (error) {
       console.error('Erro ao buscar perfis:', error);
-      alert('Erro ao buscar perfis de acesso');
+      toast.error('Erro ao buscar perfis de acesso');
     } finally {
       setLoading(false);
     }
   };
 
   const handleCreate = () => {
-    setFormData({
-      name: '',
-      description: '',
-      permissions: [],
-      pages: []
-    });
+    setFormData({ name: '', description: '', permissions: [], pages: [] });
     setEditingProfile(null);
     setShowModal(true);
   };
@@ -120,54 +146,47 @@ export default function AccessProfile() {
         name: profile.name,
         description: profile.description || '',
         permissions: profile.permissions || [],
-        pages: profile.pages || []
+        pages: profile.pages || [],
       });
       setEditingProfile(profile);
       setShowModal(true);
     } catch (error) {
       console.error('Erro ao buscar perfil:', error);
-      alert('Erro ao carregar perfil');
+      toast.error('Erro ao carregar perfil');
     }
   };
 
   const handleDelete = async (profileId: number) => {
-    if (!window.confirm('Tem certeza que deseja excluir este perfil de acesso?')) {
-      return;
-    }
+    const ok = await confirm({
+      title: 'Excluir perfil de acesso',
+      description: 'Tem certeza que deseja excluir este perfil de acesso?',
+      confirmLabel: 'Excluir',
+      variant: 'destructive',
+    });
+    if (!ok) return;
 
     try {
       await axios.delete(`/api/access-profiles/${profileId}`);
-      setProfiles(profiles.filter(p => p.id !== profileId));
-      alert('Perfil excluído com sucesso!');
+      setProfiles(profiles.filter((p) => p.id !== profileId));
+      toast.success('Perfil excluído com sucesso!');
     } catch (error: any) {
       console.error('Erro ao excluir perfil:', error);
-      alert(error.response?.data?.error || 'Erro ao excluir perfil');
+      toast.error(error.response?.data?.error || 'Erro ao excluir perfil');
     }
   };
 
   const togglePermission = (resource: string, action: string) => {
-    const exists = formData.permissions.some(
-      (p) => p.resource === resource && p.action === action
-    );
-    const next = applyPermissionToggle(
-      formData.permissions,
-      formData.pages,
-      resource,
-      action,
-      !exists
-    );
+    const exists = formData.permissions.some((p) => p.resource === resource && p.action === action);
+    const next = applyPermissionToggle(formData.permissions, formData.pages, resource, action, !exists);
     setFormData({ ...formData, permissions: next.permissions, pages: next.pages });
   };
 
-  const hasPermission = (resource: string, action: string): boolean => {
-    return formData.permissions.some(
-      p => p.resource === resource && p.action === action
-    );
-  };
+  const hasPermission = (resource: string, action: string): boolean =>
+    formData.permissions.some((p) => p.resource === resource && p.action === action);
 
   const handleSave = async () => {
     if (!formData.name.trim()) {
-      alert('Nome do perfil é obrigatório');
+      toast.error('Nome do perfil é obrigatório');
       return;
     }
 
@@ -182,501 +201,225 @@ export default function AccessProfile() {
 
       if (editingProfile) {
         await axios.put(`/api/access-profiles/${editingProfile.id}`, payload);
-        alert('Perfil atualizado com sucesso!');
+        toast.success('Perfil atualizado com sucesso!');
       } else {
         await axios.post('/api/access-profiles', payload);
-        alert('Perfil criado com sucesso!');
+        toast.success('Perfil criado com sucesso!');
       }
 
       setShowModal(false);
       fetchProfiles();
     } catch (error: any) {
       console.error('Erro ao salvar perfil:', error);
-      alert(error.response?.data?.error || 'Erro ao salvar perfil');
+      toast.error(error.response?.data?.error || 'Erro ao salvar perfil');
     }
   };
 
-  const filteredProfiles = profiles.filter(profile =>
-    profile.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (profile.description && profile.description.toLowerCase().includes(searchTerm.toLowerCase()))
+  const filteredProfiles = profiles.filter(
+    (profile) =>
+      profile.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (profile.description && profile.description.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   return (
     <div>
-      <div style={{ marginBottom: 'var(--spacing-2xl)' }}>
-        <h1 style={{ 
-          fontSize: '2.5rem', 
-          fontWeight: '800', 
-          marginBottom: 'var(--spacing-sm)',
-          background: 'linear-gradient(135deg, var(--text-primary) 0%, var(--text-secondary) 100%)',
-          WebkitBackgroundClip: 'text',
-          WebkitTextFillColor: 'transparent',
-          backgroundClip: 'text',
-          letterSpacing: '-0.03em'
-        }}>
-          Perfil de Acesso
-        </h1>
-        <p style={{
-          color: 'var(--text-secondary)',
-          fontSize: '1rem',
-          fontWeight: '400'
-        }}>
-          Gerencie os perfis de acesso e permissões do sistema
-        </p>
+      <div className="mb-8">
+        <h1 className="text-3xl font-extrabold tracking-tight text-foreground">Perfil de Acesso</h1>
+        <p className="mt-1 text-muted-foreground">Gerencie os perfis de acesso e permissões do sistema</p>
       </div>
 
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center', 
-        marginBottom: 'var(--spacing-lg)',
-        gap: 'var(--spacing-md)',
-        flexWrap: 'wrap'
-      }}>
-        <div style={{ 
-          position: 'relative',
-          flex: '1',
-          minWidth: '300px',
-          maxWidth: '500px'
-        }}>
-          <Search 
-            size={20} 
-            style={{ 
-              position: 'absolute', 
-              left: 'var(--spacing-md)', 
-              top: '50%', 
-              transform: 'translateY(-50%)',
-              color: 'var(--text-tertiary)',
-              pointerEvents: 'none'
-            }} 
-          />
-          <input
-            type="text"
-            className="input"
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <div className="relative max-w-[500px] min-w-[280px] flex-1">
+          <Search size={18} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted-foreground" />
+          <Input
             placeholder="Buscar perfis..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            style={{ paddingLeft: '2.75rem' }}
+            className="pl-9"
           />
         </div>
-        <button 
-          className="btn btn-primary"
-          onClick={handleCreate}
-        >
-          <Plus size={20} />
+        <Button onClick={handleCreate}>
+          <Plus size={18} />
           Novo Perfil
-        </button>
+        </Button>
       </div>
 
       {loading ? (
-        <div className="card" style={{ 
-          textAlign: 'center', 
-          padding: 'var(--spacing-2xl)',
-          border: '1px solid var(--border-primary)'
-        }}>
-          <p style={{ color: 'var(--text-secondary)' }}>Carregando perfis...</p>
+        <div className="flex flex-col gap-3">
+          <Skeleton className="h-20 w-full" />
+          <Skeleton className="h-20 w-full" />
         </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
-          {filteredProfiles.length === 0 ? (
-            <div className="card" style={{ 
-              textAlign: 'center', 
-              padding: 'var(--spacing-2xl)',
-              border: '1px solid var(--border-primary)'
-            }}>
-              <Shield size={48} color="var(--text-tertiary)" style={{ marginBottom: 'var(--spacing-md)' }} />
-              <p style={{ 
-                color: 'var(--text-secondary)',
-                fontSize: '1rem',
-                marginBottom: 'var(--spacing-sm)'
-              }}>
-                {searchTerm ? 'Nenhum perfil encontrado' : 'Nenhum perfil criado ainda'}
-              </p>
-            {!searchTerm && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-sm)', alignItems: 'center' }}>
-                <button 
-                  className="btn btn-primary" 
-                  style={{ marginTop: 'var(--spacing-md)' }}
-                  onClick={handleCreate}
-                >
-                  <Plus size={20} />
-                  Criar perfil de acesso
-                </button>
-              </div>
-            )}
-            </div>
-          ) : (
-            filteredProfiles.map((profile) => (
-              <div key={profile.id} className="card" style={{ 
-                border: '1px solid var(--border-primary)',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                transition: 'all var(--transition-base)'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = 'var(--border-secondary)';
-                e.currentTarget.style.boxShadow = 'var(--shadow-md)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = 'var(--border-primary)';
-                e.currentTarget.style.boxShadow = 'var(--shadow)';
-              }}
-              >
-                <div style={{ flex: 1 }}>
-                  <div style={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    gap: 'var(--spacing-md)',
-                    marginBottom: 'var(--spacing-xs)'
-                  }}>
-                    <Shield size={20} color="var(--orange)" />
-                    <h3 style={{ 
-                      fontSize: '1.125rem', 
-                      fontWeight: '600',
-                      color: 'var(--text-primary)'
-                    }}>
-                      {profile.name}
-                    </h3>
-                  </div>
-                  {profile.description && (
-                    <p style={{
-                      fontSize: '0.875rem',
-                      color: 'var(--text-secondary)',
-                      marginLeft: '2.25rem',
-                      marginBottom: 'var(--spacing-xs)'
-                    }}>
-                      {profile.description}
-                    </p>
-                  )}
-                  <div style={{ 
-                    display: 'flex', 
-                    gap: 'var(--spacing-lg)',
-                    fontSize: '0.875rem',
-                    color: 'var(--text-secondary)',
-                    marginLeft: '2.25rem',
-                    flexWrap: 'wrap'
-                  }}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                      <Users size={14} />
-                      <strong>{profile.users_count || 0}</strong> usuários
-                    </span>
-                    <span><strong>{profile.permissions_count || 0}</strong> permissões</span>
-                    <span><strong>Criado:</strong> {formatDateBR(profile.created_at)}</span>
-                  </div>
-                </div>
-                <div style={{ 
-                  display: 'flex', 
-                  gap: 'var(--spacing-sm)'
-                }}>
-                  <button 
-                    className="btn btn-secondary btn-sm"
-                    onClick={() => handleEdit(profile.id)}
-                  >
-                    <Edit size={16} />
-                    Editar
-                  </button>
-                  <button 
-                    className="btn btn-danger btn-sm"
-                    onClick={() => handleDelete(profile.id)}
-                  >
-                    <Trash2 size={16} />
-                    Excluir
-                  </button>
-                </div>
-              </div>
-            ))
+      ) : filteredProfiles.length === 0 ? (
+        <Card className="items-center p-10 text-center">
+          <Shield size={40} className="mx-auto mb-3 text-muted-foreground" />
+          <p className="mb-3 text-muted-foreground">
+            {searchTerm ? 'Nenhum perfil encontrado' : 'Nenhum perfil criado ainda'}
+          </p>
+          {!searchTerm && (
+            <Button onClick={handleCreate} className="mx-auto">
+              <Plus size={18} />
+              Criar perfil de acesso
+            </Button>
           )}
+        </Card>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {filteredProfiles.map((profile) => (
+            <Card key={profile.id} className="flex-row flex-wrap items-center justify-between gap-3 px-4 py-4">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <Shield size={18} className="text-[var(--orange)]" />
+                  <h3 className="text-base font-semibold text-foreground">{profile.name}</h3>
+                </div>
+                {profile.description && (
+                  <p className="mt-1 ml-6 text-sm text-muted-foreground">{profile.description}</p>
+                )}
+                <div className="mt-1 ml-6 flex flex-wrap gap-4 text-sm text-muted-foreground">
+                  <span className="flex items-center gap-1">
+                    <Users size={13} />
+                    <strong className="text-foreground">{profile.users_count || 0}</strong> usuários
+                  </span>
+                  <span>
+                    <strong className="text-foreground">{profile.permissions_count || 0}</strong> permissões
+                  </span>
+                  <span>
+                    <strong className="text-foreground">Criado:</strong> {formatDateBR(profile.created_at)}
+                  </span>
+                </div>
+              </div>
+              <div className="flex shrink-0 gap-2">
+                <Button variant="secondary" size="sm" onClick={() => handleEdit(profile.id)}>
+                  <Edit size={15} />
+                  Editar
+                </Button>
+                <Button variant="destructive" size="sm" onClick={() => handleDelete(profile.id)}>
+                  <Trash2 size={15} />
+                  Excluir
+                </Button>
+              </div>
+            </Card>
+          ))}
         </div>
       )}
 
       {/* Modal de Edição/Criação */}
-      {showModal && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.7)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000,
-          padding: 'var(--spacing-xl)'
-        }}
-        onClick={(e) => {
-          if (e.target === e.currentTarget) {
-            setShowModal(false);
-          }
-        }}
-        >
-          <div className="card" style={{
-            maxWidth: '900px',
-            width: '100%',
-            maxHeight: '90vh',
-            overflow: 'auto',
-            border: '1px solid var(--border-primary)',
-            position: 'relative'
-          }}
-          onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: 'var(--spacing-xl)',
-              paddingBottom: 'var(--spacing-md)',
-              borderBottom: '1px solid var(--border-primary)'
-            }}>
-              <h2 style={{
-                fontSize: '1.5rem',
-                fontWeight: '700',
-                color: 'var(--text-primary)'
-              }}>
-                {editingProfile ? 'Editar Perfil' : 'Novo Perfil'}
-              </h2>
-              <button
-                className="btn btn-secondary btn-sm"
-                onClick={() => setShowModal(false)}
-              >
-                <X size={20} />
-              </button>
+      <Dialog open={showModal} onOpenChange={setShowModal}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>{editingProfile ? 'Editar Perfil' : 'Novo Perfil'}</DialogTitle>
+          </DialogHeader>
+
+          <div className="flex flex-col gap-5">
+            <div>
+              <Label className="mb-1.5">Nome do Perfil *</Label>
+              <Input
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                placeholder="Ex: Agente de Suporte"
+              />
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-lg)' }}>
-              <div>
-                <label className="label">Nome do Perfil *</label>
-                <input
-                  type="text"
-                  className="input"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="Ex: Agente de Suporte"
-                />
-              </div>
+            <div>
+              <Label className="mb-1.5">Descrição</Label>
+              <Textarea
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                placeholder="Descrição do perfil de acesso..."
+                rows={3}
+              />
+            </div>
 
-              <div>
-                <label className="label">Descrição</label>
-                <textarea
-                  className="input"
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="Descrição do perfil de acesso..."
-                  rows={3}
-                />
-              </div>
+            <div>
+              <Label className="mb-1.5">Permissões</Label>
+              <div className="max-h-[400px] overflow-y-auto rounded-lg border border-border p-4">
+                {Object.entries(RESOURCES).map(([, resource]) => (
+                  <div key={resource} className="mb-5 last:mb-0">
+                    <h3 className="mb-2 text-sm font-semibold text-foreground">
+                      {RESOURCE_LABELS[resource] || resource}
+                    </h3>
+                    {resource === 'projects' && (
+                      <p className="mb-2 text-xs text-muted-foreground">
+                        Marcar Visualizar (ou Criar/Editar) libera automaticamente o menu Projetos. Desmarcar
+                        Projetos nas páginas remove todas as permissões de projetos.
+                      </p>
+                    )}
+                    <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+                      {Object.entries(ACTIONS).map(([, action]) => {
+                        if (resource === 'approve' && action !== 'view' && action !== 'approve' && action !== 'reject') {
+                          return null;
+                        }
+                        if (resource !== 'approve' && (action === 'approve' || action === 'reject')) {
+                          return null;
+                        }
 
-              <div>
-                <label className="label">Permissões</label>
-                <div style={{
-                  border: '1px solid var(--border-primary)',
-                  borderRadius: 'var(--radius-md)',
-                  padding: 'var(--spacing-lg)',
-                  maxHeight: '400px',
-                  overflow: 'auto'
-                }}>
-                  {Object.entries(RESOURCES).map(([, resource]) => (
-                    <div key={resource} style={{ marginBottom: 'var(--spacing-xl)' }}>
-                      <h3 style={{
-                        fontSize: '1rem',
-                        fontWeight: '600',
-                        color: 'var(--text-primary)',
-                        marginBottom: 'var(--spacing-sm)'
-                      }}>
-                        {RESOURCE_LABELS[resource] || resource}
-                      </h3>
-                      {resource === 'projects' && (
-                        <p style={{ fontSize: '0.8125rem', color: 'var(--text-tertiary)', marginBottom: 'var(--spacing-sm)' }}>
-                          Marcar Visualizar (ou Criar/Editar) libera automaticamente o menu Projetos. Desmarcar Projetos nas páginas remove todas as permissões de projetos.
-                        </p>
-                      )}
-                      <div style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
-                        gap: 'var(--spacing-sm)'
-                      }}>
-                        {Object.entries(ACTIONS).map(([, action]) => {
-                          // Filtrar ações relevantes por recurso
-                          if (resource === 'approve' && action !== 'view' && action !== 'approve' && action !== 'reject') {
-                            return null;
-                          }
-                          if (resource !== 'approve' && (action === 'approve' || action === 'reject')) {
-                            return null;
-                          }
-
-                          const checked = hasPermission(resource, action);
-                          return (
-                            <label
-                              key={`${resource}-${action}`}
-                              style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: 'var(--spacing-sm)',
-                                padding: 'var(--spacing-sm)',
-                                borderRadius: 'var(--radius-sm)',
-                                cursor: 'pointer',
-                                backgroundColor: checked ? 'var(--purple-light)' : 'transparent',
-                                transition: 'all var(--transition-base)'
-                              }}
-                              onMouseEnter={(e) => {
-                                if (!checked) {
-                                  e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
-                                }
-                              }}
-                              onMouseLeave={(e) => {
-                                if (!checked) {
-                                  e.currentTarget.style.backgroundColor = 'transparent';
-                                }
-                              }}
-                            >
-                              {checked ? (
-                                <CheckSquare size={18} color="var(--purple)" />
-                              ) : (
-                                <Square size={18} color="var(--text-tertiary)" />
-                              )}
-                              <span style={{
-                                fontSize: '0.875rem',
-                                color: checked ? 'var(--text-primary)' : 'var(--text-secondary)',
-                                fontWeight: checked ? '500' : '400'
-                              }}>
-                                {ACTION_LABELS[action] || action}
-                              </span>
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={() => togglePermission(resource, action)}
-                                style={{ display: 'none' }}
-                              />
-                            </label>
-                          );
-                        })}
-                      </div>
+                        const checked = hasPermission(resource, action);
+                        return (
+                          <label
+                            key={`${resource}-${action}`}
+                            className={cn(
+                              'flex cursor-pointer items-center gap-2 rounded-md p-2 transition-colors hover:bg-accent',
+                              checked && 'bg-primary/10 hover:bg-primary/10'
+                            )}
+                          >
+                            <Checkbox checked={checked} onCheckedChange={() => togglePermission(resource, action)} />
+                            <span className={cn('text-sm', checked ? 'font-medium text-foreground' : 'text-muted-foreground')}>
+                              {ACTION_LABELS[action] || action}
+                            </span>
+                          </label>
+                        );
+                      })}
                     </div>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="label">Páginas Visíveis</label>
-                <p style={{
-                  fontSize: '0.875rem',
-                  color: 'var(--text-secondary)',
-                  marginBottom: 'var(--spacing-md)'
-                }}>
-                  Selecione quais páginas este perfil tem direito de visualizar no menu
-                </p>
-                <div style={{
-                  border: '1px solid var(--border-primary)',
-                  borderRadius: 'var(--radius-md)',
-                  padding: 'var(--spacing-lg)',
-                  maxHeight: '300px',
-                  overflow: 'auto',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 'var(--spacing-sm)'
-                }}>
-                  {SYSTEM_PAGES.map((page) => {
-                    const isSelected = formData.pages.includes(page.path);
-                    return (
-                      <label
-                        key={page.path}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 'var(--spacing-sm)',
-                          padding: 'var(--spacing-sm)',
-                          borderRadius: 'var(--radius-sm)',
-                          cursor: 'pointer',
-                          backgroundColor: isSelected ? 'var(--purple-light)' : 'transparent',
-                          transition: 'all var(--transition-base)'
-                        }}
-                        onMouseEnter={(e) => {
-                          if (!isSelected) {
-                            e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
-                          }
-                        }}
-                        onMouseLeave={(e) => {
-                          if (!isSelected) {
-                            e.currentTarget.style.backgroundColor = 'transparent';
-                          }
-                        }}
-                      >
-                        {isSelected ? (
-                          <CheckSquare size={18} color="var(--purple)" />
-                        ) : (
-                          <Square size={18} color="var(--text-tertiary)" />
-                        )}
-                        <page.Icon 
-                          size={18} 
-                          color={isSelected ? 'var(--purple)' : 'var(--text-secondary)'}
-                          style={{ marginRight: 'var(--spacing-xs)', flexShrink: 0 }}
-                        />
-                        <span style={{
-                          fontSize: '0.875rem',
-                          color: isSelected ? 'var(--text-primary)' : 'var(--text-secondary)',
-                          fontWeight: isSelected ? '500' : '400',
-                          flex: 1
-                        }}>
-                          {page.label}
-                        </span>
-                        <span style={{
-                          fontSize: '0.75rem',
-                          color: 'var(--text-tertiary)',
-                          fontFamily: 'monospace'
-                        }}>
-                          {page.path}
-                        </span>
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => {
-                            const next = applyPageToggle(
-                              formData.permissions,
-                              formData.pages,
-                              page.path,
-                              !isSelected
-                            );
-                            setFormData({
-                              ...formData,
-                              permissions: next.permissions,
-                              pages: next.pages,
-                            });
-                          }}
-                          style={{ display: 'none' }}
-                        />
-                      </label>
-                    );
-                  })}
-                </div>
+                  </div>
+                ))}
               </div>
             </div>
 
-            <div style={{
-              display: 'flex',
-              justifyContent: 'flex-end',
-              gap: 'var(--spacing-sm)',
-              marginTop: 'var(--spacing-xl)',
-              paddingTop: 'var(--spacing-md)',
-              borderTop: '1px solid var(--border-primary)'
-            }}>
-              <button
-                className="btn btn-secondary"
-                onClick={() => setShowModal(false)}
-              >
-                Cancelar
-              </button>
-              <button
-                className="btn btn-primary"
-                onClick={handleSave}
-              >
-                <Save size={20} />
-                {editingProfile ? 'Atualizar' : 'Criar'} Perfil
-              </button>
+            <div>
+              <Label className="mb-1">Páginas Visíveis</Label>
+              <p className="mb-2 text-sm text-muted-foreground">
+                Selecione quais páginas este perfil tem direito de visualizar no menu
+              </p>
+              <div className="flex max-h-[300px] flex-col gap-1 overflow-y-auto rounded-lg border border-border p-3">
+                {SYSTEM_PAGES.map((page) => {
+                  const isSelected = formData.pages.includes(page.path);
+                  return (
+                    <label
+                      key={page.path}
+                      className={cn(
+                        'flex cursor-pointer items-center gap-2 rounded-md p-2 transition-colors hover:bg-accent',
+                        isSelected && 'bg-primary/10 hover:bg-primary/10'
+                      )}
+                    >
+                      <Checkbox
+                        checked={isSelected}
+                        onCheckedChange={() => {
+                          const next = applyPageToggle(formData.permissions, formData.pages, page.path, !isSelected);
+                          setFormData({ ...formData, permissions: next.permissions, pages: next.pages });
+                        }}
+                      />
+                      <page.Icon size={16} className={isSelected ? 'text-primary' : 'text-muted-foreground'} />
+                      <span className={cn('flex-1 text-sm', isSelected ? 'font-medium text-foreground' : 'text-muted-foreground')}>
+                        {page.label}
+                      </span>
+                      <span className="font-mono text-xs text-muted-foreground">{page.path}</span>
+                    </label>
+                  );
+                })}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setShowModal(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleSave}>
+              <Save size={18} />
+              {editingProfile ? 'Atualizar' : 'Criar'} Perfil
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

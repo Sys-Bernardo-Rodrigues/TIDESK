@@ -1,17 +1,28 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { toast } from 'sonner';
 import {
   FolderKanban,
   Plus,
   MoreHorizontal,
   Trash2,
   LayoutList,
-  X,
   ArrowRight,
   Calendar,
 } from 'lucide-react';
 import { usePermissions, RESOURCES, ACTIONS } from '../hooks/usePermissions';
+import { cn } from '@/lib/utils';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 
 interface Project {
   id: number;
@@ -24,35 +35,46 @@ interface Project {
   tasks_count: number;
 }
 
+type Accent = 'purple' | 'blue' | 'green' | 'orange' | 'red' | 'yellow';
+
+const ACCENTS: Accent[] = ['purple', 'blue', 'green', 'orange', 'red', 'yellow'];
+
+const ACCENT: Record<Accent, { bar: string; soft: string; softText: string }> = {
+  purple: { bar: 'bg-[var(--purple)]', soft: 'bg-[var(--purple-light)]', softText: 'text-[var(--purple)]' },
+  blue: { bar: 'bg-[var(--blue)]', soft: 'bg-[var(--blue-light)]', softText: 'text-[var(--blue)]' },
+  green: { bar: 'bg-[var(--green)]', soft: 'bg-[var(--green-light)]', softText: 'text-[var(--green)]' },
+  orange: { bar: 'bg-[var(--orange)]', soft: 'bg-[var(--orange-light)]', softText: 'text-[var(--orange)]' },
+  red: { bar: 'bg-[var(--red)]', soft: 'bg-[var(--red-light)]', softText: 'text-[var(--red)]' },
+  yellow: { bar: 'bg-[var(--yellow)]', soft: 'bg-[rgba(251,191,36,0.1)]', softText: 'text-[var(--yellow-hover)]' },
+};
+
 function ProjectCardSkeleton() {
   return (
-    <div className="project-card project-card--skeleton">
-      <div className="project-card__accent" />
-      <div className="project-card__body">
-        <div className="project-card__menu-wrap">
-          <div className="skeleton skeleton--circle" style={{ width: 28, height: 28 }} />
+    <Card className="gap-0 overflow-hidden p-0">
+      <Skeleton className="h-1.5 w-full rounded-none" />
+      <div className="flex flex-col gap-3 p-4">
+        <Skeleton className="h-5 w-3/4" />
+        <div className="flex flex-col gap-1.5">
+          <Skeleton className="h-3.5 w-full" />
+          <Skeleton className="h-3.5 w-4/5" />
         </div>
-        <div className="skeleton skeleton--line" style={{ width: '70%', height: 22, marginBottom: 12 }} />
-        <div className="skeleton skeleton--line" style={{ width: '100%', height: 14, marginBottom: 6 }} />
-        <div className="skeleton skeleton--line" style={{ width: '85%', height: 14, marginBottom: 20 }} />
-        <div className="project-card__footer">
-          <div className="skeleton skeleton--pill" style={{ width: 72, height: 24 }} />
-          <div className="skeleton skeleton--line" style={{ width: 80, height: 14 }} />
+        <div className="mt-1.5 flex items-center justify-between">
+          <Skeleton className="h-5 w-16 rounded-full" />
+          <Skeleton className="h-3.5 w-20" />
         </div>
       </div>
-    </div>
+    </Card>
   );
 }
 
 export default function Projetos() {
   const navigate = useNavigate();
   const { hasPermission } = usePermissions();
-  const menuRef = useRef<HTMLDivElement>(null);
+  const confirm = useConfirm();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
-  const [showMenuId, setShowMenuId] = useState<number | null>(null);
   const [formName, setFormName] = useState('');
   const [formDescription, setFormDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -60,16 +82,6 @@ export default function Projetos() {
   const canCreate = hasPermission(RESOURCES.PROJECTS, ACTIONS.CREATE);
   const canEdit = hasPermission(RESOURCES.PROJECTS, ACTIONS.EDIT);
   const canDelete = hasPermission(RESOURCES.PROJECTS, ACTIONS.DELETE);
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (showMenuId != null && menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setShowMenuId(null);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showMenuId]);
 
   const fetchProjects = async () => {
     try {
@@ -101,20 +113,26 @@ export default function Projetos() {
       setFormDescription('');
       navigate(`/projetos/${res.data.id}`);
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Erro ao criar projeto');
+      toast.error(err.response?.data?.error || 'Erro ao criar projeto');
     } finally {
       setSubmitting(false);
     }
   };
 
   const handleDelete = async (id: number, name: string) => {
-    if (!window.confirm(`Excluir o projeto "${name}"? Esta ação não pode ser desfeita.`)) return;
+    const ok = await confirm({
+      title: 'Excluir projeto',
+      description: `Excluir o projeto "${name}"? Esta ação não pode ser desfeita.`,
+      confirmLabel: 'Excluir',
+      variant: 'destructive',
+    });
+    if (!ok) return;
+
     try {
       await axios.delete(`/api/projects/${id}`);
       setProjects((prev) => prev.filter((p) => p.id !== id));
-      setShowMenuId(null);
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Erro ao excluir');
+      toast.error(err.response?.data?.error || 'Erro ao excluir');
     }
   };
 
@@ -124,194 +142,146 @@ export default function Projetos() {
   };
 
   return (
-    <div className="projects-page">
-      <header className="projects-page__header">
-        <div className="projects-page__title-block">
-          <div className="projects-page__icon-wrap">
+    <div className="mx-auto max-w-[1200px]">
+      <header className="mb-8 flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[var(--purple)] to-[var(--blue)] text-white">
             <FolderKanban size={28} strokeWidth={2} />
           </div>
           <div>
-            <h1 className="projects-page__title">Projetos</h1>
-            <p className="projects-page__subtitle">Gestão de projetos e quadros Kanban</p>
+            <h1 className="text-2xl font-extrabold tracking-tight text-foreground">Projetos</h1>
+            <p className="text-sm text-muted-foreground">Gestão de projetos e quadros Kanban</p>
           </div>
         </div>
         {canCreate && (
-          <button
-            type="button"
-            className="btn btn-primary projects-page__cta"
-            onClick={() => setShowModal(true)}
-          >
-            <Plus size={20} aria-hidden />
-            Novo projeto
-          </button>
+          <Button onClick={() => setShowModal(true)}>
+            <Plus size={18} /> Novo projeto
+          </Button>
         )}
       </header>
 
       {error && (
-        <div className="projects-page__error" role="alert">
+        <div role="alert" className="mb-6 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           {error}
         </div>
       )}
 
       {loading ? (
-        <div className="projects-page__grid">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {[1, 2, 3, 4, 5, 6].map((i) => (
             <ProjectCardSkeleton key={i} />
           ))}
         </div>
       ) : projects.length === 0 ? (
-        <div className="projects-page__empty">
-          <div className="projects-page__empty-icon">
-            <LayoutList size={56} strokeWidth={1.2} />
-          </div>
-          <h2 className="projects-page__empty-title">Nenhum projeto ainda</h2>
-          <p className="projects-page__empty-text">
+        <div className="flex flex-col items-center px-6 py-20 text-center">
+          <LayoutList size={56} strokeWidth={1.2} className="mb-5 text-muted-foreground opacity-50" />
+          <h2 className="mb-2 text-lg font-bold text-foreground">Nenhum projeto ainda</h2>
+          <p className="mb-6 max-w-[420px] text-sm leading-relaxed text-muted-foreground">
             Crie o primeiro projeto para começar a organizar tarefas em quadros Kanban, sprints e métricas.
           </p>
           {canCreate && (
-            <button type="button" className="btn btn-primary projects-page__empty-cta" onClick={() => setShowModal(true)}>
-              <Plus size={20} aria-hidden />
-              Criar primeiro projeto
-            </button>
+            <Button onClick={() => setShowModal(true)}>
+              <Plus size={18} /> Criar primeiro projeto
+            </Button>
           )}
         </div>
       ) : (
-        <div className="projects-page__grid">
-          {projects.map((project) => (
-            <article key={project.id} className="project-card">
-              <div className="project-card__accent" />
-              <div className="project-card__body">
-                <div className="project-card__menu-wrap" ref={showMenuId === project.id ? menuRef : undefined}>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {projects.map((project, i) => {
+            const accent = ACCENTS[i % ACCENTS.length];
+            return (
+              <Card key={project.id} className="group relative gap-0 overflow-hidden p-0 transition-all hover:-translate-y-0.5 hover:shadow-md">
+                <div className={cn('h-1.5 w-full', ACCENT[accent].bar)} />
+                <div className="p-4">
                   {(canEdit || canDelete) && (
-                    <>
-                      <button
-                        type="button"
-                        className="project-card__menu-btn"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          setShowMenuId(showMenuId === project.id ? null : project.id);
-                        }}
-                        aria-expanded={showMenuId === project.id}
-                        aria-haspopup="true"
-                      >
-                        <MoreHorizontal size={20} aria-hidden />
-                      </button>
-                      {showMenuId === project.id && (
-                        <div className="project-card__dropdown">
+                    <div className="absolute top-3 right-3 z-10">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            onClick={(e) => e.preventDefault()}
+                            aria-label="Mais opções"
+                          >
+                            <MoreHorizontal size={18} />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
                           {canDelete && (
-                            <button
-                              type="button"
-                              className="project-card__dropdown-item project-card__dropdown-item--danger"
-                              onClick={(e) => {
-                                e.preventDefault();
-                                handleDelete(project.id, project.name);
-                              }}
-                            >
-                              <Trash2 size={16} aria-hidden />
-                              Excluir
-                            </button>
+                            <DropdownMenuItem variant="destructive" onClick={() => handleDelete(project.id, project.name)}>
+                              <Trash2 size={14} /> Excluir
+                            </DropdownMenuItem>
                           )}
-                        </div>
-                      )}
-                    </>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   )}
-                </div>
-                <Link to={`/projetos/${project.id}`} className="project-card__link">
-                  <h3 className="project-card__name">{project.name}</h3>
-                  {project.description ? (
-                    <p className="project-card__description">{project.description}</p>
-                  ) : (
-                    <p className="project-card__description project-card__description--muted">
-                      Sem descrição
+                  <Link to={`/projetos/${project.id}`} className="block">
+                    <h3 className="mb-1.5 truncate pr-8 text-lg font-semibold text-foreground">{project.name}</h3>
+                    <p className={cn('mb-4 line-clamp-2 text-sm leading-relaxed', project.description ? 'text-muted-foreground' : 'text-muted-foreground/60 italic')}>
+                      {project.description || 'Sem descrição'}
                     </p>
-                  )}
-                  <div className="project-card__footer">
-                    <span className="project-card__badge">
-                      {project.tasks_count ?? 0} {project.tasks_count === 1 ? 'tarefa' : 'tarefas'}
+                    <div className="flex items-center justify-between">
+                      <Badge className={cn('border-0', ACCENT[accent].soft, ACCENT[accent].softText)}>
+                        {project.tasks_count ?? 0} {project.tasks_count === 1 ? 'tarefa' : 'tarefas'}
+                      </Badge>
+                      <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <Calendar size={13} /> {formatDate(project.updated_at)}
+                      </span>
+                    </div>
+                    <span className="mt-3 flex items-center gap-1 text-sm font-semibold text-primary opacity-0 transition-opacity group-hover:opacity-100">
+                      Abrir quadro <ArrowRight size={15} />
                     </span>
-                    <span className="project-card__date">
-                      <Calendar size={14} aria-hidden />
-                      {formatDate(project.updated_at)}
-                    </span>
-                  </div>
-                  <span className="project-card__action">
-                    Abrir quadro
-                    <ArrowRight size={18} aria-hidden />
-                  </span>
-                </Link>
-              </div>
-            </article>
-          ))}
+                  </Link>
+                </div>
+              </Card>
+            );
+          })}
         </div>
       )}
 
-      {showModal && (
-        <div
-          className="projects-modal-backdrop"
-          onClick={() => !submitting && setShowModal(false)}
-          role="presentation"
-        >
-          <div
-            className="projects-modal"
-            onClick={(e) => e.stopPropagation()}
-            role="dialog"
-            aria-labelledby="modal-title"
-            aria-modal="true"
-          >
-            <div className="projects-modal__head">
-              <h2 id="modal-title" className="projects-modal__title">
-                Novo projeto
-              </h2>
-              <button
-                type="button"
-                className="projects-modal__close"
-                onClick={() => !submitting && setShowModal(false)}
-                aria-label="Fechar"
-              >
-                <X size={22} aria-hidden />
-              </button>
-            </div>
-            <form onSubmit={handleCreate} className="projects-modal__form">
-              <label htmlFor="project-name" className="projects-modal__label">
+      <Dialog open={showModal} onOpenChange={(open) => !submitting && setShowModal(open)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Novo projeto</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleCreate} className="flex flex-col gap-4">
+            <div>
+              <Label htmlFor="project-name" className="mb-1.5">
                 Nome *
-              </label>
-              <input
+              </Label>
+              <Input
                 id="project-name"
-                type="text"
                 value={formName}
                 onChange={(e) => setFormName(e.target.value)}
                 placeholder="Ex: App Mobile"
                 required
-                className="input projects-modal__input"
                 autoFocus
               />
-              <label htmlFor="project-desc" className="projects-modal__label">
+            </div>
+            <div>
+              <Label htmlFor="project-desc" className="mb-1.5">
                 Descrição
-              </label>
-              <textarea
+              </Label>
+              <Textarea
                 id="project-desc"
                 value={formDescription}
                 onChange={(e) => setFormDescription(e.target.value)}
                 placeholder="Breve descrição do projeto"
-                className="input projects-modal__textarea"
                 rows={3}
               />
-              <div className="projects-modal__actions">
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => !submitting && setShowModal(false)}
-                >
-                  Cancelar
-                </button>
-                <button type="submit" className="btn btn-primary" disabled={submitting || !formName.trim()}>
-                  {submitting ? 'Criando...' : 'Criar projeto'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => !submitting && setShowModal(false)}>
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={submitting || !formName.trim()}>
+                {submitting ? 'Criando...' : 'Criar projeto'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -1,23 +1,35 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import axios from 'axios';
-import { 
-  Calendar, 
-  Plus, 
-  ChevronLeft, 
-  ChevronRight, 
-  Clock, 
-  Users, 
-  Edit, 
+import { toast } from 'sonner';
+import {
+  Calendar,
+  Plus,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  Users,
+  Edit,
   Trash2,
-  X,
   FileBarChart,
   FileText,
-  FolderKanban
+  FolderKanban,
 } from 'lucide-react';
 import { usePermissions, RESOURCES, ACTIONS } from '../hooks/usePermissions';
 import { getHolidayName } from '../utils/brazilianHolidays';
 import jsPDF from 'jspdf';
+import { cn } from '@/lib/utils';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Table, TableHeader, TableBody, TableFooter, TableRow, TableHead, TableCell } from '@/components/ui/table';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 
 interface Shift {
   id: number;
@@ -55,9 +67,36 @@ interface ReportData {
   }>;
 }
 
+const WEEK_DAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+
+// Paleta de cores para usuários (cores vibrantes e distintas)
+const USER_COLORS = [
+  '#f97316', '#3b82f6', '#10b981', '#8b5cf6', '#ef4444', '#f59e0b', '#06b6d4', '#ec4899',
+  '#14b8a6', '#f43f5e', '#6366f1', '#84cc16', '#f97316', '#06b6d4', '#8b5cf6',
+];
+
+function getUserColor(userId: number): string {
+  return USER_COLORS[userId % USER_COLORS.length];
+}
+
+function getShiftColor(shift: Shift): string {
+  if (shift.user_ids && shift.user_ids.length > 0) return getUserColor(shift.user_ids[0]);
+  return '#f97316';
+}
+
+function SpinnerBlock({ text }: { text: string }) {
+  return (
+    <div className="flex flex-col items-center gap-3 py-24 text-muted-foreground">
+      <div className="h-10 w-10 animate-spin rounded-full border-2 border-border border-t-[var(--purple)]" />
+      <p>{text}</p>
+    </div>
+  );
+}
+
 export default function ShiftCalendar() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { hasPermission } = usePermissions();
+  const confirm = useConfirm();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [viewMode, setViewMode] = useState<ViewMode>('month');
   const [tabMode, setTabMode] = useState<TabMode>('calendar');
@@ -71,7 +110,7 @@ export default function ShiftCalendar() {
   const [selectedShift, setSelectedShift] = useState<Shift | null>(null);
   const [, setSelectedDate] = useState<Date | null>(null);
   const [allUsers, setAllUsers] = useState<any[]>([]);
-  
+
   const canCreate = hasPermission(RESOURCES.AGENDA, ACTIONS.CREATE);
   const canEdit = hasPermission(RESOURCES.AGENDA, ACTIONS.EDIT);
   const canDelete = hasPermission(RESOURCES.AGENDA, ACTIONS.DELETE);
@@ -87,50 +126,9 @@ export default function ShiftCalendar() {
   const [selectedUserIds, setSelectedUserIds] = useState<number[]>([]);
   const [shiftProjectId, setShiftProjectId] = useState<number | ''>('');
 
-  // Paleta de cores para usuários (cores vibrantes e distintas)
-  const userColors = [
-    '#f97316', // Laranja (cor padrão atual)
-    '#3b82f6', // Azul
-    '#10b981', // Verde
-    '#8b5cf6', // Roxo
-    '#ef4444', // Vermelho
-    '#f59e0b', // Amarelo/Âmbar
-    '#06b6d4', // Ciano
-    '#ec4899', // Rosa
-    '#14b8a6', // Turquesa
-    '#f43f5e', // Rosa escuro
-    '#6366f1', // Índigo
-    '#84cc16', // Verde lima
-    '#f97316', // Laranja (repetido para mais usuários)
-    '#06b6d4', // Ciano (repetido)
-    '#8b5cf6', // Roxo (repetido)
-  ];
-
-  // Função para obter cor do usuário baseado no ID
-  const getUserColor = (userId: number): string => {
-    return userColors[userId % userColors.length];
-  };
-
-  // Função para obter cor do plantão baseado nos usuários
-  const getShiftColor = (shift: Shift): string => {
-    if (shift.user_ids && shift.user_ids.length > 0) {
-      // Se houver múltiplos usuários, usa a cor do primeiro
-      // Mas podemos criar um gradiente se necessário
-      if (shift.user_ids.length === 1) {
-        return getUserColor(shift.user_ids[0]);
-      } else {
-        // Para múltiplos usuários, usa a cor do primeiro
-        // ou cria um gradiente (vamos usar a cor do primeiro por simplicidade)
-        return getUserColor(shift.user_ids[0]);
-      }
-    }
-    // Cor padrão se não houver usuários
-    return '#f97316';
-  };
-
   // Função para obter ID do usuário pelo email (para relatórios)
   const getUserIdByEmail = (email: string): number | null => {
-    const user = allUsers.find(u => u.email === email);
+    const user = allUsers.find((u) => u.email === email);
     return user ? user.id : null;
   };
 
@@ -138,13 +136,13 @@ export default function ShiftCalendar() {
   const getPeriodRange = () => {
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
-    
+
     if (viewMode === 'month') {
       const start = new Date(year, month, 1);
       const end = new Date(year, month + 1, 0, 23, 59, 59);
       return {
         start: start.toISOString().split('T')[0] + 'T00:00:00',
-        end: end.toISOString().split('T')[0] + 'T23:59:59'
+        end: end.toISOString().split('T')[0] + 'T23:59:59',
       };
     } else if (viewMode === 'week') {
       const day = currentDate.getDay();
@@ -155,20 +153,13 @@ export default function ShiftCalendar() {
       const end = new Date(start);
       end.setDate(end.getDate() + 6);
       end.setHours(23, 59, 59, 59);
-      return {
-        start: start.toISOString(),
-        end: end.toISOString()
-      };
+      return { start: start.toISOString(), end: end.toISOString() };
     } else {
-      // Visualização diária - buscar plantões do dia atual
       const start = new Date(currentDate);
       start.setHours(0, 0, 0, 0);
       const end = new Date(currentDate);
       end.setHours(23, 59, 59, 59);
-      return {
-        start: start.toISOString(),
-        end: end.toISOString()
-      };
+      return { start: start.toISOString(), end: end.toISOString() };
     }
   };
 
@@ -179,7 +170,7 @@ export default function ShiftCalendar() {
 
   useEffect(() => {
     if (canViewProjects) {
-      axios.get('/api/projects').then(res => setProjects(res.data)).catch(() => setProjects([]));
+      axios.get('/api/projects').then((res) => setProjects(res.data)).catch(() => setProjects([]));
     }
   }, [canViewProjects]);
 
@@ -194,7 +185,7 @@ export default function ShiftCalendar() {
       if (canViewUsers) {
         const [shiftsRes, usersRes] = await Promise.all([
           axios.get(`/api/shifts?${params.toString()}`),
-          axios.get('/api/users')
+          axios.get('/api/users'),
         ]);
         setShifts(shiftsRes.data);
         setAllUsers(usersRes.data);
@@ -211,11 +202,8 @@ export default function ShiftCalendar() {
   };
 
   useEffect(() => {
-    if (tabMode === 'calendar') {
-      fetchData();
-    } else {
-      fetchReportData();
-    }
+    if (tabMode === 'calendar') fetchData();
+    else fetchReportData();
   }, [currentDate, viewMode, tabMode, canViewUsers, selectedProjectId]);
 
   // Buscar dados do relatório
@@ -224,7 +212,6 @@ export default function ShiftCalendar() {
       setReportLoading(true);
       const year = currentDate.getFullYear();
       const month = currentDate.getMonth() + 1;
-      
       const response = await axios.get(`/api/shifts/report/monthly?year=${year}&month=${month}`);
       setReportData(response.data);
     } catch (error) {
@@ -237,13 +224,7 @@ export default function ShiftCalendar() {
   // Função para converter hex para RGB
   const hexToRgb = (hex: string): [number, number, number] => {
     const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-    return result
-      ? [
-          parseInt(result[1], 16),
-          parseInt(result[2], 16),
-          parseInt(result[3], 16)
-        ]
-      : [249, 115, 22]; // Fallback para laranja
+    return result ? [parseInt(result[1], 16), parseInt(result[2], 16), parseInt(result[3], 16)] : [249, 115, 22];
   };
 
   // Gerar PDF do relatório
@@ -254,21 +235,18 @@ export default function ShiftCalendar() {
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
     const margin = 15;
-    const contentWidth = pageWidth - (margin * 2);
+    const contentWidth = pageWidth - margin * 2;
     let yPos = 15;
 
-    // Cores do tema
-    const primaryColor = [138, 43, 226]; // Roxo
-    const secondaryColor = [59, 130, 246]; // Azul
-    const successColor = [34, 197, 94]; // Verde
-    const warningColor = [245, 158, 11]; // Amarelo
-    // const dangerColor = [239, 68, 68]; // Vermelho
+    const primaryColor = [138, 43, 226];
+    const secondaryColor = [59, 130, 246];
+    const successColor = [34, 197, 94];
+    const warningColor = [245, 158, 11];
     const textColor = [30, 30, 30];
     const textSecondary = [100, 100, 100];
     const borderColor = [220, 220, 230];
     const bgLight = [250, 250, 255];
 
-    // Função para nova página
     const addPageIfNeeded = (space: number) => {
       if (yPos + space > pageHeight - 20) {
         doc.addPage();
@@ -277,95 +255,68 @@ export default function ShiftCalendar() {
       }
     };
 
-    // Função para desenhar cabeçalho
     const drawHeader = () => {
-      // Barra superior
       doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
       doc.rect(0, 0, pageWidth, 30, 'F');
-
-      // Título
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(20);
       doc.setFont('helvetica', 'bold');
       doc.text('TIDESK', margin, 18);
-
       doc.setFontSize(10);
       doc.setFont('helvetica', 'normal');
       doc.text('Relatório de Plantões', margin + 45, 18);
-
-      // Data
       const now = new Date();
-      const dateStr = now.toLocaleString('pt-BR', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      });
+      const dateStr = now.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
       doc.setFontSize(8);
       doc.text(`Gerado em: ${dateStr}`, pageWidth - margin, 18, { align: 'right' });
-
       doc.setTextColor(textColor[0], textColor[1], textColor[2]);
       yPos = 40;
     };
 
-    // Desenhar cabeçalho inicial
     drawHeader();
 
-    // Período
     doc.setFontSize(9);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(textSecondary[0], textSecondary[1], textSecondary[2]);
     doc.text(`Período: ${reportData.monthName}`, margin, yPos);
     yPos += 8;
 
-    // Legenda de cores (se houver usuários)
     if (reportData.users.length > 0 && allUsers.length > 0) {
-      const legendUsers = reportData.users.slice(0, 8); // Limitar a 8 usuários na legenda
+      const legendUsers = reportData.users.slice(0, 8);
       if (legendUsers.length > 0) {
         doc.setFontSize(7);
         doc.setTextColor(textSecondary[0], textSecondary[1], textSecondary[2]);
         doc.text('Legenda de Cores:', margin, yPos);
         yPos += 5;
-        
+
         const legendItemWidth = contentWidth / Math.min(legendUsers.length, 4);
         let legendX = margin;
-        let legendRow = 0;
-        
+
         legendUsers.forEach((user, idx) => {
           if (idx > 0 && idx % 4 === 0) {
-            legendRow++;
             legendX = margin;
             yPos += 5;
           }
-          
           const userId = getUserIdByEmail(user.email);
           const userColor = userId !== null ? hexToRgb(getUserColor(userId)) : [249, 115, 22];
-          
-          // Círculo colorido
           doc.setFillColor(userColor[0], userColor[1], userColor[2]);
           doc.circle(legendX + 2, yPos + 1.5, 1.5, 'F');
-          
-          // Nome do usuário (truncado se muito longo)
           doc.setFontSize(6);
           doc.setTextColor(textColor[0], textColor[1], textColor[2]);
           const userName = user.name.length > 15 ? user.name.substring(0, 12) + '...' : user.name;
           doc.text(userName, legendX + 5, yPos + 2);
-          
           legendX += legendItemWidth;
         });
-        
+
         yPos += 8;
       }
     }
 
-    // Linha divisória
     doc.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
     doc.setLineWidth(0.5);
     doc.line(margin, yPos, pageWidth - margin, yPos);
     yPos += 10;
 
-    // Métricas principais
     if (reportData.users.length > 0) {
       addPageIfNeeded(50);
 
@@ -378,36 +329,27 @@ export default function ShiftCalendar() {
       const boxWidth = (contentWidth - 9) / 4;
       const boxHeight = 28;
       const totalHours = reportData.users.reduce((sum, user) => sum + user.totalHours, 0);
-      // const totalShifts = reportData.users.reduce((sum, user) => sum + user.shiftsCount, 0);
       const avgHours = reportData.users.length > 0 ? totalHours / reportData.users.length : 0;
 
       const metrics = [
         { label: 'Total Plantões', value: reportData.totalShifts.toString(), color: primaryColor },
         { label: 'Usuários', value: reportData.users.length.toString(), color: secondaryColor },
         { label: 'Total Horas', value: totalHours.toFixed(1) + 'h', color: successColor },
-        { label: 'Média/Usuário', value: avgHours.toFixed(1) + 'h', color: warningColor }
+        { label: 'Média/Usuário', value: avgHours.toFixed(1) + 'h', color: warningColor },
       ];
 
       metrics.forEach((metric, index) => {
-        const x = margin + (index * (boxWidth + 3));
-
-        // Box
+        const x = margin + index * (boxWidth + 3);
         doc.setFillColor(255, 255, 255);
         doc.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
         doc.setLineWidth(0.5);
         doc.roundedRect(x, yPos, boxWidth, boxHeight, 2, 2, 'FD');
-
-        // Barra superior colorida
         doc.setFillColor(metric.color[0], metric.color[1], metric.color[2]);
         doc.roundedRect(x, yPos, boxWidth, 3, 2, 2, 'F');
-
-        // Label
         doc.setFontSize(8);
         doc.setFont('helvetica', 'normal');
         doc.setTextColor(textSecondary[0], textSecondary[1], textSecondary[2]);
         doc.text(metric.label, x + 4, yPos + 10);
-
-        // Valor
         doc.setFontSize(14);
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(textColor[0], textColor[1], textColor[2]);
@@ -417,7 +359,6 @@ export default function ShiftCalendar() {
       yPos += boxHeight + 15;
     }
 
-    // Tabela de Usuários e Horas
     if (reportData.users.length > 0) {
       addPageIfNeeded(40);
 
@@ -427,7 +368,6 @@ export default function ShiftCalendar() {
       doc.text('Resumo por Usuário', margin, yPos);
       yPos += 10;
 
-      // Cabeçalho da tabela
       doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
       doc.roundedRect(margin, yPos, contentWidth, 8, 1, 1, 'F');
       doc.setFontSize(9);
@@ -438,7 +378,6 @@ export default function ShiftCalendar() {
       doc.text('Total Horas', margin + contentWidth - 4, yPos + 5.5, { align: 'right' });
       yPos += 10;
 
-      // Linhas da tabela
       doc.setFontSize(9);
       doc.setFont('helvetica', 'normal');
       const totalShifts = reportData.users.reduce((sum, user) => sum + user.shiftsCount, 0);
@@ -446,19 +385,14 @@ export default function ShiftCalendar() {
 
       reportData.users.forEach((user, index) => {
         addPageIfNeeded(10);
-
-        // Linha alternada
         if (index % 2 === 0) {
           doc.setFillColor(bgLight[0], bgLight[1], bgLight[2]);
           doc.rect(margin, yPos - 1, contentWidth, 8, 'F');
         }
-
-        // Indicador colorido baseado no usuário
         const userId = getUserIdByEmail(user.email);
         const userColor = userId !== null ? hexToRgb(getUserColor(userId)) : [249, 115, 22];
         doc.setFillColor(userColor[0], userColor[1], userColor[2]);
         doc.circle(margin + 4, yPos + 3, 2, 'F');
-
         doc.setTextColor(textColor[0], textColor[1], textColor[2]);
         doc.text(user.name, margin + 9, yPos + 5);
         doc.setFont('helvetica', 'bold');
@@ -468,7 +402,6 @@ export default function ShiftCalendar() {
         yPos += 9;
       });
 
-      // Rodapé da tabela
       yPos += 2;
       doc.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
       doc.setLineWidth(0.5);
@@ -484,16 +417,12 @@ export default function ShiftCalendar() {
       yPos += 12;
     }
 
-    // Detalhamento por Usuário
     if (reportData.users.length > 0) {
       reportData.users.forEach((user) => {
         addPageIfNeeded(50);
-
-        // Obter cor do usuário
         const userId = getUserIdByEmail(user.email);
         const userColor = userId !== null ? hexToRgb(getUserColor(userId)) : [249, 115, 22];
 
-        // Título da seção com cor do usuário
         doc.setFontSize(12);
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(userColor[0], userColor[1], userColor[2]);
@@ -508,67 +437,41 @@ export default function ShiftCalendar() {
         yPos += 6;
         doc.setFontSize(9);
         doc.setTextColor(textColor[0], textColor[1], textColor[2]);
-        doc.text(
-          `Total: ${user.totalHours.toFixed(2)}h em ${user.shiftsCount} plantão${user.shiftsCount !== 1 ? 'ões' : ''}`,
-          margin,
-          yPos
-        );
+        doc.text(`Total: ${user.totalHours.toFixed(2)}h em ${user.shiftsCount} ${user.shiftsCount === 1 ? 'plantão' : 'plantões'}`, margin, yPos);
 
         yPos += 8;
-        // Linha divisória com cor do usuário
         doc.setDrawColor(userColor[0], userColor[1], userColor[2]);
         doc.setLineWidth(0.5);
         doc.line(margin, yPos, pageWidth - margin, yPos);
         yPos += 6;
 
-        // Lista de plantões
         user.shifts.forEach((shift) => {
           addPageIfNeeded(25);
-
           const startDate = new Date(shift.start_time);
           const endDate = new Date(shift.end_time);
 
-          // Box do plantão
           doc.setFillColor(255, 255, 255);
           doc.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
           doc.setLineWidth(0.3);
           doc.roundedRect(margin, yPos - 3, contentWidth, 20, 2, 2, 'FD');
-
-          // Barra lateral colorida com cor do usuário
           doc.setFillColor(userColor[0], userColor[1], userColor[2]);
           doc.rect(margin, yPos - 3, 3, 20, 'F');
 
-          // Título do plantão
           doc.setFontSize(9);
           doc.setFont('helvetica', 'bold');
           doc.setTextColor(textColor[0], textColor[1], textColor[2]);
           const title = shift.title || 'Plantão';
           doc.text(title, margin + 6, yPos + 3);
 
-          // Datas
           doc.setFontSize(7);
           doc.setFont('helvetica', 'normal');
           doc.setTextColor(textSecondary[0], textSecondary[1], textSecondary[2]);
-          doc.text(
-            `Início: ${startDate.toLocaleDateString('pt-BR')} ${startDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`,
-            margin + 6,
-            yPos + 8
-          );
-          doc.text(
-            `Término: ${endDate.toLocaleDateString('pt-BR')} ${endDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`,
-            margin + 6,
-            yPos + 12
-          );
+          doc.text(`Início: ${startDate.toLocaleDateString('pt-BR')} ${startDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`, margin + 6, yPos + 8);
+          doc.text(`Término: ${endDate.toLocaleDateString('pt-BR')} ${endDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`, margin + 6, yPos + 12);
 
-          // Duração com cor do usuário
           doc.setFont('helvetica', 'bold');
           doc.setTextColor(userColor[0], userColor[1], userColor[2]);
-          doc.text(
-            `Duração: ${shift.hours.toFixed(2)}h`,
-            margin + contentWidth - 4,
-            yPos + 10,
-            { align: 'right' }
-          );
+          doc.text(`Duração: ${shift.hours.toFixed(2)}h`, margin + contentWidth - 4, yPos + 10, { align: 'right' });
 
           yPos += 22;
         });
@@ -577,7 +480,6 @@ export default function ShiftCalendar() {
       });
     }
 
-    // Salvar PDF
     const fileName = `relatorio-plantoes-${reportData.year}-${String(reportData.month).padStart(2, '0')}.pdf`;
     doc.save(fileName);
   };
@@ -585,38 +487,28 @@ export default function ShiftCalendar() {
   // Navegação do calendário
   const goToPrevious = () => {
     const newDate = new Date(currentDate);
-    if (viewMode === 'month') {
-      newDate.setMonth(newDate.getMonth() - 1);
-    } else if (viewMode === 'week') {
-      newDate.setDate(newDate.getDate() - 7);
-    } else {
-      newDate.setDate(newDate.getDate() - 1);
-    }
+    if (viewMode === 'month') newDate.setMonth(newDate.getMonth() - 1);
+    else if (viewMode === 'week') newDate.setDate(newDate.getDate() - 7);
+    else newDate.setDate(newDate.getDate() - 1);
     setCurrentDate(newDate);
   };
 
   const goToNext = () => {
     const newDate = new Date(currentDate);
-    if (viewMode === 'month') {
-      newDate.setMonth(newDate.getMonth() + 1);
-    } else if (viewMode === 'week') {
-      newDate.setDate(newDate.getDate() + 7);
-    } else {
-      newDate.setDate(newDate.getDate() + 1);
-    }
+    if (viewMode === 'month') newDate.setMonth(newDate.getMonth() + 1);
+    else if (viewMode === 'week') newDate.setDate(newDate.getDate() + 7);
+    else newDate.setDate(newDate.getDate() + 1);
     setCurrentDate(newDate);
   };
 
-  const goToToday = () => {
-    setCurrentDate(new Date());
-  };
+  const goToToday = () => setCurrentDate(new Date());
 
   // Abrir modal para criar plantão
   const openCreateModal = (date?: Date) => {
     const targetDate = date || new Date();
     const dateStr = targetDate.toISOString().split('T')[0];
     const timeStr = targetDate.toTimeString().slice(0, 5);
-    
+
     setSelectedShift(null);
     setSelectedDate(targetDate);
     setShiftTitle('');
@@ -633,10 +525,10 @@ export default function ShiftCalendar() {
   const openEditModal = (shift: Shift) => {
     setSelectedShift(shift);
     setSelectedDate(null);
-    
+
     const start = new Date(shift.start_time);
     const end = new Date(shift.end_time);
-    
+
     setShiftTitle(shift.title || '');
     setShiftStartDate(start.toISOString().split('T')[0]);
     setShiftStartTime(start.toTimeString().slice(0, 5));
@@ -651,91 +543,75 @@ export default function ShiftCalendar() {
   const saveShift = async () => {
     try {
       if (selectedUserIds.length === 0) {
-        alert('Selecione pelo menos um usuário para o plantão');
+        toast.error('Selecione pelo menos um usuário para o plantão');
         return;
       }
 
       const startDateTime = `${shiftStartDate}T${shiftStartTime}:00`;
       const endDateTime = `${shiftEndDate}T${shiftEndTime}:00`;
-      
+
       const shiftData = {
         title: shiftTitle || null,
         start_time: startDateTime,
         end_time: endDateTime,
         user_ids: selectedUserIds,
-        project_id: shiftProjectId || undefined
+        project_id: shiftProjectId || undefined,
       };
-      
+
       if (selectedShift) {
         await axios.put(`/api/shifts/${selectedShift.id}`, shiftData);
       } else {
         await axios.post('/api/shifts', shiftData);
       }
-      
+
       setShowShiftModal(false);
       fetchData();
     } catch (error: any) {
       console.error('Erro ao salvar plantão:', error);
-      alert(error.response?.data?.error || 'Erro ao salvar plantão');
+      toast.error(error.response?.data?.error || 'Erro ao salvar plantão');
     }
   };
 
   // Deletar plantão
   const deleteShift = async (shiftId: number) => {
-    if (!confirm('Tem certeza que deseja excluir este plantão?')) return;
-    
+    const ok = await confirm({
+      title: 'Excluir plantão',
+      description: 'Tem certeza que deseja excluir este plantão?',
+      confirmLabel: 'Excluir',
+      variant: 'destructive',
+    });
+    if (!ok) return;
+
     try {
       await axios.delete(`/api/shifts/${shiftId}`);
-      
-      // Fechar modal se estiver aberto
-      if (showShiftModal) {
-        setShowShiftModal(false);
-        setSelectedShift(null);
-      }
-      
-      // Atualizar dados do servidor baseado no modo atual
-      if (tabMode === 'calendar') {
-        // Recarregar dados do calendário
-        await fetchData();
-      } else {
-        // Se estiver no modo relatório, recarregar os dados do relatório
-        await fetchReportData();
-      }
+      setShowShiftModal(false);
+      setSelectedShift(null);
+      if (tabMode === 'calendar') await fetchData();
+      else await fetchReportData();
     } catch (error: any) {
       console.error('Erro ao deletar plantão:', error);
-      alert(error.response?.data?.error || 'Erro ao deletar plantão');
-      // Em caso de erro, recarregar os dados para garantir consistência
-      if (tabMode === 'calendar') {
-        await fetchData();
-      } else {
-        await fetchReportData();
-      }
+      toast.error(error.response?.data?.error || 'Erro ao deletar plantão');
+      if (tabMode === 'calendar') await fetchData();
+      else await fetchReportData();
     }
   };
 
   // Obter plantões para um dia específico
   const getShiftsForDay = (date: Date) => {
-    // Normalizar a data para início do dia (00:00:00)
     const startOfDay = new Date(date);
     startOfDay.setHours(0, 0, 0, 0);
-    
-    // Fim do dia (23:59:59)
     const endOfDay = new Date(date);
     endOfDay.setHours(23, 59, 59, 999);
-    
-    return shifts.filter(shift => {
+
+    return shifts.filter((shift) => {
       if (!shift.start_time) return false;
-      
       const shiftStart = new Date(shift.start_time);
       const shiftEnd = shift.end_time ? new Date(shift.end_time) : shiftStart;
-      
-      // Incluir plantões que:
-      // 1. Começam no dia (entre início e fim do dia)
-      // 2. Terminam no dia (entre início e fim do dia)
-      // 3. Passam pelo dia (começam antes e terminam depois)
-      return (shiftStart >= startOfDay && shiftStart <= endOfDay) ||
-             (shiftEnd >= startOfDay && shiftEnd <= endOfDay) ||
-             (shiftStart <= startOfDay && shiftEnd >= endOfDay);
+      return (
+        (shiftStart >= startOfDay && shiftStart <= endOfDay) ||
+        (shiftEnd >= startOfDay && shiftEnd <= endOfDay) ||
+        (shiftStart <= startOfDay && shiftEnd >= endOfDay)
+      );
     });
   };
 
@@ -747,62 +623,26 @@ export default function ShiftCalendar() {
     const lastDay = new Date(year, month + 1, 0);
     const daysInMonth = lastDay.getDate();
     const startingDayOfWeek = firstDay.getDay();
-    
-    const days = [];
-    const weekDays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-    
-    // Dias do mês anterior (para preencher primeira semana)
-    // Corrigido: calcular corretamente o último dia do mês anterior
-    const prevMonthLastDay = new Date(year, month, 0); // Último dia do mês anterior
+
+    const days: { date: Date; isCurrentMonth: boolean }[] = [];
+    const prevMonthLastDay = new Date(year, month, 0);
     const prevMonthDaysCount = prevMonthLastDay.getDate();
-    
-    // Preencher dias do mês anterior começando do último dia
+
     for (let i = startingDayOfWeek - 1; i >= 0; i--) {
-      const dayNumber = prevMonthDaysCount - i;
-      days.push({
-        date: new Date(year, month - 1, dayNumber),
-        isCurrentMonth: false
-      });
+      days.push({ date: new Date(year, month - 1, prevMonthDaysCount - i), isCurrentMonth: false });
     }
-    
-    // Dias do mês atual
     for (let day = 1; day <= daysInMonth; day++) {
-      days.push({
-        date: new Date(year, month, day),
-        isCurrentMonth: true
-      });
+      days.push({ date: new Date(year, month, day), isCurrentMonth: true });
     }
-    
-    // Dias do próximo mês (para completar última semana)
     const remainingDays = 42 - days.length;
     for (let day = 1; day <= remainingDays; day++) {
-      days.push({
-        date: new Date(year, month + 1, day),
-        isCurrentMonth: false
-      });
+      days.push({ date: new Date(year, month + 1, day), isCurrentMonth: false });
     }
-    
+
     return (
-      <div style={{ 
-        display: 'grid', 
-        gridTemplateColumns: 'repeat(7, 1fr)', 
-        gap: '2px', 
-        backgroundColor: 'var(--border-primary)',
-        borderRadius: 'var(--radius-md)',
-        overflow: 'hidden',
-        border: '1px solid var(--border-primary)'
-      }}>
-        {weekDays.map(day => (
-          <div key={day} style={{
-            padding: 'var(--spacing-md)',
-            backgroundColor: 'var(--bg-secondary)',
-            fontWeight: '600',
-            fontSize: '0.875rem',
-            textAlign: 'center',
-            color: 'var(--text-secondary)',
-            textTransform: 'uppercase',
-            letterSpacing: '0.05em'
-          }}>
+      <div className="grid grid-cols-7 gap-px overflow-hidden rounded-lg border border-border bg-border">
+        {WEEK_DAYS.map((day) => (
+          <div key={day} className="bg-muted px-2 py-2.5 text-center text-xs font-semibold tracking-wide text-muted-foreground uppercase">
             {day}
           </div>
         ))}
@@ -811,154 +651,58 @@ export default function ShiftCalendar() {
           const isToday = day.date.toDateString() === new Date().toDateString();
           const holidayName = getHolidayName(day.date);
           const isWeekend = day.date.getDay() === 0 || day.date.getDay() === 6;
-          
+
           return (
             <div
               key={index}
               onClick={() => canCreate && openCreateModal(day.date)}
-              style={{
-                cursor: canCreate ? 'pointer' : 'default',
-                minHeight: '140px',
-                padding: 'var(--spacing-sm)',
-                backgroundColor: day.isCurrentMonth ? 'var(--bg-primary)' : 'var(--bg-tertiary)',
-                border: isToday ? '2px solid var(--purple)' : '1px solid transparent',
-                borderRadius: isToday ? 'var(--radius-sm)' : '0',
-                position: 'relative',
-                opacity: day.isCurrentMonth ? 1 : 0.35,
-                transition: 'all var(--transition-base)',
-                display: 'flex',
-                flexDirection: 'column'
-              }}
-              onMouseEnter={(e) => {
-                if (canCreate && day.isCurrentMonth) {
-                  e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
-                  e.currentTarget.style.transform = 'scale(1.02)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (day.isCurrentMonth) {
-                  e.currentTarget.style.backgroundColor = 'var(--bg-primary)';
-                  e.currentTarget.style.transform = 'scale(1)';
-                }
-              }}
+              className={cn(
+                'flex min-h-[140px] flex-col gap-1 bg-background p-1.5 transition-colors',
+                canCreate && 'cursor-pointer hover:bg-muted/60',
+                !day.isCurrentMonth && 'bg-muted/40 opacity-40',
+                isToday && 'ring-2 ring-inset ring-[var(--purple)]'
+              )}
             >
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                marginBottom: 'var(--spacing-xs)'
-              }}>
-                <div style={{
-                  fontWeight: isToday ? '700' : '600',
-                  fontSize: isToday ? '1rem' : '0.875rem',
-                  color: isToday 
-                    ? 'var(--purple)' 
-                    : isWeekend && day.isCurrentMonth
-                    ? 'var(--text-secondary)'
-                    : 'var(--text-primary)',
-                  backgroundColor: isToday ? 'var(--purple-light)' : 'transparent',
-                  borderRadius: 'var(--radius-full)',
-                  width: isToday ? '28px' : '24px',
-                  height: isToday ? '28px' : '24px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}>
+              <div className="flex items-center justify-between">
+                <div
+                  className={cn(
+                    'flex h-6 w-6 items-center justify-center rounded-full text-[0.8125rem] font-semibold text-foreground',
+                    isToday && 'h-7 w-7 bg-[var(--purple-light)] text-base font-bold text-[var(--purple)]',
+                    !isToday && isWeekend && day.isCurrentMonth && 'text-muted-foreground'
+                  )}
+                >
                   {day.date.getDate()}
                 </div>
                 {dayShifts.length > 0 && (
-                  <div style={{
-                    fontSize: '0.7rem',
-                    color: 'var(--text-tertiary)',
-                    backgroundColor: 'var(--bg-secondary)',
-                    borderRadius: 'var(--radius-full)',
-                    padding: '2px 6px',
-                    fontWeight: '600'
-                  }}>
-                    {dayShifts.length}
-                  </div>
+                  <span className="rounded-full bg-muted px-1.5 py-0.5 text-[0.7rem] font-semibold text-muted-foreground">{dayShifts.length}</span>
                 )}
               </div>
               {holidayName && day.isCurrentMonth && (
-                <div style={{
-                  fontSize: '0.65rem',
-                  color: 'var(--purple)',
-                  fontStyle: 'italic',
-                  marginBottom: '4px',
-                  lineHeight: '1.2',
-                  fontWeight: '500'
-                }}>
-                  {holidayName}
-                </div>
+                <div className="text-[0.65rem] leading-tight font-medium text-[var(--purple)] italic">{holidayName}</div>
               )}
-              <div style={{ 
-                display: 'flex', 
-                flexDirection: 'column', 
-                gap: '3px',
-                flex: 1,
-                overflow: 'hidden'
-              }}>
-                {dayShifts.slice(0, 3).map(shift => {
+              <div className="flex flex-1 flex-col gap-[3px] overflow-hidden">
+                {dayShifts.slice(0, 3).map((shift) => {
                   const shiftColor = getShiftColor(shift);
                   return (
                     <div
                       key={shift.id}
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (canEdit) {
-                          openEditModal(shift);
-                        }
+                        if (canEdit) openEditModal(shift);
                       }}
-                      style={{
-                        fontSize: '0.7rem',
-                        padding: '4px 6px',
-                        borderRadius: 'var(--radius-sm)',
-                        backgroundColor: shiftColor,
-                        color: 'white',
-                        cursor: 'pointer',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                        fontWeight: '500',
-                        transition: 'all var(--transition-base)',
-                        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.3)',
-                        position: 'relative'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.transform = 'translateX(2px)';
-                        e.currentTarget.style.boxShadow = '0 2px 6px rgba(0, 0, 0, 0.4)';
-                        e.currentTarget.style.opacity = '0.9';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.transform = 'translateX(0)';
-                        e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.3)';
-                        e.currentTarget.style.opacity = '1';
-                      }}
+                      className="flex items-center gap-1 truncate rounded px-1.5 py-0.5 text-[0.7rem] font-medium text-white shadow-sm transition-transform hover:translate-x-0.5"
+                      style={{ backgroundColor: shiftColor }}
                       title={shift.title || `Plantão - ${shift.user_names.join(', ')}`}
                     >
-                      {shift.user_ids && shift.user_ids.length > 1 && (
-                        <span style={{
-                          fontSize: '0.6rem',
-                          marginRight: '4px',
-                          opacity: 0.9
-                        }}>
-                          👥
-                        </span>
-                      )}
-                      {shift.title || `Plantão: ${shift.user_names.slice(0, 2).join(', ')}${shift.user_names.length > 2 ? '...' : ''}`}
+                      {shift.user_ids && shift.user_ids.length > 1 && <span className="shrink-0 opacity-90">👥</span>}
+                      <span className="truncate">
+                        {shift.title || `Plantão: ${shift.user_names.slice(0, 2).join(', ')}${shift.user_names.length > 2 ? '...' : ''}`}
+                      </span>
                     </div>
                   );
                 })}
                 {dayShifts.length > 3 && (
-                  <div style={{
-                    fontSize: '0.7rem',
-                    color: 'var(--text-secondary)',
-                    padding: '4px 6px',
-                    fontStyle: 'italic',
-                    textAlign: 'center'
-                  }}>
-                    +{dayShifts.length - 3} mais
-                  </div>
+                  <div className="text-center text-[0.7rem] text-muted-foreground italic">+{dayShifts.length - 3} mais</div>
                 )}
               </div>
             </div>
@@ -991,110 +735,59 @@ export default function ShiftCalendar() {
     const diff = currentDate.getDate() - day;
     const start = new Date(currentDate);
     start.setDate(diff);
-    
-    const weekDays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-    const days = [];
-    
+
+    const days: Date[] = [];
     for (let i = 0; i < 7; i++) {
       const date = new Date(start);
       date.setDate(start.getDate() + i);
       days.push(date);
     }
-    
+
     return (
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '1px', backgroundColor: 'var(--border-primary)', minHeight: '600px' }}>
+      <div className="grid min-h-[600px] grid-cols-7 gap-px bg-border">
         {days.map((date, index) => {
           const dayShifts = getShiftsForDay(date);
           const isToday = date.toDateString() === new Date().toDateString();
-          const dayName = weekDays[index];
-          const dayNumber = date.getDate();
           const isWeekend = index === 0 || index === 6;
-          
+
           return (
-            <div
-              key={index}
-              style={{
-                backgroundColor: 'var(--bg-primary)',
-                padding: 'var(--spacing-sm)',
-                border: isToday ? '2px solid var(--purple)' : 'none',
-                minHeight: '100%'
-              }}
-            >
+            <div key={index} className={cn('min-h-full bg-background p-1.5', isToday && 'ring-2 ring-inset ring-[var(--purple)]')}>
               <div
                 onClick={() => canCreate && openCreateModal(date)}
-                style={{
-                  cursor: canCreate ? 'pointer' : 'default',
-                  padding: 'var(--spacing-xs)',
-                  marginBottom: 'var(--spacing-sm)',
-                  borderRadius: 'var(--radius-sm)',
-                  backgroundColor: isToday ? 'var(--purple-light)' : 'transparent'
-                }}
+                className={cn('mb-2 rounded-md p-1.5', canCreate && 'cursor-pointer', isToday && 'bg-[var(--purple-light)]')}
               >
-                <div style={{
-                  fontSize: '0.75rem',
-                  color: isWeekend ? 'var(--text-secondary)' : 'var(--text-primary)',
-                  fontWeight: '500',
-                  marginBottom: '2px'
-                }}>
-                  {dayName}
-                </div>
-                <div style={{
-                  fontSize: '1.25rem',
-                  fontWeight: isToday ? '700' : '600',
-                  color: isToday ? 'var(--purple)' : 'var(--text-primary)'
-                }}>
-                  {dayNumber}
-                </div>
+                <div className={cn('text-xs font-medium', isWeekend ? 'text-muted-foreground' : 'text-foreground')}>{WEEK_DAYS[index]}</div>
+                <div className={cn('text-xl font-semibold text-foreground', isToday && 'font-bold text-[var(--purple)]')}>{date.getDate()}</div>
               </div>
-              
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                {dayShifts.map(shift => {
+
+              <div className="flex flex-col gap-1">
+                {dayShifts.map((shift) => {
                   const shiftColor = getShiftColor(shift);
                   return (
                     <div
                       key={shift.id}
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (canEdit) {
-                          openEditModal(shift);
-                        }
+                        if (canEdit) openEditModal(shift);
                       }}
-                      style={{
-                        fontSize: '0.75rem',
-                        padding: '6px 8px',
-                        borderRadius: 'var(--radius-sm)',
-                        backgroundColor: shiftColor,
-                        color: 'white',
-                        cursor: 'pointer',
-                        transition: 'all var(--transition-base)',
-                        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.3)'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.opacity = '0.9';
-                        e.currentTarget.style.transform = 'scale(1.02)';
-                        e.currentTarget.style.boxShadow = '0 2px 6px rgba(0, 0, 0, 0.4)';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.opacity = '1';
-                        e.currentTarget.style.transform = 'scale(1)';
-                        e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.3)';
-                      }}
+                      className="cursor-pointer rounded-md px-2 py-1.5 text-white shadow-sm transition-[opacity,transform] hover:scale-[1.02] hover:opacity-90"
+                      style={{ backgroundColor: shiftColor }}
                       title={shift.title || `Plantão - ${shift.user_names.join(', ')}`}
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px' }}>
-                        {shift.user_ids && shift.user_ids.length > 1 && (
-                          <span style={{ fontSize: '0.7rem', opacity: 0.9 }}>👥</span>
-                        )}
-                        <span style={{ fontWeight: '600' }}>{shift.title || 'Plantão'}</span>
+                      <div className="mb-0.5 flex items-center gap-1">
+                        {shift.user_ids && shift.user_ids.length > 1 && <span className="text-xs opacity-90">👥</span>}
+                        <span className="text-xs font-semibold">{shift.title || 'Plantão'}</span>
                       </div>
                       {shift.start_time && (
-                        <div style={{ fontSize: '0.7rem', opacity: 0.9 }}>
-                          {new Date(shift.start_time).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} - {new Date(shift.end_time).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                        <div className="text-[0.7rem] opacity-90">
+                          {new Date(shift.start_time).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} -{' '}
+                          {new Date(shift.end_time).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                         </div>
                       )}
                       {shift.user_names && shift.user_names.length > 0 && (
-                        <div style={{ fontSize: '0.7rem', opacity: 0.9, marginTop: '2px' }}>
-                          {shift.user_names.slice(0, 2).join(', ')}{shift.user_names.length > 2 ? ` +${shift.user_names.length - 2}` : ''}
+                        <div className="mt-0.5 text-[0.7rem] opacity-90">
+                          {shift.user_names.slice(0, 2).join(', ')}
+                          {shift.user_names.length > 2 ? ` +${shift.user_names.length - 2}` : ''}
                         </div>
                       )}
                     </div>
@@ -1103,15 +796,7 @@ export default function ShiftCalendar() {
                 {dayShifts.length === 0 && canCreate && (
                   <div
                     onClick={() => openCreateModal(date)}
-                    style={{
-                      fontSize: '0.75rem',
-                      color: 'var(--text-tertiary)',
-                      padding: 'var(--spacing-xs)',
-                      textAlign: 'center',
-                      cursor: 'pointer',
-                      borderRadius: 'var(--radius-sm)',
-                      border: '1px dashed var(--border-primary)'
-                    }}
+                    className="cursor-pointer rounded-md border border-dashed border-border p-1.5 text-center text-xs text-muted-foreground"
                   >
                     Clique para adicionar
                   </div>
@@ -1129,127 +814,58 @@ export default function ShiftCalendar() {
     const dayShifts = getShiftsForDay(currentDate);
     const isToday = currentDate.toDateString() === new Date().toDateString();
     const holidayName = getHolidayName(currentDate);
-    
-    // Ordenar plantões por hora
-    const sortedShifts = [...dayShifts].sort((a, b) => {
-      const timeA = new Date(a.start_time).getTime();
-      const timeB = new Date(b.start_time).getTime();
-      return timeA - timeB;
-    });
-    
+
+    const sortedShifts = [...dayShifts].sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
+
     return (
-      <div style={{ padding: 'var(--spacing-lg)' }}>
-        <div style={{
-          marginBottom: 'var(--spacing-lg)',
-          padding: 'var(--spacing-md)',
-          backgroundColor: isToday ? 'var(--purple-light)' : 'var(--bg-secondary)',
-          borderRadius: 'var(--radius-md)',
-          border: isToday ? '2px solid var(--purple)' : '1px solid var(--border-primary)'
-        }}>
-          <div style={{
-            fontSize: '1.5rem',
-            fontWeight: '700',
-            color: 'var(--text-primary)',
-            marginBottom: 'var(--spacing-xs)'
-          }}>
+      <div>
+        <Card className={cn('mb-6 gap-1 px-4 py-3.5', isToday && 'bg-[var(--purple-light)] ring-1 ring-[var(--purple)]')}>
+          <div className="text-xl font-bold text-foreground capitalize">
             {currentDate.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
           </div>
-          <div style={{
-            fontSize: '0.875rem',
-            color: 'var(--text-secondary)'
-          }}>
+          <div className="text-sm text-muted-foreground">
             {sortedShifts.length} {sortedShifts.length === 1 ? 'plantão' : 'plantões'} agendado{sortedShifts.length !== 1 ? 's' : ''}
           </div>
-          {holidayName && (
-            <div style={{
-              fontSize: '0.75rem',
-              color: 'var(--text-tertiary)',
-              fontStyle: 'italic',
-              marginTop: 'var(--spacing-xs)',
-              opacity: 0.8
-            }}>
-              🎉 {holidayName}
-            </div>
-          )}
-        </div>
-        
+          {holidayName && <div className="mt-0.5 text-xs text-muted-foreground italic opacity-80">🎉 {holidayName}</div>}
+        </Card>
+
         {sortedShifts.length === 0 ? (
-          <div style={{
-            textAlign: 'center',
-            padding: 'var(--spacing-2xl)',
-            color: 'var(--text-secondary)'
-          }}>
-            <Calendar size={48} style={{ marginBottom: 'var(--spacing-md)', opacity: 0.5 }} />
-            <p style={{ marginBottom: 'var(--spacing-md)' }}>
-              Nenhum plantão agendado para este dia
-            </p>
+          <div className="py-16 text-center text-muted-foreground">
+            <Calendar size={48} strokeWidth={1.5} className="mx-auto mb-4 opacity-50" />
+            <p className="mb-4">Nenhum plantão agendado para este dia</p>
             {canCreate && (
-              <button
-                onClick={() => openCreateModal(currentDate)}
-                className="btn btn-primary"
-              >
-                <Plus size={18} />
-                Criar Plantão
-              </button>
+              <Button onClick={() => openCreateModal(currentDate)}>
+                <Plus size={18} /> Criar Plantão
+              </Button>
             )}
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
-            {sortedShifts.map(shift => {
+          <div className="flex flex-col gap-3">
+            {sortedShifts.map((shift) => {
               const startTime = new Date(shift.start_time);
               const endTime = new Date(shift.end_time);
               const shiftColor = getShiftColor(shift);
-              
+
               return (
-                <div
+                <Card
                   key={shift.id}
                   onClick={() => canEdit && openEditModal(shift)}
-                  className="card"
-                  style={{
-                    padding: 'var(--spacing-md)',
-                    cursor: canEdit ? 'pointer' : 'default',
-                    borderLeft: `4px solid ${shiftColor}`,
-                    transition: 'all var(--transition-base)'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = 'translateX(4px)';
-                    e.currentTarget.style.boxShadow = 'var(--shadow-md)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = 'translateX(0)';
-                    e.currentTarget.style.boxShadow = 'var(--shadow)';
-                  }}
+                  className={cn('gap-0 border-l-4 px-4 py-3.5 transition-transform', canEdit && 'cursor-pointer hover:translate-x-1')}
+                  style={{ borderLeftColor: shiftColor }}
                 >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 'var(--spacing-md)' }}>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)', marginBottom: 'var(--spacing-xs)', flexWrap: 'wrap' }}>
-                        <h3 style={{
-                          fontSize: '1.125rem',
-                          fontWeight: '600',
-                          color: 'var(--text-primary)',
-                          margin: 0
-                        }}>
-                          {shift.title || 'Plantão'}
-                        </h3>
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0 flex-1">
+                      <div className="mb-1 flex flex-wrap items-center gap-2">
+                        <h3 className="text-[1.0625rem] font-semibold text-foreground">{shift.title || 'Plantão'}</h3>
                         {shift.project_name && (
-                          <span style={{
-                            fontSize: '0.75rem',
-                            padding: '2px 6px',
-                            borderRadius: 'var(--radius-sm)',
-                            backgroundColor: 'var(--bg-secondary)',
-                            color: 'var(--text-secondary)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '4px'
-                          }}>
-                            <FolderKanban size={12} />
-                            {shift.project_name}
+                          <span className="flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
+                            <FolderKanban size={12} /> {shift.project_name}
                           </span>
                         )}
                       </div>
-                      
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-md)', flexWrap: 'wrap', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+
+                      <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
+                        <span className="flex items-center gap-1">
                           <Clock size={14} />
                           {startTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                           {startTime.toDateString() !== endTime.toDateString() && (
@@ -1259,44 +875,44 @@ export default function ShiftCalendar() {
                             <> - {endTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</>
                           )}
                         </span>
-                        
                         {shift.user_names && shift.user_names.length > 0 && (
-                          <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <Users size={14} />
-                            {shift.user_names.join(', ')}
+                          <span className="flex items-center gap-1">
+                            <Users size={14} /> {shift.user_names.join(', ')}
                           </span>
                         )}
                       </div>
                     </div>
-                    
+
                     {(canEdit || canDelete) && (
-                      <div style={{ display: 'flex', gap: 'var(--spacing-xs)' }}>
+                      <div className="flex shrink-0 gap-1.5">
                         {canEdit && (
-                          <button
+                          <Button
+                            variant="secondary"
+                            size="icon-sm"
                             onClick={(e) => {
                               e.stopPropagation();
                               openEditModal(shift);
                             }}
-                            className="btn btn-secondary btn-sm"
                           >
-                            <Edit size={16} />
-                          </button>
+                            <Edit size={15} />
+                          </Button>
                         )}
                         {canDelete && (
-                          <button
+                          <Button
+                            variant="destructive"
+                            size="icon-sm"
                             onClick={(e) => {
                               e.stopPropagation();
                               deleteShift(shift.id);
                             }}
-                            className="btn btn-danger btn-sm"
                           >
-                            <Trash2 size={16} />
-                          </button>
+                            <Trash2 size={15} />
+                          </Button>
                         )}
                       </div>
                     )}
                   </div>
-                </div>
+                </Card>
               );
             })}
           </div>
@@ -1307,278 +923,115 @@ export default function ShiftCalendar() {
 
   // Renderizar visualização de relatório
   const renderReportView = () => {
-    if (reportLoading) {
-      return (
-        <div style={{ textAlign: 'center', padding: 'var(--spacing-2xl)' }}>
-          <div style={{
-            width: '48px',
-            height: '48px',
-            border: '4px solid var(--border-primary)',
-            borderTopColor: 'var(--purple)',
-            borderRadius: '50%',
-            animation: 'spin 1s linear infinite',
-            margin: '0 auto'
-          }} />
-          <p style={{ marginTop: 'var(--spacing-md)', color: 'var(--text-secondary)' }}>
-            Carregando relatório...
-          </p>
-        </div>
-      );
-    }
+    if (reportLoading) return <SpinnerBlock text="Carregando relatório…" />;
 
     if (!reportData) {
       return (
-        <div className="card" style={{ textAlign: 'center', padding: 'var(--spacing-2xl)' }}>
-          <FileBarChart size={48} style={{ marginBottom: 'var(--spacing-md)', opacity: 0.5 }} />
-          <p style={{ color: 'var(--text-secondary)' }}>
-            Nenhum dado disponível para o período selecionado
-          </p>
-        </div>
+        <Card className="flex flex-col items-center gap-3 px-4 py-16 text-center text-muted-foreground">
+          <FileBarChart size={48} strokeWidth={1.5} className="opacity-50" />
+          <p>Nenhum dado disponível para o período selecionado</p>
+        </Card>
       );
     }
 
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-lg)' }}>
-        {/* Cabeçalho do Relatório */}
-        <div className="card" style={{ padding: 'var(--spacing-lg)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--spacing-md)' }}>
-            <div>
-              <h2 style={{ margin: 0, marginBottom: 'var(--spacing-xs)', fontSize: '1.5rem', fontWeight: '700' }}>
-                Relatório de Plantões - {reportData.monthName}
-              </h2>
-              <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-                Total de {reportData.totalShifts} plantão{reportData.totalShifts !== 1 ? 'ões' : ''} registrado{reportData.totalShifts !== 1 ? 's' : ''}
-              </p>
-            </div>
-            <div style={{ display: 'flex', gap: 'var(--spacing-sm)', alignItems: 'center' }}>
-              <button
-                onClick={generatePDF}
-                className="btn btn-primary"
-                style={{ 
-                  padding: 'var(--spacing-xs) var(--spacing-md)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 'var(--spacing-xs)'
-                }}
-                disabled={!reportData || reportData.users.length === 0}
-              >
-                <FileText size={18} />
-                Exportar PDF
-              </button>
-              <button
-                onClick={goToPrevious}
-                className="btn btn-secondary"
-                style={{ padding: 'var(--spacing-xs) var(--spacing-sm)' }}
-              >
-                <ChevronLeft size={20} />
-              </button>
-              <button
-                onClick={goToToday}
-                className="btn btn-secondary"
-                style={{ padding: 'var(--spacing-xs) var(--spacing-md)' }}
-              >
-                Hoje
-              </button>
-              <button
-                onClick={goToNext}
-                className="btn btn-secondary"
-                style={{ padding: 'var(--spacing-xs) var(--spacing-sm)' }}
-              >
-                <ChevronRight size={20} />
-              </button>
-            </div>
-          </div>
-        </div>
+    const totalShiftsSum = reportData.users.reduce((sum, user) => sum + user.shiftsCount, 0);
+    const totalHoursSum = reportData.users.reduce((sum, user) => sum + user.totalHours, 0);
 
-        {/* Tabela de Usuários e Horas */}
+    return (
+      <div className="flex flex-col gap-5">
+        <p className="text-sm text-muted-foreground">
+          Total de {reportData.totalShifts} {reportData.totalShifts === 1 ? 'plantão' : 'plantões'} registrado{reportData.totalShifts !== 1 ? 's' : ''} em{' '}
+          {reportData.monthName}.
+        </p>
+
         {reportData.users.length === 0 ? (
-          <div className="card" style={{ textAlign: 'center', padding: 'var(--spacing-2xl)' }}>
-            <Users size={48} style={{ marginBottom: 'var(--spacing-md)', opacity: 0.5 }} />
-            <p style={{ color: 'var(--text-secondary)' }}>
-              Nenhum usuário com plantões registrados neste mês
-            </p>
-          </div>
+          <Card className="flex flex-col items-center gap-3 px-4 py-16 text-center text-muted-foreground">
+            <Users size={48} strokeWidth={1.5} className="opacity-50" />
+            <p>Nenhum usuário com plantões registrados neste mês</p>
+          </Card>
         ) : (
-          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ backgroundColor: 'var(--bg-secondary)', borderBottom: '2px solid var(--border-primary)' }}>
-                    <th style={{ 
-                      padding: 'var(--spacing-md)', 
-                      textAlign: 'left', 
-                      fontWeight: '600',
-                      fontSize: '0.875rem',
-                      color: 'var(--text-primary)'
-                    }}>
-                      Usuário
-                    </th>
-                    <th style={{ 
-                      padding: 'var(--spacing-md)', 
-                      textAlign: 'center', 
-                      fontWeight: '600',
-                      fontSize: '0.875rem',
-                      color: 'var(--text-primary)'
-                    }}>
-                      Plantões
-                    </th>
-                    <th style={{ 
-                      padding: 'var(--spacing-md)', 
-                      textAlign: 'right', 
-                      fontWeight: '600',
-                      fontSize: '0.875rem',
-                      color: 'var(--text-primary)'
-                    }}>
-                      Total de Horas
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {reportData.users.map((user, index) => (
-                    <tr 
-                      key={index}
-                      style={{ 
-                        borderBottom: '1px solid var(--border-primary)',
-                        transition: 'background-color var(--transition-base)'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.backgroundColor = 'var(--bg-secondary)';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.backgroundColor = 'transparent';
-                      }}
-                    >
-                      <td style={{ padding: 'var(--spacing-md)' }}>
-                        <div>
-                          <div style={{ fontWeight: '600', color: 'var(--text-primary)', marginBottom: '2px' }}>
-                            {user.name}
-                          </div>
-                          <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-                            {user.email}
-                          </div>
-                        </div>
-                      </td>
-                      <td style={{ padding: 'var(--spacing-md)', textAlign: 'center' }}>
-                        <span style={{ 
-                          display: 'inline-block',
-                          padding: '4px 12px',
-                          borderRadius: 'var(--radius-sm)',
-                          backgroundColor: 'var(--purple-light)',
-                          color: 'var(--purple)',
-                          fontWeight: '600',
-                          fontSize: '0.875rem'
-                        }}>
+          <Card className="px-4 py-4">
+            <div className="-mx-4 -mb-4">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Usuário</TableHead>
+                    <TableHead className="text-center">Plantões</TableHead>
+                    <TableHead className="text-right">Total de horas</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {reportData.users.map((user, i) => (
+                    <TableRow key={i}>
+                      <TableCell className="whitespace-normal">
+                        <span className="block font-semibold text-foreground">{user.name}</span>
+                        <span className="block text-xs text-muted-foreground">{user.email}</span>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Badge variant="outline" className="border-0 bg-[var(--purple-light)] text-[var(--purple)] tabular-nums">
                           {user.shiftsCount}
-                        </span>
-                      </td>
-                      <td style={{ padding: 'var(--spacing-md)', textAlign: 'right' }}>
-                        <div style={{ 
-                          fontWeight: '700', 
-                          fontSize: '1.125rem',
-                          color: 'var(--text-primary)'
-                        }}>
-                          {user.totalHours.toFixed(2)}h
-                        </div>
-                      </td>
-                    </tr>
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right text-base font-bold text-foreground tabular-nums">{user.totalHours.toFixed(2)}h</TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-                <tfoot>
-                  <tr style={{ backgroundColor: 'var(--bg-secondary)', borderTop: '2px solid var(--border-primary)' }}>
-                    <td style={{ padding: 'var(--spacing-md)', fontWeight: '700', color: 'var(--text-primary)' }}>
-                      Total
-                    </td>
-                    <td style={{ padding: 'var(--spacing-md)', textAlign: 'center', fontWeight: '700', color: 'var(--text-primary)' }}>
-                      {reportData.users.reduce((sum, user) => sum + user.shiftsCount, 0)}
-                    </td>
-                    <td style={{ padding: 'var(--spacing-md)', textAlign: 'right', fontWeight: '700', fontSize: '1.125rem', color: 'var(--text-primary)' }}>
-                      {reportData.users.reduce((sum, user) => sum + user.totalHours, 0).toFixed(2)}h
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
+                </TableBody>
+                <TableFooter>
+                  <TableRow>
+                    <TableCell className="font-bold text-foreground">Total</TableCell>
+                    <TableCell className="text-center font-bold text-foreground tabular-nums">{totalShiftsSum}</TableCell>
+                    <TableCell className="text-right text-base font-bold text-foreground tabular-nums">{totalHoursSum.toFixed(2)}h</TableCell>
+                  </TableRow>
+                </TableFooter>
+              </Table>
             </div>
-          </div>
+          </Card>
         )}
 
-        {/* Detalhamento por Usuário */}
         {reportData.users.length > 0 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
-            <h3 style={{ fontSize: '1.25rem', fontWeight: '600', color: 'var(--text-primary)', margin: 0 }}>
-              Detalhamento por Usuário
-            </h3>
-            {reportData.users.map((user, index) => (
-              <div key={index} className="card" style={{ padding: 'var(--spacing-lg)' }}>
-                <div style={{ marginBottom: 'var(--spacing-md)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--spacing-xs)' }}>
-                    <div>
-                      <h4 style={{ margin: 0, fontSize: '1.125rem', fontWeight: '600', color: 'var(--text-primary)' }}>
-                        {user.name}
-                      </h4>
-                      <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-                        {user.email}
-                      </p>
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '4px' }}>
-                        Total de Horas
-                      </div>
-                      <div style={{ fontSize: '1.5rem', fontWeight: '700', color: 'var(--purple)' }}>
-                        {user.totalHours.toFixed(2)}h
-                      </div>
-                    </div>
+          <div className="flex flex-col gap-3">
+            <h3 className="text-base font-semibold text-foreground">Detalhamento por usuário</h3>
+            {reportData.users.map((user, i) => (
+              <Card key={i} className="gap-3 px-4 py-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h4 className="text-[0.9375rem] font-semibold text-foreground">{user.name}</h4>
+                    <p className="text-xs text-muted-foreground">{user.email}</p>
+                  </div>
+                  <div className="text-right">
+                    <span className="block text-xs text-muted-foreground">Total de horas</span>
+                    <span className="block text-xl font-bold text-[var(--purple)]">{user.totalHours.toFixed(2)}h</span>
                   </div>
                 </div>
-                
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-sm)' }}>
-                  {user.shifts.map((shift, shiftIndex) => {
+                <div className="flex flex-col gap-1.5">
+                  {user.shifts.map((shift, si) => {
                     const startDate = new Date(shift.start_time);
                     const endDate = new Date(shift.end_time);
                     const userId = getUserIdByEmail(user.email);
                     const userColor = userId !== null ? getUserColor(userId) : '#f97316';
-                    
                     return (
-                      <div 
-                        key={shiftIndex}
-                        style={{
-                          padding: 'var(--spacing-sm)',
-                          backgroundColor: 'var(--bg-secondary)',
-                          borderRadius: 'var(--radius-sm)',
-                          borderLeft: `4px solid ${userColor}`
-                        }}
+                      <div
+                        key={si}
+                        className="flex flex-wrap items-center justify-between gap-2 rounded-md border-l-4 bg-muted/50 px-3 py-2"
+                        style={{ borderLeftColor: userColor }}
                       >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--spacing-sm)' }}>
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontWeight: '600', color: 'var(--text-primary)', marginBottom: '4px' }}>
-                              {shift.title || 'Plantão'}
-                            </div>
-                            <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', display: 'flex', gap: 'var(--spacing-md)', flexWrap: 'wrap' }}>
-                              <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <Clock size={14} />
-                                {startDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} 
-                                {' '}
-                                {startDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                                {' - '}
-                                {endDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                              </span>
-                            </div>
-                          </div>
-                          <div style={{ 
-                            padding: '4px 12px',
-                            borderRadius: 'var(--radius-sm)',
-                            backgroundColor: userColor,
-                            color: 'white',
-                            fontWeight: '600',
-                            fontSize: '0.875rem'
-                          }}>
-                            {shift.hours.toFixed(2)}h
+                        <div>
+                          <div className="text-sm font-semibold text-foreground">{shift.title || 'Plantão'}</div>
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <Clock size={13} />
+                            {startDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}{' '}
+                            {startDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} -{' '}
+                            {endDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                           </div>
                         </div>
+                        <span className="rounded px-2 py-0.5 text-sm font-semibold text-white" style={{ backgroundColor: userColor }}>
+                          {shift.hours.toFixed(2)}h
+                        </span>
                       </div>
                     );
                   })}
                 </div>
-              </div>
+              </Card>
             ))}
           </div>
         )}
@@ -1587,370 +1040,194 @@ export default function ShiftCalendar() {
   };
 
   return (
-    <div style={{ padding: 'var(--spacing-lg)' }}>
+    <div>
       {/* Controles */}
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center', 
-        marginBottom: 'var(--spacing-lg)',
-        flexWrap: 'wrap',
-        gap: 'var(--spacing-md)'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)' }}>
-          <button
-            onClick={goToPrevious}
-            className="btn btn-secondary"
-            style={{ padding: 'var(--spacing-xs) var(--spacing-sm)' }}
-          >
-            <ChevronLeft size={20} />
-          </button>
-          <button
-            onClick={goToToday}
-            className="btn btn-secondary"
-            style={{ padding: 'var(--spacing-xs) var(--spacing-md)' }}
-          >
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="icon" onClick={goToPrevious}>
+            <ChevronLeft size={18} />
+          </Button>
+          <Button variant="outline" onClick={goToToday}>
             Hoje
-          </button>
-          <button
-            onClick={goToNext}
-            className="btn btn-secondary"
-            style={{ padding: 'var(--spacing-xs) var(--spacing-sm)' }}
-          >
-            <ChevronRight size={20} />
-          </button>
-          <h2 style={{
-            margin: 0,
-            marginLeft: 'var(--spacing-md)',
-            fontSize: '1.25rem',
-            fontWeight: '600',
-            color: 'var(--text-primary)',
-            textTransform: 'capitalize'
-          }}>
-            {tabMode === 'report' 
-              ? currentDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
-              : getPeriodName()}
+          </Button>
+          <Button variant="outline" size="icon" onClick={goToNext}>
+            <ChevronRight size={18} />
+          </Button>
+          <h2 className="ml-2 text-lg font-semibold text-foreground capitalize">
+            {tabMode === 'report' ? currentDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }) : getPeriodName()}
           </h2>
         </div>
-        
-        <div style={{ display: 'flex', gap: 'var(--spacing-sm)', alignItems: 'center', flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', gap: 'var(--spacing-xs)', border: '1px solid var(--border-primary)', borderRadius: 'var(--radius-md)', padding: '2px' }}>
-            <button
-              onClick={() => setTabMode('calendar')}
-              className={tabMode === 'calendar' ? 'btn btn-primary' : 'btn btn-secondary'}
-              style={{ 
-                padding: 'var(--spacing-xs) var(--spacing-md)',
-                border: 'none',
-                borderRadius: 'var(--radius-sm)'
-              }}
-            >
-              <Calendar size={18} style={{ marginRight: 'var(--spacing-xs)' }} />
-              Calendário
-            </button>
-            <button
-              onClick={() => setTabMode('report')}
-              className={tabMode === 'report' ? 'btn btn-primary' : 'btn btn-secondary'}
-              style={{ 
-                padding: 'var(--spacing-xs) var(--spacing-md)',
-                border: 'none',
-                borderRadius: 'var(--radius-sm)'
-              }}
-            >
-              <FileBarChart size={18} style={{ marginRight: 'var(--spacing-xs)' }} />
-              Relatório
-            </button>
-          </div>
-          
-          {tabMode === 'calendar' && (
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Tabs value={tabMode} onValueChange={(v) => setTabMode(v as TabMode)}>
+            <TabsList>
+              <TabsTrigger value="calendar">
+                <Calendar size={15} /> Calendário
+              </TabsTrigger>
+              <TabsTrigger value="report">
+                <FileBarChart size={15} /> Relatório
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+
+          {tabMode === 'calendar' ? (
             <>
               {canViewProjects && projects.length > 0 && (
-                <select
-                  className="input"
-                  value={selectedProjectId ?? ''}
-                  onChange={(e) => {
-                    const v = e.target.value || null;
-                    setSelectedProjectId(v);
-                    if (v) setSearchParams({ project: v });
+                <Select
+                  value={selectedProjectId ?? '__all'}
+                  onValueChange={(v) => {
+                    const value = v === '__all' ? null : v;
+                    setSelectedProjectId(value);
+                    if (value) setSearchParams({ project: value });
                     else setSearchParams({});
                   }}
-                  style={{ minWidth: '180px', padding: 'var(--spacing-xs) var(--spacing-sm)' }}
                 >
-                  <option value="">Todos os projetos</option>
-                  {projects.map(p => (
-                    <option key={p.id} value={String(p.id)}>{p.name}</option>
-                  ))}
-                </select>
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all">Todos os projetos</SelectItem>
+                    {projects.map((p) => (
+                      <SelectItem key={p.id} value={String(p.id)}>
+                        {p.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               )}
-              <button
-                onClick={() => setViewMode('month')}
-                className={viewMode === 'month' ? 'btn btn-primary' : 'btn btn-secondary'}
-                style={{ padding: 'var(--spacing-xs) var(--spacing-md)' }}
-              >
+              <Button variant={viewMode === 'month' ? 'default' : 'outline'} onClick={() => setViewMode('month')}>
                 Mês
-              </button>
-              <button
-                onClick={() => setViewMode('week')}
-                className={viewMode === 'week' ? 'btn btn-primary' : 'btn btn-secondary'}
-                style={{ padding: 'var(--spacing-xs) var(--spacing-md)' }}
-              >
+              </Button>
+              <Button variant={viewMode === 'week' ? 'default' : 'outline'} onClick={() => setViewMode('week')}>
                 Semana
-              </button>
-              <button
-                onClick={() => setViewMode('day')}
-                className={viewMode === 'day' ? 'btn btn-primary' : 'btn btn-secondary'}
-                style={{ padding: 'var(--spacing-xs) var(--spacing-md)' }}
-              >
+              </Button>
+              <Button variant={viewMode === 'day' ? 'default' : 'outline'} onClick={() => setViewMode('day')}>
                 Dia
-              </button>
+              </Button>
               {canCreate && (
-                <button
-                  onClick={() => openCreateModal()}
-                  className="btn btn-primary"
-                  style={{ padding: 'var(--spacing-xs) var(--spacing-md)' }}
-                >
-                  <Plus size={18} />
-                  Novo Plantão
-                </button>
+                <Button onClick={() => openCreateModal()}>
+                  <Plus size={18} /> Novo Plantão
+                </Button>
               )}
             </>
+          ) : (
+            <Button onClick={generatePDF} disabled={!reportData || reportData.users.length === 0}>
+              <FileText size={16} /> Exportar PDF
+            </Button>
           )}
         </div>
       </div>
 
       {/* Conteúdo */}
       {tabMode === 'calendar' ? (
-        <>
-          {loading ? (
-            <div style={{ textAlign: 'center', padding: 'var(--spacing-2xl)' }}>
-              <div style={{
-                width: '48px',
-                height: '48px',
-                border: '4px solid var(--border-primary)',
-                borderTopColor: 'var(--purple)',
-                borderRadius: '50%',
-                animation: 'spin 1s linear infinite',
-                margin: '0 auto'
-              }} />
-              <p style={{ marginTop: 'var(--spacing-md)', color: 'var(--text-secondary)' }}>
-                Carregando calendário...
-              </p>
-            </div>
-          ) : (
-            <>
-              {viewMode === 'day' ? (
-                renderDayView()
-              ) : (
-                <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-                  {viewMode === 'month' && renderMonthView()}
-                  {viewMode === 'week' && renderWeekView()}
-                </div>
-              )}
-            </>
-          )}
-        </>
+        loading ? (
+          <SpinnerBlock text="Carregando calendário…" />
+        ) : viewMode === 'day' ? (
+          renderDayView()
+        ) : (
+          <Card className="overflow-hidden p-0">
+            {viewMode === 'month' && renderMonthView()}
+            {viewMode === 'week' && renderWeekView()}
+          </Card>
+        )
       ) : (
         renderReportView()
       )}
 
       {/* Modal de Plantão */}
-      {showShiftModal && (
-        <div style={{ 
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000
-        }}>
-          <div className="card" style={{
-            width: '90%',
-            maxWidth: '600px',
-            maxHeight: '90vh',
-            overflow: 'auto',
-            position: 'relative'
-          }}>
-            <button
-              onClick={() => setShowShiftModal(false)}
-              style={{ 
-                position: 'absolute', 
-                top: 'var(--spacing-md)',
-                right: 'var(--spacing-md)',
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                padding: 'var(--spacing-xs)',
-                color: 'var(--text-secondary)'
-              }}
-            >
-              <X size={24} />
-            </button>
-            
-            <h2 style={{ marginBottom: 'var(--spacing-lg)' }}>
-              {selectedShift ? 'Editar Plantão' : 'Novo Plantão'}
-            </h2>
-            
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
-              <div>
-                <label style={{ display: 'block', marginBottom: 'var(--spacing-xs)', fontWeight: '500' }}>
-                  Título (opcional)
-                </label>
-                <input
-                  type="text"
-                  className="input"
-                  value={shiftTitle}
-                  onChange={(e) => setShiftTitle(e.target.value)}
-                  placeholder="Ex: Plantão Manhã"
-                />
-              </div>
-              
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--spacing-md)' }}>
-                <div>
-                  <label style={{ display: 'block', marginBottom: 'var(--spacing-xs)', fontWeight: '500' }}>
-                    Data Início *
-                  </label>
-                  <input
-                    type="date"
-                    className="input"
-                    value={shiftStartDate}
-                    onChange={(e) => setShiftStartDate(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', marginBottom: 'var(--spacing-xs)', fontWeight: '500' }}>
-                    Hora Início *
-                  </label>
-                  <input
-                    type="time"
-                    className="input"
-                    value={shiftStartTime}
-                    onChange={(e) => setShiftStartTime(e.target.value)}
-                  />
-                </div>
-              </div>
-              
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--spacing-md)' }}>
-                <div>
-                  <label style={{ display: 'block', marginBottom: 'var(--spacing-xs)', fontWeight: '500' }}>
-                    Data Término *
-                  </label>
-                  <input
-                    type="date"
-                    className="input"
-                    value={shiftEndDate}
-                    onChange={(e) => setShiftEndDate(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', marginBottom: 'var(--spacing-xs)', fontWeight: '500' }}>
-                    Hora Término *
-                  </label>
-                  <input
-                    type="time"
-                    className="input"
-                    value={shiftEndTime}
-                    onChange={(e) => setShiftEndTime(e.target.value)}
-                  />
-                </div>
-              </div>
+      <Dialog open={showShiftModal} onOpenChange={setShowShiftModal}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{selectedShift ? 'Editar Plantão' : 'Novo Plantão'}</DialogTitle>
+          </DialogHeader>
 
-              {canViewProjects && projects.length > 0 && (
-                <div>
-                  <label style={{ display: 'block', marginBottom: 'var(--spacing-xs)', fontWeight: '500' }}>
-                    Projeto
-                  </label>
-                  <select
-                    className="input"
-                    value={shiftProjectId === '' ? '' : String(shiftProjectId)}
-                    onChange={(e) => setShiftProjectId(e.target.value === '' ? '' : Number(e.target.value))}
-                  >
-                    <option value="">Nenhum</option>
-                    {projects.map(p => (
-                      <option key={p.id} value={String(p.id)}>{p.name}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
+          <div className="flex flex-col gap-4">
+            <div>
+              <Label className="mb-1.5">Título (opcional)</Label>
+              <Input value={shiftTitle} onChange={(e) => setShiftTitle(e.target.value)} placeholder="Ex: Plantão Manhã" />
+            </div>
 
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <label style={{ display: 'block', marginBottom: 'var(--spacing-xs)', fontWeight: '500' }}>
-                  Usuários de Plantão *
-                </label>
-                <div style={{
-                  border: '1px solid var(--border-primary)',
-                  borderRadius: 'var(--radius-md)',
-                  padding: 'var(--spacing-sm)',
-                  maxHeight: '200px',
-                  overflow: 'auto'
-                }}>
-                  {allUsers.map(userItem => (
-                    <label
-                      key={userItem.id}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 'var(--spacing-sm)',
-                        padding: 'var(--spacing-xs)',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedUserIds.includes(userItem.id)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setSelectedUserIds([...selectedUserIds, userItem.id]);
-                          } else {
-                            setSelectedUserIds(selectedUserIds.filter(id => id !== userItem.id));
-                          }
-                        }}
-                      />
-                      <span>{userItem.name} ({userItem.email})</span>
-                    </label>
-                  ))}
-                </div>
-                {selectedUserIds.length === 0 && (
-                  <p style={{ fontSize: '0.875rem', color: 'var(--text-danger)', marginTop: 'var(--spacing-xs)' }}>
-                    Selecione pelo menos um usuário
-                  </p>
-                )}
+                <Label className="mb-1.5">Data início *</Label>
+                <Input type="date" value={shiftStartDate} onChange={(e) => setShiftStartDate(e.target.value)} />
               </div>
-              
-              <div style={{ display: 'flex', gap: 'var(--spacing-sm)', justifyContent: 'flex-end', marginTop: 'var(--spacing-md)' }}>
-                <button
-                  onClick={() => setShowShiftModal(false)}
-                  className="btn btn-secondary"
-                >
-                  Cancelar
-                </button>
-                {selectedShift && canDelete && (
-                  <button
-                    onClick={async () => {
-                      if (confirm('Tem certeza que deseja excluir este plantão?')) {
-                        await deleteShift(selectedShift.id);
-                      }
-                    }}
-                    className="btn btn-danger"
-                  >
-                    <Trash2 size={18} />
-                    Excluir
-                  </button>
-                )}
-                <button
-                  onClick={saveShift}
-                  className="btn btn-primary"
-                  disabled={!shiftStartDate || !shiftEndDate || selectedUserIds.length === 0}
-                >
-                  Salvar
-                </button>
+              <div>
+                <Label className="mb-1.5">Hora início *</Label>
+                <Input type="time" value={shiftStartTime} onChange={(e) => setShiftStartTime(e.target.value)} />
               </div>
             </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="mb-1.5">Data término *</Label>
+                <Input type="date" value={shiftEndDate} onChange={(e) => setShiftEndDate(e.target.value)} />
+              </div>
+              <div>
+                <Label className="mb-1.5">Hora término *</Label>
+                <Input type="time" value={shiftEndTime} onChange={(e) => setShiftEndTime(e.target.value)} />
+              </div>
+            </div>
+
+            {canViewProjects && projects.length > 0 && (
+              <div>
+                <Label className="mb-1.5">Projeto</Label>
+                <Select
+                  value={shiftProjectId === '' ? '__none' : String(shiftProjectId)}
+                  onValueChange={(v) => setShiftProjectId(v === '__none' ? '' : Number(v))}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none">Nenhum</SelectItem>
+                    {projects.map((p) => (
+                      <SelectItem key={p.id} value={String(p.id)}>
+                        {p.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            <div>
+              <Label className="mb-1.5">Usuários de plantão *</Label>
+              <div className="flex max-h-[200px] flex-col gap-0.5 overflow-auto rounded-lg border border-input p-2">
+                {allUsers.map((userItem) => (
+                  <label key={userItem.id} className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-sm hover:bg-muted">
+                    <Checkbox
+                      checked={selectedUserIds.includes(userItem.id)}
+                      onCheckedChange={(checked) => {
+                        if (checked) setSelectedUserIds([...selectedUserIds, userItem.id]);
+                        else setSelectedUserIds(selectedUserIds.filter((id) => id !== userItem.id));
+                      }}
+                    />
+                    <span className="text-foreground">
+                      {userItem.name} <span className="text-muted-foreground">({userItem.email})</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+              {selectedUserIds.length === 0 && <p className="mt-1.5 text-xs text-destructive">Selecione pelo menos um usuário</p>}
+            </div>
           </div>
-        </div>
-      )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowShiftModal(false)}>
+              Cancelar
+            </Button>
+            {selectedShift && canDelete && (
+              <Button variant="destructive" onClick={() => deleteShift(selectedShift.id)}>
+                <Trash2 size={16} /> Excluir
+              </Button>
+            )}
+            <Button onClick={saveShift} disabled={!shiftStartDate || !shiftEndDate || selectedUserIds.length === 0}>
+              Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -1,7 +1,16 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import axios from 'axios';
+import { toast } from 'sonner';
 import { ArrowLeft, Plus, X, Save, ExternalLink } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 
 interface PageButton {
   id: string;
@@ -30,15 +39,22 @@ interface Form {
   public_url: string;
 }
 
+const PREVIEW_SIZE: Record<'small' | 'medium' | 'large', string> = {
+  small: 'px-3 py-1.5 text-sm',
+  medium: 'px-5 py-2.5 text-base',
+  large: 'px-6 py-3.5 text-lg',
+};
+
 export default function PageBuilder() {
   const navigate = useNavigate();
   const { id } = useParams<{ id?: string }>();
+  const confirm = useConfirm();
   const [currentPage, setCurrentPage] = useState<Partial<Page>>({
     title: '',
     description: '',
     slug: '',
     content: '',
-    buttons: []
+    buttons: [],
   });
   const [availableForms, setAvailableForms] = useState<Form[]>([]);
   const [selectedButton, setSelectedButton] = useState<PageButton | null>(null);
@@ -46,19 +62,13 @@ export default function PageBuilder() {
 
   useEffect(() => {
     fetchForms();
-    if (id) {
-      loadPage();
-    }
+    if (id) loadPage();
   }, [id]);
 
   const fetchForms = async () => {
     try {
       const response = await axios.get('/api/forms');
-      setAvailableForms(response.data.map((form: any) => ({
-        id: form.id,
-        name: form.name,
-        public_url: form.public_url || form.publicUrl
-      })));
+      setAvailableForms(response.data.map((form: any) => ({ id: form.id, name: form.name, public_url: form.public_url || form.publicUrl })));
     } catch (error) {
       console.error('Erro ao buscar formulários:', error);
     }
@@ -73,61 +83,48 @@ export default function PageBuilder() {
         description: pageData.description || '',
         slug: pageData.slug,
         content: pageData.content || '',
-        buttons: pageData.buttons?.map((btn: any) => ({
-          id: btn.id.toString(),
-          label: btn.label,
-          formId: btn.formId,
-          url: btn.url,
-          style: btn.style || {}
-        })) || []
+        buttons:
+          pageData.buttons?.map((btn: any) => ({
+            id: btn.id.toString(),
+            label: btn.label,
+            formId: btn.formId,
+            url: btn.url,
+            style: btn.style || {},
+          })) || [],
       });
     } catch (error: any) {
       console.error('Erro ao carregar página:', error);
-      alert('Erro ao carregar página');
+      toast.error('Erro ao carregar página');
       navigate('/create/pages');
     }
   };
 
-  const generateSlug = (title: string) => {
-    return title
+  const generateSlug = (title: string) =>
+    title
       .toLowerCase()
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '')
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/(^-|-$)/g, '');
-  };
 
   const handleTitleChange = (title: string) => {
-    setCurrentPage({
-      ...currentPage,
-      title,
-      slug: currentPage.slug || generateSlug(title)
-    });
+    setCurrentPage({ ...currentPage, title, slug: currentPage.slug || generateSlug(title) });
   };
 
   const addButton = () => {
     const newButton: PageButton = {
       id: Date.now().toString(),
       label: 'Novo Botão',
-      style: {
-        backgroundColor: 'var(--purple)',
-        color: '#FFFFFF',
-        size: 'medium'
-      }
+      style: { backgroundColor: 'var(--purple)', color: '#FFFFFF', size: 'medium' },
     };
-    setCurrentPage({
-      ...currentPage,
-      buttons: [...(currentPage.buttons || []), newButton]
-    });
+    setCurrentPage({ ...currentPage, buttons: [...(currentPage.buttons || []), newButton] });
     setSelectedButton(newButton);
   };
 
   const updateButton = (buttonId: string, updates: Partial<PageButton>) => {
     setCurrentPage({
       ...currentPage,
-      buttons: currentPage.buttons?.map(btn =>
-        btn.id === buttonId ? { ...btn, ...updates } : btn
-      )
+      buttons: currentPage.buttons?.map((btn) => (btn.id === buttonId ? { ...btn, ...updates } : btn)),
     });
     if (selectedButton?.id === buttonId) {
       setSelectedButton({ ...selectedButton, ...updates });
@@ -135,18 +132,13 @@ export default function PageBuilder() {
   };
 
   const removeButton = (buttonId: string) => {
-    setCurrentPage({
-      ...currentPage,
-      buttons: currentPage.buttons?.filter(btn => btn.id !== buttonId)
-    });
-    if (selectedButton?.id === buttonId) {
-      setSelectedButton(null);
-    }
+    setCurrentPage({ ...currentPage, buttons: currentPage.buttons?.filter((btn) => btn.id !== buttonId) });
+    if (selectedButton?.id === buttonId) setSelectedButton(null);
   };
 
   const handleSave = async () => {
     if (!currentPage.title || !currentPage.slug) {
-      alert('Preencha o título e o slug da página');
+      toast.error('Preencha o título e o slug da página');
       return;
     }
 
@@ -157,144 +149,78 @@ export default function PageBuilder() {
         description: currentPage.description || null,
         slug: currentPage.slug,
         content: currentPage.content || null,
-        buttons: currentPage.buttons?.map(btn => ({
-          label: btn.label,
-          formId: btn.formId,
-          url: btn.url,
-          style: btn.style
-        })) || []
+        buttons: currentPage.buttons?.map((btn) => ({ label: btn.label, formId: btn.formId, url: btn.url, style: btn.style })) || [],
       };
 
       if (id) {
         await axios.put(`/api/pages/${id}`, pageData);
-        alert('Página atualizada com sucesso!');
+        toast.success('Página atualizada com sucesso!');
       } else {
         await axios.post('/api/pages', pageData);
-        alert('Página criada com sucesso!');
+        toast.success('Página criada com sucesso!');
       }
 
       navigate('/create/pages');
     } catch (error: any) {
       console.error('Erro ao salvar página:', error);
-      alert(error.response?.data?.error || 'Erro ao salvar página. Tente novamente.');
+      toast.error(error.response?.data?.error || 'Erro ao salvar página. Tente novamente.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleBack = () => {
+  const handleBack = async () => {
     if (currentPage.title || (currentPage.buttons && currentPage.buttons.length > 0)) {
-      if (window.confirm('Tem certeza que deseja sair? As alterações não salvas serão perdidas.')) {
-        navigate('/create/pages');
-      }
-    } else {
-      navigate('/create/pages');
+      const ok = await confirm({
+        title: 'Sair sem salvar',
+        description: 'Tem certeza que deseja sair? As alterações não salvas serão perdidas.',
+        confirmLabel: 'Sair',
+        variant: 'destructive',
+      });
+      if (!ok) return;
     }
+    navigate('/create/pages');
   };
 
   return (
     <div>
-      {/* Header */}
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center',
-        marginBottom: 'var(--spacing-2xl)'
-      }}>
+      <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 style={{ 
-            fontSize: '2.5rem', 
-            fontWeight: '800', 
-            marginBottom: 'var(--spacing-sm)',
-            background: 'linear-gradient(135deg, var(--text-primary) 0%, var(--text-secondary) 100%)',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-            backgroundClip: 'text',
-            letterSpacing: '-0.03em'
-          }}>
+          <h1 className="mb-1.5 bg-gradient-to-br from-foreground to-muted-foreground bg-clip-text text-[2.5rem] font-extrabold tracking-tight text-transparent">
             {id ? 'Editar Página' : 'Nova Página'}
           </h1>
-          <p style={{
-            color: 'var(--text-secondary)',
-            fontSize: '1rem',
-            fontWeight: '400'
-          }}>
-            Crie páginas públicas com botões que redirecionam para formulários
-          </p>
+          <p className="text-base text-muted-foreground">Crie páginas públicas com botões que redirecionam para formulários</p>
         </div>
-        <div style={{ display: 'flex', gap: 'var(--spacing-sm)' }}>
-          <button 
-            className="btn btn-secondary"
-            onClick={handleBack}
-          >
-            <ArrowLeft size={20} />
-            Voltar
-          </button>
-          <button 
-            className="btn btn-primary"
-            onClick={handleSave}
-            disabled={loading}
-          >
-            <Save size={20} />
-            {loading ? 'Salvando...' : 'Salvar Página'}
-          </button>
+        <div className="flex gap-2">
+          <Button variant="secondary" onClick={handleBack}>
+            <ArrowLeft size={18} /> Voltar
+          </Button>
+          <Button onClick={handleSave} disabled={loading}>
+            <Save size={18} /> {loading ? 'Salvando...' : 'Salvar Página'}
+          </Button>
         </div>
       </div>
 
-      <div style={{ 
-        display: 'grid', 
-        gridTemplateColumns: '1fr 1fr',
-        gap: 'var(--spacing-xl)'
-      }}>
-        {/* Painel Esquerdo - Configurações */}
-        <div className="card" style={{ 
-          border: '1px solid var(--border-primary)',
-          padding: 'var(--spacing-xl)'
-        }}>
-          <h2 style={{ 
-            fontSize: '1.5rem',
-            fontWeight: '700',
-            color: 'var(--text-primary)',
-            marginBottom: 'var(--spacing-lg)'
-          }}>
-            Configurações da Página
-          </h2>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {/* Painel esquerdo — configurações */}
+        <Card className="px-6 py-6">
+          <h2 className="mb-5 text-2xl font-bold text-foreground">Configurações da Página</h2>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-lg)' }}>
+          <div className="flex flex-col gap-4">
             <div>
-              <label className="label">Título *</label>
-              <input
-                type="text"
-                className="input"
-                value={currentPage.title || ''}
-                onChange={(e) => handleTitleChange(e.target.value)}
-                placeholder="Ex: Página Inicial"
-              />
+              <Label className="mb-1.5">Título *</Label>
+              <Input value={currentPage.title || ''} onChange={(e) => handleTitleChange(e.target.value)} placeholder="Ex: Página Inicial" />
             </div>
 
             <div>
-              <label className="label">Slug *</label>
-              <input
-                type="text"
-                className="input"
-                value={currentPage.slug || ''}
-                onChange={(e) => setCurrentPage({ ...currentPage, slug: e.target.value })}
-                placeholder="ex: pagina-inicial"
-              />
-              <small style={{ 
-                display: 'block', 
-                marginTop: 'var(--spacing-xs)',
-                color: 'var(--text-tertiary)',
-                fontSize: '0.75rem'
-              }}>
-                URL: /page/{currentPage.slug || 'slug'}
-              </small>
+              <Label className="mb-1.5">Slug *</Label>
+              <Input value={currentPage.slug || ''} onChange={(e) => setCurrentPage({ ...currentPage, slug: e.target.value })} placeholder="ex: pagina-inicial" />
+              <small className="mt-1 block text-xs text-muted-foreground">URL: /page/{currentPage.slug || 'slug'}</small>
             </div>
 
             <div>
-              <label className="label">Descrição</label>
-              <textarea
-                className="input"
+              <Label className="mb-1.5">Descrição</Label>
+              <Textarea
                 value={currentPage.description || ''}
                 onChange={(e) => setCurrentPage({ ...currentPage, description: e.target.value })}
                 placeholder="Descrição da página..."
@@ -303,134 +229,78 @@ export default function PageBuilder() {
             </div>
 
             <div>
-              <label className="label">Conteúdo (HTML opcional)</label>
-              <textarea
-                className="input"
+              <Label className="mb-1.5">Conteúdo (HTML opcional)</Label>
+              <Textarea
                 value={currentPage.content || ''}
                 onChange={(e) => setCurrentPage({ ...currentPage, content: e.target.value })}
                 placeholder="Conteúdo HTML da página..."
                 rows={6}
-                style={{ fontFamily: 'monospace', fontSize: '0.875rem' }}
+                className="font-mono text-sm"
               />
             </div>
           </div>
 
-          {/* Lista de Botões */}
-          <div style={{ marginTop: 'var(--spacing-2xl)' }}>
-            <div style={{ 
-              display: 'flex', 
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: 'var(--spacing-md)'
-            }}>
-              <h3 style={{ 
-                fontSize: '1.125rem',
-                fontWeight: '600',
-                color: 'var(--text-primary)'
-              }}>
-                Botões
-              </h3>
-              <button 
-                className="btn btn-primary btn-sm"
-                onClick={addButton}
-              >
-                <Plus size={16} />
-                Adicionar Botão
-              </button>
+          {/* Lista de botões */}
+          <div className="mt-8">
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-foreground">Botões</h3>
+              <Button size="sm" onClick={addButton}>
+                <Plus size={15} /> Adicionar Botão
+              </Button>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-sm)' }}>
+            <div className="flex flex-col gap-2">
               {currentPage.buttons?.length === 0 ? (
-                <p style={{ 
-                  color: 'var(--text-tertiary)',
-                  fontSize: '0.875rem',
-                  textAlign: 'center',
-                  padding: 'var(--spacing-lg)'
-                }}>
-                  Nenhum botão adicionado ainda
-                </p>
+                <p className="py-5 text-center text-sm text-muted-foreground">Nenhum botão adicionado ainda</p>
               ) : (
                 currentPage.buttons?.map((button) => (
-                  <div
+                  <Card
                     key={button.id}
-                    className="card"
-                    style={{
-                      border: selectedButton?.id === button.id 
-                        ? '2px solid var(--purple)' 
-                        : '1px solid var(--border-primary)',
-                      padding: 'var(--spacing-md)',
-                      cursor: 'pointer',
-                      transition: 'all var(--transition-base)',
-                      backgroundColor: selectedButton?.id === button.id 
-                        ? 'var(--purple-light)' 
-                        : 'var(--bg-secondary)'
-                    }}
                     onClick={() => setSelectedButton(button)}
+                    className={cn(
+                      'cursor-pointer gap-0 px-4 py-3 transition-colors',
+                      selectedButton?.id === button.id ? 'bg-[var(--purple-light)] ring-2 ring-[var(--purple)]' : 'bg-muted/40'
+                    )}
                   >
-                    <div style={{ 
-                      display: 'flex', 
-                      justifyContent: 'space-between',
-                      alignItems: 'center'
-                    }}>
-                      <div>
-                        <div style={{ 
-                          fontWeight: '600',
-                          color: 'var(--text-primary)',
-                          marginBottom: 'var(--spacing-xs)'
-                        }}>
-                          {button.label}
-                        </div>
-                        <div style={{ 
-                          fontSize: '0.75rem',
-                          color: 'var(--text-secondary)'
-                        }}>
-                          {button.formId 
-                            ? `Formulário: ${availableForms.find(f => f.id === button.formId)?.name || 'N/A'}`
-                            : button.url 
-                            ? `URL: ${button.url}`
-                            : 'Sem destino'}
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate font-semibold text-foreground">{button.label}</div>
+                        <div className="truncate text-xs text-muted-foreground">
+                          {button.formId
+                            ? `Formulário: ${availableForms.find((f) => f.id === button.formId)?.name || 'N/A'}`
+                            : button.url
+                              ? `URL: ${button.url}`
+                              : 'Sem destino'}
                         </div>
                       </div>
-                      <button
-                        className="btn btn-danger btn-sm"
+                      <Button
+                        variant="destructive"
+                        size="icon-sm"
                         onClick={(e) => {
                           e.stopPropagation();
                           removeButton(button.id);
                         }}
                       >
-                        <X size={16} />
-                      </button>
+                        <X size={15} />
+                      </Button>
                     </div>
-                  </div>
+                  </Card>
                 ))
               )}
             </div>
           </div>
-        </div>
+        </Card>
 
-        {/* Painel Direito - Editor de Botão / Preview */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-xl)' }}>
-          {/* Editor de Botão */}
+        {/* Painel direito — editor de botão / preview */}
+        <div className="flex flex-col gap-6">
           {selectedButton ? (
-            <div className="card" style={{ 
-              border: '1px solid var(--border-primary)',
-              padding: 'var(--spacing-xl)'
-            }}>
-              <h2 style={{ 
-                fontSize: '1.5rem',
-                fontWeight: '700',
-                color: 'var(--text-primary)',
-                marginBottom: 'var(--spacing-lg)'
-              }}>
-                Editar Botão
-              </h2>
+            <Card className="px-6 py-6">
+              <h2 className="mb-5 text-2xl font-bold text-foreground">Editar Botão</h2>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-lg)' }}>
+              <div className="flex flex-col gap-4">
                 <div>
-                  <label className="label">Rótulo do Botão *</label>
-                  <input
-                    type="text"
-                    className="input"
+                  <Label className="mb-1.5">Rótulo do Botão *</Label>
+                  <Input
                     value={selectedButton.label}
                     onChange={(e) => updateButton(selectedButton.id, { label: e.target.value })}
                     placeholder="Ex: Preencher Formulário"
@@ -438,205 +308,129 @@ export default function PageBuilder() {
                 </div>
 
                 <div>
-                  <label className="label">Tipo de Destino</label>
-                  <select
-                    className="select"
+                  <Label className="mb-1.5">Tipo de Destino</Label>
+                  <Select
                     value={selectedButton.formId ? 'form' : 'url'}
-                    onChange={(e) => {
-                      if (e.target.value === 'form') {
-                        updateButton(selectedButton.id, { formId: undefined, url: undefined });
-                      } else {
-                        updateButton(selectedButton.id, { formId: undefined, url: '' });
-                      }
+                    onValueChange={(v) => {
+                      if (v === 'form') updateButton(selectedButton.id, { formId: undefined, url: undefined });
+                      else updateButton(selectedButton.id, { formId: undefined, url: '' });
                     }}
                   >
-                    <option value="form">Formulário</option>
-                    <option value="url">URL Externa</option>
-                  </select>
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="form">Formulário</SelectItem>
+                      <SelectItem value="url">URL Externa</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 {selectedButton.formId !== undefined || !selectedButton.url ? (
                   <div>
-                    <label className="label">Formulário</label>
-                    <select
-                      className="select"
-                      value={selectedButton.formId || ''}
-                      onChange={(e) => updateButton(selectedButton.id, { 
-                        formId: e.target.value ? parseInt(e.target.value) : undefined,
-                        url: undefined
-                      })}
+                    <Label className="mb-1.5">Formulário</Label>
+                    <Select
+                      value={selectedButton.formId ? String(selectedButton.formId) : '__none'}
+                      onValueChange={(v) => updateButton(selectedButton.id, { formId: v === '__none' ? undefined : parseInt(v), url: undefined })}
                     >
-                      <option value="">Selecione um formulário</option>
-                      {availableForms.map(form => (
-                        <option key={form.id} value={form.id}>
-                          {form.name}
-                        </option>
-                      ))}
-                    </select>
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Selecione um formulário" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none">Selecione um formulário</SelectItem>
+                        {availableForms.map((form) => (
+                          <SelectItem key={form.id} value={String(form.id)}>
+                            {form.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 ) : (
                   <div>
-                    <label className="label">URL Externa</label>
-                    <input
-                      type="text"
-                      className="input"
+                    <Label className="mb-1.5">URL Externa</Label>
+                    <Input
                       value={selectedButton.url || ''}
-                      onChange={(e) => updateButton(selectedButton.id, { 
-                        url: e.target.value,
-                        formId: undefined
-                      })}
+                      onChange={(e) => updateButton(selectedButton.id, { url: e.target.value, formId: undefined })}
                       placeholder="https://exemplo.com"
                     />
                   </div>
                 )}
 
                 <div>
-                  <label className="label">Tamanho</label>
-                  <select
-                    className="select"
+                  <Label className="mb-1.5">Tamanho</Label>
+                  <Select
                     value={selectedButton.style?.size || 'medium'}
-                    onChange={(e) => {
-                      const size = e.target.value as 'small' | 'medium' | 'large';
-                      updateButton(selectedButton.id, {
-                        style: { ...selectedButton.style, size }
-                      });
-                    }}
+                    onValueChange={(v) => updateButton(selectedButton.id, { style: { ...selectedButton.style, size: v as 'small' | 'medium' | 'large' } })}
                   >
-                    <option value="small">Pequeno</option>
-                    <option value="medium">Médio</option>
-                    <option value="large">Grande</option>
-                  </select>
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="small">Pequeno</SelectItem>
+                      <SelectItem value="medium">Médio</SelectItem>
+                      <SelectItem value="large">Grande</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div>
-                  <label className="label">Cor de Fundo</label>
+                  <Label className="mb-1.5">Cor de Fundo</Label>
                   <input
                     type="color"
                     value={selectedButton.style?.backgroundColor || '#9147FF'}
-                    onChange={(e) => updateButton(selectedButton.id, {
-                      style: { ...selectedButton.style, backgroundColor: e.target.value }
-                    })}
-                    style={{ width: '100%', height: '40px', borderRadius: 'var(--radius-md)' }}
+                    onChange={(e) => updateButton(selectedButton.id, { style: { ...selectedButton.style, backgroundColor: e.target.value } })}
+                    className="h-10 w-full cursor-pointer rounded-lg border border-input bg-transparent p-0.5"
                   />
                 </div>
 
                 <div>
-                  <label className="label">Cor do Texto</label>
+                  <Label className="mb-1.5">Cor do Texto</Label>
                   <input
                     type="color"
                     value={selectedButton.style?.color || '#FFFFFF'}
-                    onChange={(e) => updateButton(selectedButton.id, {
-                      style: { ...selectedButton.style, color: e.target.value }
-                    })}
-                    style={{ width: '100%', height: '40px', borderRadius: 'var(--radius-md)' }}
+                    onChange={(e) => updateButton(selectedButton.id, { style: { ...selectedButton.style, color: e.target.value } })}
+                    className="h-10 w-full cursor-pointer rounded-lg border border-input bg-transparent p-0.5"
                   />
                 </div>
               </div>
-            </div>
+            </Card>
           ) : (
-            <div className="card" style={{ 
-              border: '1px solid var(--border-primary)',
-              padding: 'var(--spacing-xl)',
-              textAlign: 'center'
-            }}>
-              <p style={{ color: 'var(--text-tertiary)' }}>
-                Selecione um botão para editar ou adicione um novo botão
-              </p>
-            </div>
+            <Card className="px-6 py-10 text-center">
+              <p className="text-sm text-muted-foreground">Selecione um botão para editar ou adicione um novo botão</p>
+            </Card>
           )}
 
           {/* Preview */}
-          <div className="card" style={{ 
-            border: '1px solid var(--border-primary)',
-            padding: 'var(--spacing-xl)'
-          }}>
-            <h2 style={{ 
-              fontSize: '1.5rem',
-              fontWeight: '700',
-              color: 'var(--text-primary)',
-              marginBottom: 'var(--spacing-lg)'
-            }}>
-              Preview
-            </h2>
+          <Card className="px-6 py-6">
+            <h2 className="mb-5 text-2xl font-bold text-foreground">Preview</h2>
 
-            <div style={{
-              minHeight: '400px',
-              padding: 'var(--spacing-xl)',
-              background: 'var(--bg-primary)',
-              borderRadius: 'var(--radius-md)',
-              border: '1px solid var(--border-primary)'
-            }}>
-              {currentPage.title && (
-                <h1 style={{ 
-                  fontSize: '2rem',
-                  fontWeight: '700',
-                  color: 'var(--text-primary)',
-                  marginBottom: 'var(--spacing-md)'
-                }}>
-                  {currentPage.title}
-                </h1>
-              )}
-              {currentPage.description && (
-                <p style={{ 
-                  color: 'var(--text-secondary)',
-                  marginBottom: 'var(--spacing-lg)'
-                }}>
-                  {currentPage.description}
-                </p>
-              )}
-              {currentPage.content && (
-                <div 
-                  style={{ 
-                    marginBottom: 'var(--spacing-lg)',
-                    color: 'var(--text-primary)'
-                  }}
-                  dangerouslySetInnerHTML={{ __html: currentPage.content }}
-                />
-              )}
-              <div style={{ 
-                display: 'flex', 
-                flexDirection: 'column',
-                gap: 'var(--spacing-md)',
-                marginTop: 'var(--spacing-xl)'
-              }}>
-                {currentPage.buttons?.map((button) => {
-                  const sizeMap = {
-                    small: { padding: 'var(--spacing-xs) var(--spacing-md)', fontSize: '0.875rem' },
-                    medium: { padding: 'var(--spacing-sm) var(--spacing-lg)', fontSize: '1rem' },
-                    large: { padding: 'var(--spacing-md) var(--spacing-xl)', fontSize: '1.125rem' }
-                  };
-                  const size = sizeMap[button.style?.size || 'medium'];
-                  
-                  return (
-                    <button
-                      key={button.id}
-                      className="btn"
-                      style={{
-                        backgroundColor: button.style?.backgroundColor || 'var(--purple)',
-                        color: button.style?.color || '#FFFFFF',
-                        ...size,
-                        width: '100%',
-                        justifyContent: 'center'
-                      }}
-                      onClick={() => {
-                        if (button.formId) {
-                          const form = availableForms.find(f => f.id === button.formId);
-                          if (form) {
-                            window.open(`/form/${form.public_url}`, '_blank');
-                          }
-                        } else if (button.url) {
-                          window.open(button.url, '_blank');
-                        }
-                      }}
-                    >
-                      {button.label}
-                      {button.formId && <ExternalLink size={16} style={{ marginLeft: 'var(--spacing-xs)' }} />}
-                    </button>
-                  );
-                })}
+            <div className="min-h-[400px] rounded-lg border border-border bg-background p-6">
+              {currentPage.title && <h1 className="mb-3 text-3xl font-bold text-foreground">{currentPage.title}</h1>}
+              {currentPage.description && <p className="mb-5 text-muted-foreground">{currentPage.description}</p>}
+              {currentPage.content && <div className="mb-5 text-foreground" dangerouslySetInnerHTML={{ __html: currentPage.content }} />}
+              <div className="mt-6 flex flex-col gap-3">
+                {currentPage.buttons?.map((button) => (
+                  <button
+                    key={button.id}
+                    className={cn('w-full rounded-lg text-center font-semibold transition-opacity hover:opacity-90', PREVIEW_SIZE[button.style?.size || 'medium'])}
+                    style={{ backgroundColor: button.style?.backgroundColor || 'var(--purple)', color: button.style?.color || '#FFFFFF' }}
+                    onClick={() => {
+                      if (button.formId) {
+                        const form = availableForms.find((f) => f.id === button.formId);
+                        if (form) window.open(`/form/${form.public_url}`, '_blank');
+                      } else if (button.url) {
+                        window.open(button.url, '_blank');
+                      }
+                    }}
+                  >
+                    {button.label}
+                    {button.formId && <ExternalLink size={16} className="ml-1.5 inline align-[-3px]" />}
+                  </button>
+                ))}
               </div>
             </div>
-          </div>
+          </Card>
         </div>
       </div>
     </div>
