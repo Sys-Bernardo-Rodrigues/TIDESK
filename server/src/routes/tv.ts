@@ -26,7 +26,8 @@ router.get('/stats', async (req, res) => {
     ]);
 
     const queue = await dbAll(`
-      SELECT t.ticket_number, t.created_at, t.status, t.priority
+      SELECT t.ticket_number, t.created_at, t.status, t.priority,
+             EXISTS (SELECT 1 FROM ticket_pauses p WHERE p.ticket_id = t.id AND p.resumed_at IS NULL) AS is_paused
       FROM tickets t
       WHERE t.status IN ('open', 'in_progress')
       ORDER BY
@@ -36,14 +37,16 @@ router.get('/stats', async (req, res) => {
     `);
 
     const latest = await dbAll(`
-      SELECT t.ticket_number, t.created_at, t.status, t.priority
+      SELECT t.ticket_number, t.created_at, t.status, t.priority,
+             EXISTS (SELECT 1 FROM ticket_pauses p WHERE p.ticket_id = t.id AND p.resumed_at IS NULL) AS is_paused
       FROM tickets t
       ORDER BY t.created_at DESC
       LIMIT 10
     `);
 
     const scheduled = await dbAll(`
-      SELECT t.ticket_number, t.created_at, t.scheduled_at, t.priority
+      SELECT t.ticket_number, t.created_at, t.scheduled_at, t.priority,
+             EXISTS (SELECT 1 FROM ticket_pauses p WHERE p.ticket_id = t.id AND p.resumed_at IS NULL) AS is_paused
       FROM tickets t
       WHERE t.status = 'scheduled'
       ORDER BY t.scheduled_at ASC
@@ -83,19 +86,23 @@ router.get('/stats', async (req, res) => {
         ticketNumber: t.ticket_number,
         createdAt: t.created_at,
         status: t.status,
-        priority: t.priority
+        priority: t.priority,
+        isPaused: Boolean(t.is_paused)
       })),
       latest: (latest as any[]).map((t) => ({
         ticketNumber: t.ticket_number,
         createdAt: t.created_at,
         status: t.status,
-        priority: t.priority
+        priority: t.priority,
+        isPaused: Boolean(t.is_paused)
       })),
       scheduled: (scheduled as any[]).map((t) => ({
         ticketNumber: t.ticket_number,
         createdAt: t.created_at,
         scheduledAt: t.scheduled_at,
-        priority: t.priority
+        priority: t.priority,
+        isPaused: Boolean(t.is_paused),
+        isLate: Boolean(t.scheduled_at) && new Date(t.scheduled_at).getTime() < Date.now()
       })),
       ranking
     });

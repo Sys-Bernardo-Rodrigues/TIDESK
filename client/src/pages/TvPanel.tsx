@@ -6,6 +6,7 @@ interface TvTicket {
   createdAt: string | null;
   status: string;
   priority: string;
+  isPaused: boolean;
 }
 
 interface TvScheduledTicket {
@@ -13,6 +14,8 @@ interface TvScheduledTicket {
   createdAt: string | null;
   scheduledAt: string | null;
   priority: string;
+  isPaused: boolean;
+  isLate: boolean;
 }
 
 interface TvRankingEntry {
@@ -173,7 +176,10 @@ export default function TvPanel() {
                         {PRIORITY_LABELS[t.priority]?.label || t.priority}
                       </span>
                     </td>
-                    <td className="py-2.5 text-[color:var(--text-secondary)]">{STATUS_LABELS[t.status] || t.status}</td>
+                    <td className="py-2.5 text-[color:var(--text-secondary)]">
+                      {STATUS_LABELS[t.status] || t.status}
+                      {t.isPaused && <PauseBadge />}
+                    </td>
                     <td className="py-2.5 text-right tabular-nums text-[color:var(--text-secondary)]">{timeAgo(t.createdAt, now)}</td>
                   </tr>
                 ))}
@@ -196,14 +202,28 @@ export default function TvPanel() {
           <h2 className="mb-3 text-xl font-bold">Agendados</h2>
           <div className="flex flex-col gap-2 overflow-y-auto">
             {(stats?.scheduled || []).map((t, i) => (
-              <div key={i} className="flex flex-col rounded-lg px-3 py-2" style={{ background: 'var(--bg-tertiary)' }}>
+              <div
+                key={i}
+                className="flex flex-col rounded-lg px-3 py-2"
+                style={{ background: 'var(--bg-tertiary)', boxShadow: t.isLate ? 'inset 0 0 0 2px var(--red)' : undefined }}
+              >
                 <div className="flex items-center justify-between">
                   <span className="font-mono text-sm">{formatProtocolo(t)}</span>
                   <span style={{ color: PRIORITY_LABELS[t.priority]?.color || 'var(--text-secondary)' }} className="text-sm font-semibold">
                     {PRIORITY_LABELS[t.priority]?.label || t.priority}
                   </span>
                 </div>
-                <span className="text-sm text-[color:var(--text-secondary)]">{formatScheduledFor(t.scheduledAt)}</span>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-[color:var(--text-secondary)]">{formatScheduledFor(t.scheduledAt)}</span>
+                  <div className="flex items-center gap-1">
+                    {t.isPaused && <PauseBadge />}
+                    {t.isLate && (
+                      <span className="rounded px-1.5 py-0.5 text-xs font-bold" style={{ background: 'var(--red)', color: 'white' }}>
+                        ATRASADO
+                      </span>
+                    )}
+                  </div>
+                </div>
               </div>
             ))}
             {stats && stats.scheduled.length === 0 && (
@@ -247,7 +267,10 @@ export default function TvPanel() {
                 <div key={i} className="flex items-center justify-between rounded-lg px-3 py-2" style={{ background: 'var(--bg-tertiary)' }}>
                   <div className="flex flex-col">
                     <span className="font-mono text-sm">{formatProtocolo(t)}</span>
-                    <span className="text-sm text-[color:var(--text-secondary)]">{STATUS_LABELS[t.status] || t.status}</span>
+                    <span className="text-sm text-[color:var(--text-secondary)]">
+                      {STATUS_LABELS[t.status] || t.status}
+                      {t.isPaused && <PauseBadge />}
+                    </span>
                   </div>
                   <span style={{ color: PRIORITY_LABELS[t.priority]?.color || 'var(--text-secondary)' }} className="text-sm font-semibold">
                     {PRIORITY_LABELS[t.priority]?.label || t.priority}
@@ -259,6 +282,17 @@ export default function TvPanel() {
         </div>
       </section>
     </div>
+  );
+}
+
+function PauseBadge() {
+  return (
+    <span
+      className="ml-2 rounded px-1.5 py-0.5 text-xs font-bold"
+      style={{ background: 'var(--orange)', color: 'white' }}
+    >
+      PAUSADO
+    </span>
   );
 }
 
