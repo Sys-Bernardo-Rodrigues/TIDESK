@@ -22,6 +22,10 @@ function resolveRange(query: ReportPeriodQuery) {
 
 const ACTIVE_HOURS = activeResolutionHoursExpr(DB_TYPE);
 
+const TOTAL_PAUSE_SECONDS = DB_TYPE === 'sqlite'
+  ? `(SELECT COALESCE(SUM((julianday(COALESCE(p.resumed_at, datetime('now'))) - julianday(p.paused_at)) * 86400), 0) FROM ticket_pauses p WHERE p.ticket_id = t.id)`
+  : `(SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(p.resumed_at, NOW()) - p.paused_at))), 0)::bigint FROM ticket_pauses p WHERE p.ticket_id = t.id)`;
+
 // Estatísticas gerais
 router.get('/overview', requirePermission(RESOURCES.REPORTS, ACTIONS.VIEW), async (req: AuthRequest, res) => {
   try {
@@ -490,6 +494,73 @@ router.get('/webhooks', requirePermission(RESOURCES.REPORTS, ACTIONS.VIEW), asyn
   } catch (error) {
     console.error('Erro ao buscar estatísticas de webhooks:', error);
     res.status(500).json({ error: 'Erro ao buscar estatísticas de webhooks' });
+  }
+});
+
+// Relatório detalhado: todos os dados de cada ticket criado no período
+router.get('/tickets-detailed', requirePermission(RESOURCES.REPORTS, ACTIONS.VIEW), async (req: AuthRequest, res) => {
+  try {
+    const { start, end, period } = resolveRange(req.query as ReportPeriodQuery);
+
+    const tickets = await dbAll(
+      `SELECT
+        t.id,
+        t.ticket_number,
+        t.title,
+        t.description,
+        t.status,
+        t.priority,
+        t.needs_approval,
+        t.created_at,
+        t.updated_at,
+        t.assigned_at,
+        t.scheduled_at,
+        u.name as requester_name,
+        u.email as requester_email,
+        a.name as agent_name,
+        a.email as agent_email,
+        c.name as category_name,
+        f.name as form_name,
+        EXISTS (SELECT 1 FROM ticket_pauses p WHERE p.ticket_id = t.id AND p.resumed_at IS NULL) AS is_paused,
+        ${TOTAL_PAUSE_SECONDS} AS total_pause_seconds
+      FROM tickets t
+      LEFT JOIN users u ON t.user_id = u.id
+      LEFT JOIN users a ON t.assigned_to = a.id
+      LEFT JOIN categories c ON t.category_id = c.id
+      LEFT JOIN forms f ON t.form_id = f.id
+      WHERE t.created_at >= ? AND t.created_at <= ?
+      ORDER BY t.created_at ASC`,
+      [start, end]
+    );
+
+    res.json({
+      period,
+      dateRange: { start, end },
+      tickets: (tickets || []).map((t: any) => ({
+        id: t.id,
+        ticketNumber: t.ticket_number,
+        title: t.title,
+        description: t.description,
+        status: t.status,
+        priority: t.priority,
+        needsApproval: !!t.needs_approval,
+        createdAt: t.created_at,
+        updatedAt: t.updated_at,
+        assignedAt: t.assigned_at,
+        scheduledAt: t.scheduled_at,
+        requesterName: t.requester_name,
+        requesterEmail: t.requester_email,
+        agentName: t.agent_name,
+        agentEmail: t.agent_email,
+        categoryName: t.category_name,
+        formName: t.form_name,
+        isPaused: !!t.is_paused,
+        totalPauseSeconds: toNumber(t.total_pause_seconds),
+      })),
+    });
+  } catch (error) {
+    console.error('Erro ao buscar relatório detalhado de tickets:', error);
+    res.status(500).json({ error: 'Erro ao buscar relatório detalhado de tickets' });
   }
 });
 

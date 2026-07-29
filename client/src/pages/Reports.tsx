@@ -125,6 +125,28 @@ interface WebhooksData {
   }>;
 }
 
+interface DetailedTicket {
+  id: number;
+  ticketNumber: number | null;
+  title: string;
+  description: string;
+  status: string;
+  priority: string;
+  needsApproval: boolean;
+  createdAt: string;
+  updatedAt: string;
+  assignedAt: string | null;
+  scheduledAt: string | null;
+  requesterName: string | null;
+  requesterEmail: string | null;
+  agentName: string | null;
+  agentEmail: string | null;
+  categoryName: string | null;
+  formName: string | null;
+  isPaused: boolean;
+  totalPauseSeconds: number;
+}
+
 // ——— Helpers ———
 function formatHours(hours: number | null | undefined): string {
   if (hours == null || isNaN(hours) || hours < 0) return '—';
@@ -308,6 +330,7 @@ export default function Reports() {
   const [systemData, setSystemData] = useState<SystemData | null>(null);
   const [categoryData, setCategoryData] = useState<CategoryData[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [generatingDetailed, setGeneratingDetailed] = useState(false);
 
   const periodParam = buildPeriodParam(period, customStart, customEnd);
 
@@ -692,6 +715,174 @@ export default function Reports() {
     }
   };
 
+  const generateDetailedTicketsPDF = async () => {
+    setGeneratingDetailed(true);
+    try {
+      const { data } = await axios.get(`/api/reports/tickets-detailed?period=${periodParam}`);
+      const tickets: DetailedTicket[] = data.tickets || [];
+
+      const { jsPDF } = await import('jspdf');
+      const doc = new jsPDF();
+      const margin = 16;
+      const w = doc.internal.pageSize.getWidth();
+      const h = doc.internal.pageSize.getHeight();
+      let y = 0;
+
+      const purple = [145, 71, 255] as [number, number, number];
+      const dark = [26, 26, 31] as [number, number, number];
+      const textSecondary = [184, 184, 192] as [number, number, number];
+      const textDark = [26, 26, 31] as [number, number, number];
+      const border = [42, 42, 46] as [number, number, number];
+      const bgLight = [248, 248, 250] as [number, number, number];
+
+      const addPageIfNeeded = (need: number) => {
+        if (y + need > h - 22) {
+          doc.addPage();
+          y = 12;
+        }
+      };
+
+      const drawPageFooter = (pageNum: number, totalPages: number) => {
+        doc.setDrawColor(border[0], border[1], border[2]);
+        doc.setLineWidth(0.3);
+        doc.line(margin, h - 14, w - margin, h - 14);
+        doc.setFontSize(8);
+        doc.setTextColor(textSecondary[0], textSecondary[1], textSecondary[2]);
+        doc.text('TIDESK · Relatório detalhado de tickets', margin, h - 8);
+        doc.text(`Gerado em ${new Date().toLocaleString('pt-BR')}`, w - margin, h - 8, { align: 'right' });
+        doc.text(`Página ${pageNum} de ${totalPages}`, w / 2, h - 8, { align: 'center' });
+      };
+
+      const formatDate = (v: string | null) => (v ? new Date(v).toLocaleString('pt-BR') : '—');
+      const formatPause = (seconds: number) => {
+        if (!seconds) return '—';
+        const hours = seconds / 3600;
+        return formatHours(hours);
+      };
+
+      // ——— Capa ———
+      doc.setFillColor(dark[0], dark[1], dark[2]);
+      doc.rect(0, 0, w, 36, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(22);
+      doc.setFont('helvetica', 'bold');
+      doc.text('TIDESK', margin, 16);
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(textSecondary[0], textSecondary[1], textSecondary[2]);
+      doc.text('Relatório detalhado de tickets', margin, 24);
+      doc.text(periodLabel, w - margin, 16, { align: 'right' });
+      doc.setFontSize(9);
+      doc.text(`${tickets.length} ticket(s) · Gerado em ${new Date().toLocaleString('pt-BR')}`, w - margin, 24, { align: 'right' });
+      y = 44;
+
+      if (tickets.length === 0) {
+        doc.setTextColor(textDark[0], textDark[1], textDark[2]);
+        doc.setFontSize(11);
+        doc.text('Nenhum ticket criado no período selecionado.', margin, y);
+      }
+
+      tickets.forEach((t, idx) => {
+        addPageIfNeeded(30);
+
+        // Cabeçalho do card
+        doc.setFillColor(purple[0], purple[1], purple[2]);
+        doc.rect(margin, y, w - 2 * margin, 8, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`#${t.ticketNumber ?? t.id} · ${t.title}`, margin + 2, y + 5.5, { maxWidth: w - 2 * margin - 60 });
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'normal');
+        doc.text(
+          `${STATUS_LABELS[t.status] || t.status} · ${PRIORITY_LABELS[t.priority] || t.priority}${t.isPaused ? ' · PAUSADO' : ''}`,
+          w - margin - 2,
+          y + 5.5,
+          { align: 'right' }
+        );
+        y += 11;
+
+        const fields: [string, string][] = [
+          ['Solicitante', t.requesterName ? `${t.requesterName}${t.requesterEmail ? ` (${t.requesterEmail})` : ''}` : '—'],
+          ['Agente', t.agentName ? `${t.agentName}${t.agentEmail ? ` (${t.agentEmail})` : ''}` : '—'],
+          ['Categoria', t.categoryName || '—'],
+          ['Formulário', t.formName || '—'],
+          ['Criado em', formatDate(t.createdAt)],
+          ['Atualizado em', formatDate(t.updatedAt)],
+          ['Atribuído em', formatDate(t.assignedAt)],
+          ['Agendado para', formatDate(t.scheduledAt)],
+          ['Tempo pausado', formatPause(t.totalPauseSeconds)],
+          ['Aguarda aprovação', t.needsApproval ? 'Sim' : 'Não'],
+        ];
+
+        doc.setFontSize(8.5);
+        for (let i = 0; i < fields.length; i += 2) {
+          addPageIfNeeded(6);
+          const colW = (w - 2 * margin) / 2;
+          if ((i / 2) % 2 === 0) {
+            doc.setFillColor(bgLight[0], bgLight[1], bgLight[2]);
+            doc.rect(margin, y, w - 2 * margin, 5.5, 'F');
+          }
+          doc.setTextColor(100, 100, 110);
+          doc.setFont('helvetica', 'bold');
+          [0, 1].forEach((col) => {
+            const field = fields[i + col];
+            if (!field) return;
+            const x = margin + col * colW;
+            doc.setTextColor(100, 100, 110);
+            doc.setFont('helvetica', 'bold');
+            doc.text(`${field[0]}:`, x + 2, y + 4);
+            doc.setTextColor(textDark[0], textDark[1], textDark[2]);
+            doc.setFont('helvetica', 'normal');
+            doc.text(field[1], x + 32, y + 4, { maxWidth: colW - 34 });
+          });
+          y += 5.5;
+        }
+        y += 2;
+
+        // Descrição completa (inclui respostas de formulário, já formatadas)
+        if (t.description) {
+          addPageIfNeeded(8);
+          doc.setFontSize(8.5);
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(100, 100, 110);
+          doc.text('DESCRIÇÃO', margin + 2, y + 4);
+          y += 6;
+
+          const cleanDescription = t.description.replace(/\*\*/g, '');
+          const lines = doc.setFont('helvetica', 'normal').setFontSize(8.5).splitTextToSize(cleanDescription, w - 2 * margin - 4);
+          doc.setTextColor(textDark[0], textDark[1], textDark[2]);
+          lines.forEach((line: string) => {
+            addPageIfNeeded(4.5);
+            doc.text(line, margin + 2, y + 3.5);
+            y += 4.5;
+          });
+          y += 2;
+        }
+
+        doc.setDrawColor(border[0], border[1], border[2]);
+        doc.setLineWidth(0.2);
+        addPageIfNeeded(4);
+        doc.line(margin, y, w - margin, y);
+        y += 6;
+
+        void idx;
+      });
+
+      const totalPages = (doc as any).internal.getNumberOfPages();
+      for (let p = 1; p <= totalPages; p++) {
+        doc.setPage(p);
+        drawPageFooter(p, totalPages);
+      }
+      doc.save(`relatorio-detalhado-tickets-${new Date().toISOString().split('T')[0]}.pdf`);
+    } catch (err) {
+      console.error(err);
+      alert('Erro ao gerar PDF detalhado.');
+    } finally {
+      setGeneratingDetailed(false);
+    }
+  };
+
   if (loading && !overview) return <ReportsSkeleton />;
   if (error && !overview) return <ReportsError message={error} onRetry={fetchAll} />;
 
@@ -746,6 +937,9 @@ export default function Reports() {
           </Button>
           <Button onClick={generatePDF} disabled={!overview}>
             <FileDown size={16} /> Exportar PDF
+          </Button>
+          <Button variant="outline" onClick={generateDetailedTicketsPDF} disabled={generatingDetailed}>
+            <FileDown size={16} /> {generatingDetailed ? 'Gerando...' : 'Relatório detalhado'}
           </Button>
         </div>
       </header>
