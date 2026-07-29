@@ -9,7 +9,7 @@ function rowCount(row: any): number {
 }
 
 // Painel público (sem autenticação) para exibição em TVs.
-// Não expõe título/descrição dos tickets — apenas protocolo, solicitante, prioridade, status e datas.
+// Não expõe título/descrição/solicitante dos tickets — apenas protocolo, prioridade, status e datas.
 router.get('/stats', async (req, res) => {
   try {
     const nowStr = getBrasiliaTimestamp();
@@ -26,9 +26,8 @@ router.get('/stats', async (req, res) => {
     ]);
 
     const queue = await dbAll(`
-      SELECT t.ticket_number, t.created_at, t.status, t.priority, u.name as user_name
+      SELECT t.ticket_number, t.created_at, t.status, t.priority
       FROM tickets t
-      LEFT JOIN users u ON t.user_id = u.id
       WHERE t.status IN ('open', 'in_progress')
       ORDER BY
         CASE t.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
@@ -37,11 +36,18 @@ router.get('/stats', async (req, res) => {
     `);
 
     const latest = await dbAll(`
-      SELECT t.ticket_number, t.created_at, t.status, t.priority, u.name as user_name
+      SELECT t.ticket_number, t.created_at, t.status, t.priority
       FROM tickets t
-      LEFT JOIN users u ON t.user_id = u.id
       ORDER BY t.created_at DESC
       LIMIT 10
+    `);
+
+    const scheduled = await dbAll(`
+      SELECT t.ticket_number, t.created_at, t.scheduled_at, t.priority
+      FROM tickets t
+      WHERE t.status = 'scheduled'
+      ORDER BY t.scheduled_at ASC
+      LIMIT 30
     `);
 
     const rankingRaw = await dbAll(`
@@ -77,15 +83,19 @@ router.get('/stats', async (req, res) => {
         ticketNumber: t.ticket_number,
         createdAt: t.created_at,
         status: t.status,
-        priority: t.priority,
-        userName: t.user_name || null
+        priority: t.priority
       })),
       latest: (latest as any[]).map((t) => ({
         ticketNumber: t.ticket_number,
         createdAt: t.created_at,
         status: t.status,
-        priority: t.priority,
-        userName: t.user_name || null
+        priority: t.priority
+      })),
+      scheduled: (scheduled as any[]).map((t) => ({
+        ticketNumber: t.ticket_number,
+        createdAt: t.created_at,
+        scheduledAt: t.scheduled_at,
+        priority: t.priority
       })),
       ranking
     });

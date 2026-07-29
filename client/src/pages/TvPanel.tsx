@@ -6,7 +6,13 @@ interface TvTicket {
   createdAt: string | null;
   status: string;
   priority: string;
-  userName: string | null;
+}
+
+interface TvScheduledTicket {
+  ticketNumber: number | null;
+  createdAt: string | null;
+  scheduledAt: string | null;
+  priority: string;
 }
 
 interface TvRankingEntry {
@@ -24,6 +30,7 @@ interface TvStats {
   };
   queue: TvTicket[];
   latest: TvTicket[];
+  scheduled: TvScheduledTicket[];
   ranking: TvRankingEntry[];
 }
 
@@ -46,7 +53,7 @@ const STATUS_LABELS: Record<string, string> = {
   rejected: 'Rejeitado',
 };
 
-function formatProtocolo(ticket: TvTicket): string {
+function formatProtocolo(ticket: { ticketNumber: number | null; createdAt: string | null }): string {
   if (!ticket.ticketNumber || !ticket.createdAt) return '—';
   const date = new Date(ticket.createdAt);
   const year = date.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo', year: 'numeric' });
@@ -66,6 +73,18 @@ function timeAgo(createdAt: string | null, now: number): string {
   if (hours < 24) return `${hours}h ${minutes}min`;
   const days = Math.floor(hours / 24);
   return `${days}d ${hours % 24}h`;
+}
+
+function formatScheduledFor(scheduledAt: string | null): string {
+  if (!scheduledAt) return '—';
+  const date = new Date(scheduledAt);
+  return date.toLocaleString('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 function formatClock(date: Date): string {
@@ -129,7 +148,7 @@ export default function TvPanel() {
         <KpiCard label="Resolvidos Hoje" value={stats?.kpis.resolvedToday} color="var(--green)" />
       </section>
 
-      <section className="grid grid-cols-3 gap-5" style={{ height: 'calc(100vh - 260px)' }}>
+      <section className="grid grid-cols-4 gap-5" style={{ height: 'calc(100vh - 260px)' }}>
         <div
           className="col-span-2 flex flex-col overflow-hidden rounded-xl border p-5"
           style={{ background: 'var(--bg-card)', borderColor: 'var(--border-primary)' }}
@@ -140,7 +159,6 @@ export default function TvPanel() {
               <thead>
                 <tr className="text-[color:var(--text-tertiary)]" style={{ fontSize: '0.85rem' }}>
                   <th className="pb-2">Protocolo</th>
-                  <th className="pb-2">Solicitante</th>
                   <th className="pb-2">Prioridade</th>
                   <th className="pb-2">Status</th>
                   <th className="pb-2 text-right">Tempo Aberto</th>
@@ -150,7 +168,6 @@ export default function TvPanel() {
                 {(stats?.queue || []).map((t, i) => (
                   <tr key={i} className="border-t" style={{ borderColor: 'var(--border-primary)' }}>
                     <td className="py-2.5 font-mono">{formatProtocolo(t)}</td>
-                    <td className="py-2.5">{t.userName || 'Desconhecido'}</td>
                     <td className="py-2.5">
                       <span style={{ color: PRIORITY_LABELS[t.priority]?.color || 'var(--text-secondary)' }} className="font-semibold">
                         {PRIORITY_LABELS[t.priority]?.label || t.priority}
@@ -162,7 +179,7 @@ export default function TvPanel() {
                 ))}
                 {stats && stats.queue.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="py-6 text-center text-[color:var(--text-tertiary)]">
+                    <td colSpan={4} className="py-6 text-center text-[color:var(--text-tertiary)]">
                       Nenhum ticket na fila 🎉
                     </td>
                   </tr>
@@ -172,7 +189,30 @@ export default function TvPanel() {
           </div>
         </div>
 
-        <div className="flex flex-col gap-5 overflow-hidden">
+        <div
+          className="col-span-1 flex flex-col overflow-hidden rounded-xl border p-5"
+          style={{ background: 'var(--bg-card)', borderColor: 'var(--border-primary)' }}
+        >
+          <h2 className="mb-3 text-xl font-bold">Agendados</h2>
+          <div className="flex flex-col gap-2 overflow-y-auto">
+            {(stats?.scheduled || []).map((t, i) => (
+              <div key={i} className="flex flex-col rounded-lg px-3 py-2" style={{ background: 'var(--bg-tertiary)' }}>
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-sm">{formatProtocolo(t)}</span>
+                  <span style={{ color: PRIORITY_LABELS[t.priority]?.color || 'var(--text-secondary)' }} className="text-sm font-semibold">
+                    {PRIORITY_LABELS[t.priority]?.label || t.priority}
+                  </span>
+                </div>
+                <span className="text-sm text-[color:var(--text-secondary)]">{formatScheduledFor(t.scheduledAt)}</span>
+              </div>
+            ))}
+            {stats && stats.scheduled.length === 0 && (
+              <p className="text-sm text-[color:var(--text-tertiary)]">Nenhum ticket agendado.</p>
+            )}
+          </div>
+        </div>
+
+        <div className="col-span-1 flex flex-col gap-5 overflow-hidden">
           <div
             className="flex-1 overflow-hidden rounded-xl border p-5"
             style={{ background: 'var(--bg-card)', borderColor: 'var(--border-primary)' }}
@@ -207,7 +247,7 @@ export default function TvPanel() {
                 <div key={i} className="flex items-center justify-between rounded-lg px-3 py-2" style={{ background: 'var(--bg-tertiary)' }}>
                   <div className="flex flex-col">
                     <span className="font-mono text-sm">{formatProtocolo(t)}</span>
-                    <span className="text-sm text-[color:var(--text-secondary)]">{t.userName || 'Desconhecido'}</span>
+                    <span className="text-sm text-[color:var(--text-secondary)]">{STATUS_LABELS[t.status] || t.status}</span>
                   </div>
                   <span style={{ color: PRIORITY_LABELS[t.priority]?.color || 'var(--text-secondary)' }} className="text-sm font-semibold">
                     {PRIORITY_LABELS[t.priority]?.label || t.priority}
