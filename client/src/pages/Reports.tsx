@@ -759,6 +759,66 @@ export default function Reports() {
         const hours = seconds / 3600;
         return formatHours(hours);
       };
+      const humanizeKey = (key: string): string =>
+        key.replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').replace(/^./, (s) => s.toUpperCase()).trim();
+
+      const jsonToLines = (value: unknown, indent: number): string[] => {
+        const pad = '  '.repeat(indent);
+        if (value === null || value === undefined) return [`${pad}—`];
+        if (typeof value === 'boolean') return [`${pad}${value ? 'Sim' : 'Não'}`];
+        if (Array.isArray(value)) {
+          if (value.length === 0) return [`${pad}Lista vazia`];
+          const lines: string[] = [];
+          value.forEach((item, i) => {
+            if (typeof item === 'object' && item !== null) {
+              lines.push(`${pad}[${i + 1}]`);
+              lines.push(...jsonToLines(item, indent + 1));
+            } else {
+              lines.push(`${pad}- ${String(item)}`);
+            }
+          });
+          return lines;
+        }
+        if (typeof value === 'object') {
+          const lines: string[] = [];
+          Object.entries(value as Record<string, unknown>).forEach(([k, v]) => {
+            if (v !== null && typeof v === 'object') {
+              lines.push(`${pad}${humanizeKey(k)}:`);
+              lines.push(...jsonToLines(v, indent + 1));
+            } else {
+              const valStr = v === null || v === undefined ? '—' : typeof v === 'boolean' ? (v ? 'Sim' : 'Não') : String(v);
+              lines.push(`${pad}${humanizeKey(k)}: ${valStr}`);
+            }
+          });
+          return lines;
+        }
+        return [`${pad}${String(value)}`];
+      };
+
+      const formatDescriptionForPdf = (description: string): string => {
+        const trimmed = description.trim();
+        if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+          try {
+            const parsed = JSON.parse(trimmed);
+            if (typeof parsed === 'object' && parsed !== null) {
+              return jsonToLines(parsed, 0).join('\n');
+            }
+          } catch {
+            /* não é JSON válido, cai no fallback abaixo */
+          }
+        }
+        return description.replace(/\*\*/g, '');
+      };
+
+      const formatProtocolo = (t: DetailedTicket) => {
+        if (!t.ticketNumber || !t.createdAt) return `#${t.id}`;
+        const date = new Date(t.createdAt);
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const number = String(t.ticketNumber).padStart(3, '0');
+        return `${year}/${month}/${day}/${number}`;
+      };
 
       // ——— Capa ———
       doc.setFillColor(dark[0], dark[1], dark[2]);
@@ -783,27 +843,26 @@ export default function Reports() {
       }
 
       tickets.forEach((t, idx) => {
-        addPageIfNeeded(30);
+        addPageIfNeeded(26);
 
         // Cabeçalho do card
         doc.setFillColor(purple[0], purple[1], purple[2]);
-        doc.rect(margin, y, w - 2 * margin, 8, 'F');
+        doc.rect(margin, y, w - 2 * margin, 6.5, 'F');
         doc.setTextColor(255, 255, 255);
-        doc.setFontSize(10);
+        doc.setFontSize(9.5);
         doc.setFont('helvetica', 'bold');
-        doc.text(`#${t.ticketNumber ?? t.id} · ${t.title}`, margin + 2, y + 5.5, { maxWidth: w - 2 * margin - 60 });
-        doc.setFontSize(8);
+        doc.text(`${formatProtocolo(t)} · ${t.title}`, margin + 2, y + 4.6, { maxWidth: w - 2 * margin - 60 });
+        doc.setFontSize(7.5);
         doc.setFont('helvetica', 'normal');
         doc.text(
           `${STATUS_LABELS[t.status] || t.status} · ${PRIORITY_LABELS[t.priority] || t.priority}${t.isPaused ? ' · PAUSADO' : ''}`,
           w - margin - 2,
-          y + 5.5,
+          y + 4.6,
           { align: 'right' }
         );
-        y += 11;
+        y += 8.5;
 
         const fields: [string, string][] = [
-          ['Solicitante', t.requesterName ? `${t.requesterName}${t.requesterEmail ? ` (${t.requesterEmail})` : ''}` : '—'],
           ['Agente', t.agentName ? `${t.agentName}${t.agentEmail ? ` (${t.agentEmail})` : ''}` : '—'],
           ['Categoria', t.categoryName || '—'],
           ['Formulário', t.formName || '—'],
@@ -815,13 +874,14 @@ export default function Reports() {
           ['Aguarda aprovação', t.needsApproval ? 'Sim' : 'Não'],
         ];
 
-        doc.setFontSize(8.5);
+        doc.setFontSize(8);
+        const rowH = 4.6;
         for (let i = 0; i < fields.length; i += 2) {
-          addPageIfNeeded(6);
+          addPageIfNeeded(rowH);
           const colW = (w - 2 * margin) / 2;
           if ((i / 2) % 2 === 0) {
             doc.setFillColor(bgLight[0], bgLight[1], bgLight[2]);
-            doc.rect(margin, y, w - 2 * margin, 5.5, 'F');
+            doc.rect(margin, y, w - 2 * margin, rowH, 'F');
           }
           doc.setTextColor(100, 100, 110);
           doc.setFont('helvetica', 'bold');
@@ -831,40 +891,40 @@ export default function Reports() {
             const x = margin + col * colW;
             doc.setTextColor(100, 100, 110);
             doc.setFont('helvetica', 'bold');
-            doc.text(`${field[0]}:`, x + 2, y + 4);
+            doc.text(`${field[0]}:`, x + 2, y + 3.4);
             doc.setTextColor(textDark[0], textDark[1], textDark[2]);
             doc.setFont('helvetica', 'normal');
-            doc.text(field[1], x + 32, y + 4, { maxWidth: colW - 34 });
+            doc.text(field[1], x + 30, y + 3.4, { maxWidth: colW - 32 });
           });
-          y += 5.5;
+          y += rowH;
         }
-        y += 2;
+        y += 1;
 
         // Descrição completa (inclui respostas de formulário, já formatadas)
         if (t.description) {
-          addPageIfNeeded(8);
-          doc.setFontSize(8.5);
+          addPageIfNeeded(7);
+          doc.setFontSize(8)
           doc.setFont('helvetica', 'bold');
           doc.setTextColor(100, 100, 110);
-          doc.text('DESCRIÇÃO', margin + 2, y + 4);
-          y += 6;
+          doc.text('DESCRIÇÃO', margin + 2, y + 3.5);
+          y += 5;
 
-          const cleanDescription = t.description.replace(/\*\*/g, '');
-          const lines = doc.setFont('helvetica', 'normal').setFontSize(8.5).splitTextToSize(cleanDescription, w - 2 * margin - 4);
+          const cleanDescription = formatDescriptionForPdf(t.description);
+          const lines = doc.setFont('helvetica', 'normal').setFontSize(8).splitTextToSize(cleanDescription, w - 2 * margin - 4);
           doc.setTextColor(textDark[0], textDark[1], textDark[2]);
           lines.forEach((line: string) => {
-            addPageIfNeeded(4.5);
-            doc.text(line, margin + 2, y + 3.5);
-            y += 4.5;
+            addPageIfNeeded(4);
+            doc.text(line, margin + 2, y + 3);
+            y += 4;
           });
-          y += 2;
+          y += 1;
         }
 
         doc.setDrawColor(border[0], border[1], border[2]);
         doc.setLineWidth(0.2);
         addPageIfNeeded(4);
         doc.line(margin, y, w - margin, y);
-        y += 6;
+        y += 4;
 
         void idx;
       });
