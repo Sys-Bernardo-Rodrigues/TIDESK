@@ -25,6 +25,7 @@ import {
   Webhook,
   FolderKanban,
   BookOpen,
+  Bell,
 } from 'lucide-react';
 import { RESOURCES, ACTIONS } from '../hooks/usePermissions';
 import { formatDateBR } from '../utils/dateUtils';
@@ -92,6 +93,7 @@ const SYSTEM_PAGES = [
   { path: '/config/perfil-de-acesso', label: 'Perfil de Acesso', Icon: Shield },
   { path: '/config/usuarios', label: 'Usuários', Icon: User },
   { path: '/config/backup', label: 'Backup', Icon: Database },
+  { path: '/config/notificacoes', label: 'Notificações', Icon: Bell },
   { path: '/config/atualizar', label: 'Atualizar', Icon: RefreshCw },
   { path: '/config/grupos', label: 'Grupos', Icon: Users },
   { path: '/acompanhar/aprovar', label: 'Aprovar', Icon: CheckCircle },

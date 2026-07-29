@@ -3,6 +3,7 @@ import { body, validationResult } from 'express-validator';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { requirePermission, RESOURCES, ACTIONS } from '../middleware/permissions';
 import { dbGet, dbAll, dbRun, getBrasiliaTimestamp } from '../database';
+import { sendSlackNewTicketNotification } from '../services/slack-service';
 import crypto from 'crypto';
 import { uploadMultiple } from '../middleware/upload';
 import path from 'path';
@@ -599,6 +600,16 @@ router.post('/public/:url/submit', uploadMultiple, async (req, res) => {
       needsApproval,
       submissionId
     });
+
+    sendSlackNewTicketNotification({
+      ticketId,
+      ticketNumber: finalTicketNumber,
+      title: ticketTitle,
+      description: ticketDescription,
+      priority: 'medium',
+      userName: userName || null,
+      categoryName: null
+    }).catch(() => {});
   } catch (error) {
     console.error('Erro ao submeter formulário:', error);
     res.status(500).json({ error: 'Erro ao enviar formulário' });

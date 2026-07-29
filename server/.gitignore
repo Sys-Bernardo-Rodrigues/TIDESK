@@ -37,6 +37,9 @@ tidesk_old.db
 backups/*.db
 !backups/backup-config.json
 
+# Configurações locais com segredos (ex: URL do webhook do Slack)
+config/
+
 # Uploads (opcional - descomente se não quiser commitar uploads)
 # uploads/
 

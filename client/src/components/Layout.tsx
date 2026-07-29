@@ -32,6 +32,7 @@ import {
   Database,
   RefreshCw,
   Menu,
+  Bell,
 } from 'lucide-react';
 import { useState } from 'react';
 import type { LucideIcon } from 'lucide-react';
@@ -116,6 +117,7 @@ const MENU_STRUCTURE: { label: string; items: NavItem[] }[] = [
         { path: '/config/usuarios', label: 'Usuários', icon: User, permission: '/config/usuarios' },
         { path: '/config/grupos', label: 'Grupos', icon: Users, permission: '/config/grupos' },
         { path: '/config/backup', label: 'Backup', icon: Database, permission: '/config/backup' },
+        { path: '/config/notificacoes', label: 'Notificações', icon: Bell, permission: '/config/notificacoes' },
         { path: '/config/atualizar', label: 'Atualizar', icon: RefreshCw, permission: '/config/atualizar' },
       ],
     }],

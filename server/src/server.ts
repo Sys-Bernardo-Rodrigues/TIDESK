@@ -24,6 +24,8 @@ import dashboardRoutes from './routes/dashboard';
 import webhookRoutes from './routes/webhooks';
 import projectRoutes from './routes/projects';
 import docsRoutes from './routes/docs';
+import notificationRoutes from './routes/notifications';
+import tvRoutes from './routes/tv';
 import { startBackupScheduler } from './services/backup-scheduler';
 
 dotenv.config();
@@ -139,6 +141,8 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/webhooks', webhookRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/docs', docsRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/tv', tvRoutes);
 
 // Rota de health check
 app.get('/api/health', (req, res) => {

@@ -3,6 +3,7 @@ import { body, validationResult } from 'express-validator';
 import { authenticate, AuthRequest, requireAgent } from '../middleware/auth';
 import { requirePermission, RESOURCES, ACTIONS } from '../middleware/permissions';
 import { dbGet, dbAll, dbRun, getBrasiliaTimestamp } from '../database';
+import { sendSlackNewTicketNotification } from '../services/slack-service';
 
 const DB_TYPE = process.env.DB_TYPE || 'sqlite';
 
@@ -427,6 +428,17 @@ router.post('/', [
     );
 
     res.status(201).json(ticket);
+
+    const createdTicket = ticket as any;
+    sendSlackNewTicketNotification({
+      ticketId: createdTicket.id,
+      ticketNumber: createdTicket.ticket_number,
+      title: createdTicket.title,
+      description: createdTicket.description,
+      priority: createdTicket.priority,
+      userName: createdTicket.user_name,
+      categoryName: createdTicket.category_name
+    }).catch(() => {});
   } catch (error) {
     console.error('Erro ao criar ticket:', error);
     res.status(500).json({ error: 'Erro ao criar ticket' });

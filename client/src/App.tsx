@@ -11,6 +11,7 @@ import FormBuilder from './pages/FormBuilder';
 import AccessProfile from './pages/AccessProfile';
 import Users from './pages/Users';
 import Backup from './pages/Backup';
+import Notificacoes from './pages/Notificacoes';
 import Atualizar from './pages/Atualizar';
 import Grupos from './pages/Grupos';
 import Aprovar from './pages/Aprovar';
@@ -22,6 +23,7 @@ import PublicForm from './pages/PublicForm';
 import Historico from './pages/Historico';
 import PageBuilder from './pages/PageBuilder';
 import PublicPage from './pages/PublicPage';
+import TvPanel from './pages/TvPanel';
 import Webhooks from './pages/Webhooks';
 import Projetos from './pages/Projetos';
 import ProjetoDetail from './pages/ProjetoDetail';
@@ -56,6 +58,7 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/form/:formId" element={<PublicForm />} />
           <Route path="/page/:slug" element={<PublicPage />} />
+          <Route path="/tv" element={<TvPanel />} />
           <Route
             path="/"
             element={
@@ -192,13 +195,21 @@ function App() {
                 </ProtectedRoute>
               } 
             />
-            <Route 
-              path="config/atualizar" 
+            <Route
+              path="config/atualizar"
               element={
                 <ProtectedRoute resource={RESOURCES.CONFIG} action={ACTIONS.VIEW}>
                   <Atualizar />
                 </ProtectedRoute>
-              } 
+              }
+            />
+            <Route
+              path="config/notificacoes"
+              element={
+                <ProtectedRoute resource={RESOURCES.CONFIG} action={ACTIONS.VIEW}>
+                  <Notificacoes />
+                </ProtectedRoute>
+              }
             />
             <Route 
               path="config/grupos" 
