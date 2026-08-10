@@ -73,6 +73,7 @@ const RESOURCE_LABELS: Record<string, string> = {
   projects: 'Projetos',
   docs: 'Arquivos',
   ai_assistant: 'Assistente de IA (Tickets)',
+  sigma: 'Consultar OS-SIGMA',
 };
 
 const ACTION_LABELS: Record<string, string> = {
@@ -103,6 +104,7 @@ const SYSTEM_PAGES = [
   { path: '/acompanhar/acompanhar-tratativa', label: 'Acompanhar Tratativa', Icon: Eye },
   { path: '/historico', label: 'Histórico', Icon: History },
   { path: '/relatorios', label: 'Relatórios', Icon: FileBarChart },
+  { path: '/consultar-os-sigma', label: 'Consultar OS-SIGMA', Icon: Search },
   { path: '/agenda/calendario-de-servico', label: 'Calendário de Serviço', Icon: Calendar },
   { path: '/agenda/calendario-de-plantoes', label: 'Calendário de Plantões', Icon: CalendarDays },
 ];

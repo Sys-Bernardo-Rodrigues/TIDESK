@@ -30,6 +30,7 @@ import Projetos from './pages/Projetos';
 import ProjetoDetail from './pages/ProjetoDetail';
 import Docs from './pages/Docs';
 import DocsRepo from './pages/DocsRepo';
+import ConsultarOSSigma from './pages/ConsultarOSSigma';
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
 import { RESOURCES, ACTIONS } from './hooks/usePermissions';
@@ -252,13 +253,21 @@ function App() {
                 </ProtectedRoute>
               } 
             />
-            <Route 
-              path="relatorios" 
+            <Route
+              path="relatorios"
               element={
                 <ProtectedRoute resource={RESOURCES.REPORTS} action={ACTIONS.VIEW}>
                   <Reports />
                 </ProtectedRoute>
-              } 
+              }
+            />
+            <Route
+              path="consultar-os-sigma"
+              element={
+                <ProtectedRoute resource={RESOURCES.SIGMA} action={ACTIONS.VIEW}>
+                  <ConsultarOSSigma />
+                </ProtectedRoute>
+              }
             />
             <Route 
               path="agenda/calendario-de-servico" 

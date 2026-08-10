@@ -28,6 +28,7 @@ import notificationRoutes from './routes/notifications';
 import tvRoutes from './routes/tv';
 import ticketAssistantRoutes from './routes/ticket-assistant';
 import aiConfigRoutes from './routes/ai-config';
+import sigmaRoutes from './routes/sigma';
 import { startBackupScheduler } from './services/backup-scheduler';
 
 dotenv.config();
@@ -147,6 +148,7 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/tv', tvRoutes);
 app.use('/api/ticket-assistant', ticketAssistantRoutes);
 app.use('/api/config', aiConfigRoutes);
+app.use('/api/sigma', sigmaRoutes);
 
 // Rota de health check
 app.get('/api/health', (req, res) => {

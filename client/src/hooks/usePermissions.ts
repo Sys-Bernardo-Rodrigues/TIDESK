@@ -18,7 +18,8 @@ export const RESOURCES = {
   WEBHOOKS: 'webhooks',
   PROJECTS: 'projects',
   DOCS: 'docs',
-  AI_ASSISTANT: 'ai_assistant'
+  AI_ASSISTANT: 'ai_assistant',
+  SIGMA: 'sigma'
 } as const;
 
 export const ACTIONS = {
@@ -64,7 +65,8 @@ export const usePermissions = () => {
           '/config/perfil-de-acesso', '/config/usuarios', '/config/backup',
           '/config/atualizar', '/config/grupos',
           '/acompanhar/aprovar', '/acompanhar/acompanhar-tratativa', '/historico',
-          '/relatorios', '/agenda/calendario-de-servico', '/agenda/calendario-de-plantoes'
+          '/relatorios', '/agenda/calendario-de-servico', '/agenda/calendario-de-plantoes',
+          '/consultar-os-sigma'
         ]);
         setAllowedPages(allPages);
       } else {
@@ -94,7 +96,8 @@ export const usePermissions = () => {
           '/config/perfil-de-acesso', '/config/usuarios', '/config/backup',
           '/config/atualizar', '/config/grupos',
           '/acompanhar/aprovar', '/acompanhar/acompanhar-tratativa', '/historico',
-          '/relatorios', '/agenda/calendario-de-servico', '/agenda/calendario-de-plantoes'
+          '/relatorios', '/agenda/calendario-de-servico', '/agenda/calendario-de-plantoes',
+          '/consultar-os-sigma'
         ]));
       } else {
         setPermissions(new Set());

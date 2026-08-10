@@ -14,6 +14,7 @@ export const PERMISSION_TO_PAGE: Record<string, string> = {
   'approve:view': '/acompanhar/aprovar',
   'track:view': '/acompanhar/acompanhar-tratativa',
   'agenda:view': '/agenda/calendario-de-servico',
+  'sigma:view': '/consultar-os-sigma',
 };
 
 export const PAGE_TO_VIEW_PERMISSION: Record<string, ProfilePermission> = {
@@ -29,9 +30,10 @@ export const PAGE_TO_VIEW_PERMISSION: Record<string, ProfilePermission> = {
   '/acompanhar/acompanhar-tratativa': { resource: 'track', action: 'view' },
   '/agenda/calendario-de-servico': { resource: 'agenda', action: 'view' },
   '/agenda/calendario-de-plantoes': { resource: 'agenda', action: 'view' },
+  '/consultar-os-sigma': { resource: 'sigma', action: 'view' },
 };
 
-const RESOURCES_REQUIRING_VIEW = ['projects', 'docs', 'tickets', 'forms', 'pages', 'webhooks', 'reports', 'history', 'agenda'];
+const RESOURCES_REQUIRING_VIEW = ['projects', 'docs', 'tickets', 'forms', 'pages', 'webhooks', 'reports', 'history', 'agenda', 'sigma'];
 
 function permKey(p: ProfilePermission) {
   return `${p.resource}:${p.action}`;

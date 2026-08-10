@@ -34,6 +34,7 @@ import {
   Menu,
   Bell,
   Sparkles,
+  Search,
 } from 'lucide-react';
 import { useState } from 'react';
 import type { LucideIcon } from 'lucide-react';
@@ -105,6 +106,7 @@ const MENU_STRUCTURE: { label: string; items: NavItem[] }[] = [
       },
       { path: '/historico', label: 'Histórico', icon: History, permission: '/historico' },
       { path: '/relatorios', label: 'Relatórios', icon: FileBarChart, permission: '/relatorios' },
+      { path: '/consultar-os-sigma', label: 'Consultar OS-SIGMA', icon: Search, permission: '/consultar-os-sigma' },
     ],
   },
   {
