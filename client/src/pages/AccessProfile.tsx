@@ -26,6 +26,7 @@ import {
   FolderKanban,
   BookOpen,
   Bell,
+  Sparkles,
 } from 'lucide-react';
 import { RESOURCES, ACTIONS } from '../hooks/usePermissions';
 import { formatDateBR } from '../utils/dateUtils';
@@ -71,6 +72,7 @@ const RESOURCE_LABELS: Record<string, string> = {
   webhooks: 'Webhooks',
   projects: 'Projetos',
   docs: 'Arquivos',
+  ai_assistant: 'Assistente de IA (Tickets)',
 };
 
 const ACTION_LABELS: Record<string, string> = {
@@ -96,6 +98,7 @@ const SYSTEM_PAGES = [
   { path: '/config/notificacoes', label: 'Notificações', Icon: Bell },
   { path: '/config/atualizar', label: 'Atualizar', Icon: RefreshCw },
   { path: '/config/grupos', label: 'Grupos', Icon: Users },
+  { path: '/config/ia', label: 'Assistente de IA', Icon: Sparkles },
   { path: '/acompanhar/aprovar', label: 'Aprovar', Icon: CheckCircle },
   { path: '/acompanhar/acompanhar-tratativa', label: 'Acompanhar Tratativa', Icon: Eye },
   { path: '/historico', label: 'Histórico', Icon: History },

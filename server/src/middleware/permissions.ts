@@ -17,7 +17,8 @@ export const RESOURCES = {
   AGENDA: 'agenda',
   WEBHOOKS: 'webhooks',
   PROJECTS: 'projects',
-  DOCS: 'docs'
+  DOCS: 'docs',
+  AI_ASSISTANT: 'ai_assistant'
 } as const;
 
 export const ACTIONS = {

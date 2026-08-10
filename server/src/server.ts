@@ -26,6 +26,8 @@ import projectRoutes from './routes/projects';
 import docsRoutes from './routes/docs';
 import notificationRoutes from './routes/notifications';
 import tvRoutes from './routes/tv';
+import ticketAssistantRoutes from './routes/ticket-assistant';
+import aiConfigRoutes from './routes/ai-config';
 import { startBackupScheduler } from './services/backup-scheduler';
 
 dotenv.config();
@@ -143,6 +145,8 @@ app.use('/api/projects', projectRoutes);
 app.use('/api/docs', docsRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/tv', tvRoutes);
+app.use('/api/ticket-assistant', ticketAssistantRoutes);
+app.use('/api/config', aiConfigRoutes);
 
 // Rota de health check
 app.get('/api/health', (req, res) => {

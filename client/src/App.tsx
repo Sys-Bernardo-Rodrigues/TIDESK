@@ -12,6 +12,7 @@ import AccessProfile from './pages/AccessProfile';
 import Users from './pages/Users';
 import Backup from './pages/Backup';
 import Notificacoes from './pages/Notificacoes';
+import ConfigIa from './pages/ConfigIa';
 import Atualizar from './pages/Atualizar';
 import Grupos from './pages/Grupos';
 import Aprovar from './pages/Aprovar';
@@ -208,6 +209,14 @@ function App() {
               element={
                 <ProtectedRoute resource={RESOURCES.CONFIG} action={ACTIONS.VIEW}>
                   <Notificacoes />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="config/ia"
+              element={
+                <ProtectedRoute resource={RESOURCES.CONFIG} action={ACTIONS.VIEW}>
+                  <ConfigIa />
                 </ProtectedRoute>
               }
             />

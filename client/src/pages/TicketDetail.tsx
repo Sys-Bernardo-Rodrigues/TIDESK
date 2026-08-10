@@ -109,6 +109,7 @@ interface FormAttachment {
   file_path: string;
   file_size: number;
   mime_type: string;
+  source?: 'form' | 'ai_assistant';
 }
 
 // Função para formatar ID do ticket para exibição (com barras)
@@ -468,7 +469,10 @@ export default function TicketDetail({ ticketId: ticketIdProp, onClose }: Ticket
   // Download de arquivo
   const handleDownload = async (attachment: FormAttachment) => {
     try {
-      const response = await axios.get(`/api/forms/attachments/${attachment.id}`, {
+      const downloadUrl = attachment.source === 'ai_assistant'
+        ? `/api/ticket-assistant/attachments/${attachment.id}`
+        : `/api/forms/attachments/${attachment.id}`;
+      const response = await axios.get(downloadUrl, {
         responseType: 'blob'
       });
       const url = window.URL.createObjectURL(new Blob([response.data]));
@@ -946,6 +950,41 @@ export default function TicketDetail({ ticketId: ticketIdProp, onClose }: Ticket
         )}
         </div>
       </header>
+
+      {attachments.some((a) => a.source === 'ai_assistant') && (
+        <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid var(--border-primary)' }}>
+          <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
+            Anexos
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
+            {attachments
+              .filter((a) => a.source === 'ai_assistant')
+              .map((attachment) => (
+                <button
+                  key={attachment.id}
+                  onClick={() => handleDownload(attachment)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    padding: '0.375rem 0.5rem',
+                    borderRadius: '0.375rem',
+                    border: '1px solid var(--border-primary)',
+                    background: 'var(--bg-secondary)',
+                    cursor: 'pointer',
+                    width: 'fit-content',
+                    fontSize: '0.8125rem',
+                    color: 'var(--text-primary)'
+                  }}
+                >
+                  <FileText size={14} color="var(--purple)" />
+                  {attachment.file_name} • {formatFileSize(attachment.file_size)}
+                  <Download size={12} />
+                </button>
+              ))}
+          </div>
+        </div>
+      )}
 
       {/* Área do chat */}
       <div className="ticket-chat">

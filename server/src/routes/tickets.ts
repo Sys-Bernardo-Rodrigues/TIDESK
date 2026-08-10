@@ -3,7 +3,7 @@ import { body, validationResult } from 'express-validator';
 import { authenticate, AuthRequest, requireAgent } from '../middleware/auth';
 import { requirePermission, RESOURCES, ACTIONS } from '../middleware/permissions';
 import { dbGet, dbAll, dbRun, getBrasiliaTimestamp } from '../database';
-import { sendSlackNewTicketNotification } from '../services/slack-service';
+import { getBrasiliaDate, generateTicketNumber, createTicketRecord } from '../services/ticket-service';
 
 const DB_TYPE = process.env.DB_TYPE || 'sqlite';
 
@@ -13,39 +13,6 @@ const TOTAL_PAUSE_SECONDS = DB_TYPE === 'sqlite'
   : `(SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(p.resumed_at, NOW()) - p.paused_at))), 0)::bigint FROM ticket_pauses p WHERE p.ticket_id = t.id)`;
 
 const router = express.Router();
-
-// Função para obter data atual no timezone de Brasília
-function getBrasiliaDate(): { year: number; month: number; day: number } {
-  const now = new Date();
-  // Usar toLocaleString para obter data no timezone de Brasília
-  const brasiliaDateStr = now.toLocaleString('en-US', { 
-    timeZone: 'America/Sao_Paulo',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  });
-  
-  // Formato: "MM/DD/YYYY"
-  const [month, day, year] = brasiliaDateStr.split('/').map(Number);
-  
-  return { year, month, day };
-}
-
-// Função para gerar número do ticket do dia
-async function generateTicketNumber(): Promise<number> {
-  const { year, month, day } = getBrasiliaDate();
-  const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-  
-  // Contar quantos tickets foram criados hoje
-  // Usar CAST para garantir compatibilidade com SQLite e PostgreSQL
-  const countResult = await dbGet(
-    `SELECT COUNT(*) as count FROM tickets WHERE DATE(created_at) = ?`,
-    [dateStr]
-  );
-  
-  const count = (countResult as any)?.count || 0;
-  return count + 1;
-}
 
 // Função para gerar ID do ticket no formato ano/mês/dia/número
 async function generateTicketId(): Promise<string> {
@@ -405,40 +372,15 @@ router.post('/', [
 
     const { title, description, priority = 'medium', category_id } = req.body;
 
-    // Gerar número do ticket do dia
-    const ticketNumber = await generateTicketNumber();
-
-    const result = await dbRun(
-      `INSERT INTO tickets (title, description, status, priority, category_id, user_id, ticket_number, created_at, updated_at) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [title, description, 'open', priority, category_id || null, req.userId, ticketNumber, getBrasiliaTimestamp(), getBrasiliaTimestamp()]
-    );
-
-    const ticketId = (result as any).lastID;
-    const ticket = await dbGet(
-      `SELECT t.*, 
-              u.name as user_name, 
-              u.email as user_email,
-              c.name as category_name
-       FROM tickets t
-       LEFT JOIN users u ON t.user_id = u.id
-       LEFT JOIN categories c ON t.category_id = c.id
-       WHERE t.id = ?`,
-      [ticketId]
-    );
+    const ticket = await createTicketRecord({
+      title,
+      description,
+      priority,
+      category_id,
+      user_id: req.userId!
+    });
 
     res.status(201).json(ticket);
-
-    const createdTicket = ticket as any;
-    sendSlackNewTicketNotification({
-      ticketId: createdTicket.id,
-      ticketNumber: createdTicket.ticket_number,
-      title: createdTicket.title,
-      description: createdTicket.description,
-      priority: createdTicket.priority,
-      userName: createdTicket.user_name,
-      categoryName: createdTicket.category_name
-    }).catch(() => {});
   } catch (error) {
     console.error('Erro ao criar ticket:', error);
     res.status(500).json({ error: 'Erro ao criar ticket' });
@@ -646,20 +588,26 @@ router.get('/:id/attachments', requirePermission(RESOURCES.TICKETS, ACTIONS.VIEW
       }
     }
 
-    if (!ticket.form_submission_id) {
-      return res.json([]);
+    // Anexos vindos de formulário (fluxo tradicional)
+    let formAttachments: any[] = [];
+    if (ticket.form_submission_id) {
+      formAttachments = await dbAll(`
+        SELECT fa.*, ff.label as field_label, ff.type as field_type
+        FROM form_attachments fa
+        LEFT JOIN form_fields ff ON fa.field_id = ff.id
+        WHERE fa.form_submission_id = ?
+        ORDER BY fa.created_at ASC
+      `, [ticket.form_submission_id]);
+      formAttachments = formAttachments.map((a: any) => ({ ...a, source: 'form' }));
     }
 
-    // Buscar anexos
-    const attachments = await dbAll(`
-      SELECT fa.*, ff.label as field_label, ff.type as field_type
-      FROM form_attachments fa
-      LEFT JOIN form_fields ff ON fa.field_id = ff.id
-      WHERE fa.form_submission_id = ?
-      ORDER BY fa.created_at ASC
-    `, [ticket.form_submission_id]);
+    // Anexos genéricos do ticket (ex.: PDF de OS do assistente de IA)
+    const ticketAttachments = await dbAll(
+      `SELECT * FROM ticket_attachments WHERE ticket_id = ? ORDER BY created_at ASC`,
+      [ticketId]
+    );
 
-    res.json(attachments);
+    res.json([...formAttachments, ...ticketAttachments]);
   } catch (error) {
     console.error('Erro ao buscar anexos:', error);
     res.status(500).json({ error: 'Erro ao buscar anexos' });

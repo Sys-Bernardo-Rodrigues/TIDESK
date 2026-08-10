@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import TicketDetail from './TicketDetail';
+import TicketAssistantModal from '../components/TicketAssistantModal';
 import { useAuth } from '../contexts/AuthContext';
 import { usePermissions, RESOURCES, ACTIONS } from '../hooks/usePermissions';
 import { formatDateList, formatTicketTitle } from '../utils/dateUtils';
@@ -176,6 +177,9 @@ export default function Tickets() {
   const { user } = useAuth();
   const { hasPermission } = usePermissions();
   const canEditTickets = hasPermission(RESOURCES.TICKETS, ACTIONS.EDIT);
+  const canUseAiAssistant =
+    hasPermission(RESOURCES.AI_ASSISTANT, ACTIONS.CREATE) && hasPermission(RESOURCES.TICKETS, ACTIONS.CREATE);
+  const [assistantOpen, setAssistantOpen] = useState(false);
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -382,6 +386,12 @@ export default function Tickets() {
               <Zap size={12} />
               {stats.urgent}
             </span>
+          )}
+          {canUseAiAssistant && (
+            <Button variant="default" size="sm" onClick={() => setAssistantOpen(true)}>
+              <Sparkles size={14} />
+              Assistente de IA
+            </Button>
           )}
           <Button variant="outline" size="icon-sm" onClick={() => fetchTickets()} title="Atualizar agora">
             <RefreshCw size={14} />
@@ -602,6 +612,14 @@ export default function Tickets() {
           )}
         </DialogContent>
       </Dialog>
+
+      {canUseAiAssistant && (
+        <TicketAssistantModal
+          open={assistantOpen}
+          onOpenChange={setAssistantOpen}
+          onCreated={() => fetchTickets()}
+        />
+      )}
     </div>
   );
 }

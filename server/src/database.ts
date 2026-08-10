@@ -37,6 +37,18 @@ export interface Ticket {
   updated_at: string;
 }
 
+export interface TicketAttachment {
+  id: number;
+  ticket_id: number;
+  file_name: string;
+  file_path: string;
+  file_size: number | null;
+  mime_type: string | null;
+  source: 'manual' | 'ai_assistant';
+  uploaded_by: number | null;
+  created_at: string;
+}
+
 export interface Category {
   id: number;
   name: string;
@@ -656,6 +668,23 @@ const initSQLite = async () => {
     )
   `);
 
+  // Tabela de anexos de ticket (genérica, não amarrada a formulário — ex. PDF de OS do assistente de IA)
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS ticket_attachments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ticket_id INTEGER NOT NULL,
+      file_name TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      file_size INTEGER,
+      mime_type TEXT,
+      source TEXT NOT NULL DEFAULT 'manual',
+      uploaded_by INTEGER,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE CASCADE,
+      FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE SET NULL
+    )
+  `);
+
   // Tabela de páginas permitidas por perfil de acesso
   await dbRun(`
     CREATE TABLE IF NOT EXISTS access_profile_pages (
@@ -1221,6 +1250,23 @@ const initPostgreSQL = async () => {
       paused_by INTEGER,
       FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE CASCADE,
       FOREIGN KEY (paused_by) REFERENCES users(id) ON DELETE SET NULL
+    )
+  `);
+
+  // Tabela de anexos de ticket (genérica, não amarrada a formulário — ex. PDF de OS do assistente de IA)
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS ticket_attachments (
+      id SERIAL PRIMARY KEY,
+      ticket_id INTEGER NOT NULL,
+      file_name VARCHAR(255) NOT NULL,
+      file_path VARCHAR(500) NOT NULL,
+      file_size INTEGER,
+      mime_type VARCHAR(100),
+      source VARCHAR(30) NOT NULL DEFAULT 'manual',
+      uploaded_by INTEGER,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE CASCADE,
+      FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE SET NULL
     )
   `);
 
