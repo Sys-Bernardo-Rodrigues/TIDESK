@@ -84,11 +84,6 @@ router.get(
       // Grupos
       const totalGroups = await dbGet('SELECT COUNT(*) as count FROM groups');
 
-      // Projetos (total e tarefas)
-      const totalProjects = await dbGet('SELECT COUNT(*) as count FROM projects');
-      const totalProjectTasks = await dbGet('SELECT COUNT(*) as count FROM project_tasks');
-      const projectTasksOpen = await dbGet('SELECT COUNT(*) as count FROM project_tasks WHERE completed_at IS NULL');
-
       // Últimos tickets atualizados (atividade recente)
       const recentTicketsList = await dbAll(`
         SELECT id, ticket_number, title, updated_at, status
@@ -230,11 +225,6 @@ router.get(
         },
         topForms: topForms || [],
         timeline: ticketsLast30Days || [],
-        projects: {
-          total: rowCount(totalProjects),
-          tasksTotal: rowCount(totalProjectTasks),
-          tasksOpen: rowCount(projectTasksOpen)
-        },
         recentTickets: recentTicketsList || [],
         lastBackup
       });

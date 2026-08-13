@@ -45,7 +45,7 @@ export default function ProtectedRoute({
     alternativePermissions.some((alt) => hasPermission(alt.resource, alt.action));
   const hasResourceAccess = hasMainPermission || hasAlternativePermission;
 
-  // Rotas com recurso/ação: a permissão do perfil é o critério principal (ex.: projects:view)
+  // Rotas com recurso/ação: a permissão do perfil é o critério principal (ex.: docs:view)
   if (!hasResourceAccess) {
     if (fallback) {
       return <>{fallback}</>;

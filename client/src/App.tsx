@@ -17,17 +17,15 @@ import Atualizar from './pages/Atualizar';
 import Grupos from './pages/Grupos';
 import Aprovar from './pages/Aprovar';
 import AcompanharTratativa from './pages/AcompanharTratativa';
-import Reports from './pages/Reports';
 import ServiceCalendar from './pages/ServiceCalendar';
 import ShiftCalendar from './pages/ShiftCalendar';
 import PublicForm from './pages/PublicForm';
 import Historico from './pages/Historico';
+import Reports from './pages/Reports';
 import PageBuilder from './pages/PageBuilder';
 import PublicPage from './pages/PublicPage';
 import TvPanel from './pages/TvPanel';
 import Webhooks from './pages/Webhooks';
-import Projetos from './pages/Projetos';
-import ProjetoDetail from './pages/ProjetoDetail';
 import Docs from './pages/Docs';
 import DocsRepo from './pages/DocsRepo';
 import ConsultarOSSigma from './pages/ConsultarOSSigma';
@@ -79,17 +77,7 @@ function App() {
                 <Tickets />
               </ProtectedRoute>
             } />
-            <Route path="projetos" element={
-              <ProtectedRoute resource={RESOURCES.PROJECTS} action={ACTIONS.VIEW}>
-                <Projetos />
-              </ProtectedRoute>
-            } />
-            <Route path="projetos/:id" element={
-              <ProtectedRoute resource={RESOURCES.PROJECTS} action={ACTIONS.VIEW}>
-                <ProjetoDetail />
-              </ProtectedRoute>
-            } />
-            <Route 
+            <Route
               path="docs" 
               element={
                 <ProtectedRoute resource={RESOURCES.DOCS} action={ACTIONS.VIEW}>
@@ -245,13 +233,13 @@ function App() {
                 </ProtectedRoute>
               } 
             />
-            <Route 
-              path="historico" 
+            <Route
+              path="historico"
               element={
                 <ProtectedRoute resource={RESOURCES.HISTORY} action={ACTIONS.VIEW}>
                   <Historico />
                 </ProtectedRoute>
-              } 
+              }
             />
             <Route
               path="relatorios"

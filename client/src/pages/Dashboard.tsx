@@ -3,21 +3,15 @@ import axios from 'axios';
 import { Link } from 'react-router-dom';
 import type { LucideIcon } from 'lucide-react';
 import {
-  Ticket,
   AlertCircle,
-  CheckCircle,
-  Clock,
   Users,
   FileText,
   Layers,
   UserCheck,
-  TrendingUp,
   Activity,
-  PieChart,
   Webhook,
   Calendar,
   ChevronRight,
-  FolderKanban,
   Zap,
   Database,
 } from 'lucide-react';
@@ -54,7 +48,6 @@ interface DashboardStats {
   forms: { total: number; active: number };
   pages: { total: number };
   groups: { total: number };
-  projects?: { total: number; tasksTotal: number; tasksOpen: number };
   topForms: Array<{ name: string; ticket_count: number }>;
   timeline: Array<{ date: string; count: number }>;
   webhooks?: { total: number; active: number; callsToday: number; callsLast7Days: number; successRate: number };
@@ -82,8 +75,6 @@ function formatTime(iso: string): string {
 
 type Accent = 'purple' | 'red' | 'green' | 'blue' | 'orange' | 'yellow';
 
-const PRIORITY_LABELS: Record<string, string> = { urgent: 'Urgente', high: 'Alta', medium: 'Média', low: 'Baixa' };
-const PRIORITY_ACCENT: Record<string, Accent> = { urgent: 'red', high: 'red', medium: 'orange', low: 'blue' };
 const STATUS_LABELS: Record<string, string> = {
   open: 'Aberto',
   in_progress: 'Em progresso',
@@ -291,17 +282,12 @@ export default function Dashboard() {
   if (loading) return <DashboardSkeleton />;
   if (error || !stats) return <DashboardError message={error || 'Dados não disponíveis'} onRetry={fetchStats} />;
 
-  const resolutionRate = stats.tickets.total > 0 ? Math.round((stats.tickets.resolved / stats.tickets.total) * 100) : 0;
-  const maxTimeline = Math.max(...stats.timeline.map((t) => t.count), 1);
   const todayStr = formatDateBR(new Date().toISOString().split('T')[0]);
   const lastBackupStr = stats.lastBackup && stats.lastBackup.length >= 16
     ? formatDateBR(stats.lastBackup.slice(0, 10)) + ' ' + stats.lastBackup.slice(11, 16)
     : stats.lastBackup || null;
-  const totalPriority = stats.tickets.byPriority.reduce((s, p) => s + p.count, 0);
-  const maxTopForm = Math.max(...(stats.topForms || []).map((x) => x.ticket_count), 1);
 
   const resourceLinks = [
-    { to: '/projetos', label: 'Projetos', value: stats.projects?.total ?? 0, sub: `${stats.projects?.tasksOpen ?? 0} tarefas abertas`, icon: FolderKanban, show: hasPageAccess('/projetos') },
     { to: '/config/usuarios', label: 'Usuários', value: stats.users.total, sub: `${stats.users.active} ativos`, icon: Users, show: canViewUsers },
     { to: '/create/forms', label: 'Formulários', value: stats.forms.total, sub: `${stats.forms.active} ativos`, icon: FileText, show: hasPageAccess('/create/forms') },
     { to: '/create/pages', label: 'Páginas', value: stats.pages.total, sub: 'Páginas públicas', icon: Layers, show: hasPageAccess('/create/pages') },
@@ -330,85 +316,14 @@ export default function Dashboard() {
       </header>
 
       {/* KPIs */}
-      <section className="mb-6 grid grid-cols-2 gap-3.5 lg:grid-cols-5" aria-label="Indicadores principais">
-        {hasPageAccess('/tickets') && (
-          <>
-            <KpiCard icon={Ticket} accent="purple" label="TOTAL DE TICKETS" value={stats.tickets.total} sub={`${stats.tickets.recent} nos últimos 7 dias`} to="/tickets" />
-            <KpiCard icon={AlertCircle} accent="red" label="ABERTOS" value={stats.tickets.open} sub={`${stats.tickets.inProgress} em progresso`} to="/tickets" />
-          </>
-        )}
-        <KpiCard icon={CheckCircle} accent="green" label="TAXA DE RESOLUÇÃO" value={`${resolutionRate}%`} sub={`${stats.tickets.resolvedToday} resolvidos hoje`} />
-        <KpiCard icon={Clock} accent="blue" label="TEMPO MÉDIO" value={`${stats.tickets.avgResolutionHours.toFixed(1)}h`} sub="Resolução (30 dias)" />
-        {stats.tickets.pendingApproval > 0 && hasPageAccess('/acompanhar/aprovar') && (
+      {stats.tickets.pendingApproval > 0 && hasPageAccess('/acompanhar/aprovar') && (
+        <section className="mb-6 grid grid-cols-2 gap-3.5 sm:grid-cols-3 lg:grid-cols-5" aria-label="Indicadores principais">
           <KpiCard icon={Zap} accent="orange" label="PENDENTES APROVAÇÃO" value={stats.tickets.pendingApproval} sub="Requerem atenção" to="/acompanhar/aprovar" highlight />
-        )}
-      </section>
+        </section>
+      )}
 
       {/* Bento grid */}
       <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
-        {/* Prioridade */}
-        <Card className={BENTO_CARD}>
-          <div className={SECTION_HEAD}>
-            <PieChart size={16} className={cn('shrink-0', ACCENT.purple.text)} />
-            <h3 className={SECTION_TITLE}>Tickets por prioridade</h3>
-          </div>
-          {!stats.tickets.byPriority.length ? (
-            <p className="text-sm text-muted-foreground italic">Nenhum ticket com prioridade</p>
-          ) : (
-            <div className="flex flex-col gap-3">
-              {stats.tickets.byPriority.map((item, i) => {
-                const pct = totalPriority > 0 ? (item.count / totalPriority) * 100 : 0;
-                const accent = PRIORITY_ACCENT[item.priority] || 'purple';
-                return (
-                  <div key={i} className="flex flex-col gap-1.5">
-                    <div className="flex items-center justify-between text-[0.8125rem]">
-                      <span className="flex items-center gap-1.5 font-medium text-foreground">
-                        <span className={cn('h-1.5 w-1.5 rounded-full', ACCENT[accent].solid)} />
-                        {PRIORITY_LABELS[item.priority] || item.priority}
-                      </span>
-                      <span className="font-semibold tabular-nums text-foreground">{item.count} <span className="font-normal text-muted-foreground">({pct.toFixed(0)}%)</span></span>
-                    </div>
-                    <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-                      <div className={cn('h-full rounded-full transition-[width] duration-300', ACCENT[accent].solid)} style={{ width: `${pct}%` }} />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </Card>
-
-        {/* Top formulários */}
-        <Card className={BENTO_CARD}>
-          <div className={SECTION_HEAD}>
-            <FileText size={16} className={cn('shrink-0', ACCENT.blue.text)} />
-            <h3 className={SECTION_TITLE}>Top formulários</h3>
-          </div>
-          {(!stats.topForms || !stats.topForms.length) ? (
-            <p className="text-sm text-muted-foreground italic">Nenhum formulário com tickets</p>
-          ) : (
-            <div className="flex flex-col gap-3">
-              {stats.topForms.map((f, i) => {
-                const pct = (f.ticket_count / maxTopForm) * 100;
-                return (
-                  <div key={i} className="flex flex-col gap-1.5">
-                    <div className="flex items-center justify-between text-[0.8125rem] font-medium text-foreground">
-                      <span className="flex min-w-0 items-center gap-1.5">
-                        <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded bg-muted text-[0.625rem] font-bold text-muted-foreground">{i + 1}</span>
-                        <span className="truncate" title={f.name}>{f.name}</span>
-                      </span>
-                      <span className="shrink-0 tabular-nums">{f.ticket_count}</span>
-                    </div>
-                    <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-                      <div className="h-full rounded-full bg-[var(--blue)] transition-[width] duration-300" style={{ width: `${pct}%` }} />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </Card>
-
         {/* Hoje (Agenda do dia) */}
         {canViewAgenda && (
           <Card className={BENTO_CARD}>
@@ -508,51 +423,6 @@ export default function Dashboard() {
           </Card>
         )}
 
-        {/* Evolução 30 dias */}
-        {stats.timeline && stats.timeline.length > 0 && (
-          <Card className={cn(BENTO_CARD, 'lg:col-span-2')}>
-            <div className="mb-3.5 flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <TrendingUp size={16} className={cn('shrink-0', ACCENT.green.text)} />
-                <h3 className={SECTION_TITLE}>Evolução · 30 dias</h3>
-              </div>
-              <span className="text-[0.7rem] tabular-nums text-muted-foreground">
-                {stats.timeline.reduce((s, t) => s + t.count, 0)} tickets
-              </span>
-            </div>
-            <div className="h-[140px] w-full rounded-lg bg-muted px-3 pt-5 pb-2">
-              <div className="flex h-full items-end justify-between gap-[3px]">
-                {stats.timeline.map((t, i) => {
-                  const pct = maxTimeline > 0 ? (t.count / maxTimeline) * 100 : 0;
-                  const isToday = i === stats.timeline.length - 1;
-                  return (
-                    <div
-                      key={i}
-                      className={cn('relative mx-auto max-w-[10px] min-w-[3px] flex-1 rounded-t transition-[height,opacity] duration-300', isToday ? ACCENT.green.solid : ACCENT.purple.solid)}
-                      style={{
-                        height: `${Math.max(pct, t.count > 0 ? 8 : 0)}%`,
-                        opacity: isToday ? 1 : 0.7,
-                      }}
-                      title={`${t.count} tickets · ${formatDateBR(t.date)}`}
-                    >
-                      {t.count > 0 && (
-                        <span
-                          className={cn('pointer-events-none absolute -top-4 left-1/2 -translate-x-1/2 text-[0.625rem] font-bold whitespace-nowrap', isToday ? ACCENT.green.text : ACCENT.purple.text)}
-                        >
-                          {t.count}
-                        </span>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-            <div className="flex justify-between text-[0.65rem] tabular-nums text-muted-foreground">
-              <span>{formatDateBR(stats.timeline[0].date)}</span>
-              <span>Hoje</span>
-            </div>
-          </Card>
-        )}
       </div>
 
       {/* Recursos do sistema */}

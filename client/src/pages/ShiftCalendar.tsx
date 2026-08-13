@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import { toast } from 'sonner';
 import {
@@ -13,7 +12,6 @@ import {
   Trash2,
   FileBarChart,
   FileText,
-  FolderKanban,
 } from 'lucide-react';
 import { usePermissions, RESOURCES, ACTIONS } from '../hooks/usePermissions';
 import { getHolidayName } from '../utils/brazilianHolidays';
@@ -40,8 +38,6 @@ interface Shift {
   created_by_name: string;
   user_ids: number[];
   user_names: string[];
-  project_id?: number | null;
-  project_name?: string | null;
 }
 
 type ViewMode = 'month' | 'week' | 'day';
@@ -94,15 +90,12 @@ function SpinnerBlock({ text }: { text: string }) {
 }
 
 export default function ShiftCalendar() {
-  const [searchParams, setSearchParams] = useSearchParams();
   const { hasPermission } = usePermissions();
   const confirm = useConfirm();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [viewMode, setViewMode] = useState<ViewMode>('month');
   const [tabMode, setTabMode] = useState<TabMode>('calendar');
   const [shifts, setShifts] = useState<Shift[]>([]);
-  const [projects, setProjects] = useState<{ id: number; name: string }[]>([]);
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(() => searchParams.get('project'));
   const [loading, setLoading] = useState(true);
   const [reportLoading, setReportLoading] = useState(false);
   const [reportData, setReportData] = useState<ReportData | null>(null);
@@ -115,7 +108,6 @@ export default function ShiftCalendar() {
   const canEdit = hasPermission(RESOURCES.AGENDA, ACTIONS.EDIT);
   const canDelete = hasPermission(RESOURCES.AGENDA, ACTIONS.DELETE);
   const canViewUsers = hasPermission(RESOURCES.USERS, ACTIONS.VIEW);
-  const canViewProjects = hasPermission(RESOURCES.PROJECTS, ACTIONS.VIEW);
 
   // Formulário de plantão
   const [shiftTitle, setShiftTitle] = useState('');
@@ -124,7 +116,6 @@ export default function ShiftCalendar() {
   const [shiftEndDate, setShiftEndDate] = useState('');
   const [shiftEndTime, setShiftEndTime] = useState('');
   const [selectedUserIds, setSelectedUserIds] = useState<number[]>([]);
-  const [shiftProjectId, setShiftProjectId] = useState<number | ''>('');
 
   // Função para obter ID do usuário pelo email (para relatórios)
   const getUserIdByEmail = (email: string): number | null => {
@@ -163,24 +154,12 @@ export default function ShiftCalendar() {
     }
   };
 
-  useEffect(() => {
-    const projectFromUrl = searchParams.get('project');
-    if (projectFromUrl !== selectedProjectId) setSelectedProjectId(projectFromUrl);
-  }, [searchParams]);
-
-  useEffect(() => {
-    if (canViewProjects) {
-      axios.get('/api/projects').then((res) => setProjects(res.data)).catch(() => setProjects([]));
-    }
-  }, [canViewProjects]);
-
   // Buscar plantões (usuários só se tiver users:view)
   const fetchData = async () => {
     try {
       setLoading(true);
       const { start, end } = getPeriodRange();
       const params = new URLSearchParams({ start, end });
-      if (selectedProjectId) params.set('project_id', selectedProjectId);
 
       if (canViewUsers) {
         const [shiftsRes, usersRes] = await Promise.all([
@@ -204,7 +183,7 @@ export default function ShiftCalendar() {
   useEffect(() => {
     if (tabMode === 'calendar') fetchData();
     else fetchReportData();
-  }, [currentDate, viewMode, tabMode, canViewUsers, selectedProjectId]);
+  }, [currentDate, viewMode, tabMode, canViewUsers]);
 
   // Buscar dados do relatório
   const fetchReportData = async () => {
@@ -484,6 +463,192 @@ export default function ShiftCalendar() {
     doc.save(fileName);
   };
 
+  // Gerar PDF simplificado: calendário do mês com o nome do plantonista em cada dia
+  const generateShiftCalendarPDF = () => {
+    if (!reportData) return;
+
+    // Mapear cada dia do mês para os nomes (com cor do usuário) de quem está de plantão
+    const dayNames: Record<string, Array<{ name: string; color: [number, number, number] }>> = {};
+    reportData.users.forEach((user) => {
+      const userId = getUserIdByEmail(user.email);
+      const color = userId !== null ? hexToRgb(getUserColor(userId)) : ([249, 115, 22] as [number, number, number]);
+      user.shifts.forEach((shift) => {
+        const start = new Date(shift.start_time);
+        const end = new Date(shift.end_time);
+        const cursor = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+        const endDay = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+        while (cursor <= endDay) {
+          const key = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`;
+          if (!dayNames[key]) dayNames[key] = [];
+          if (!dayNames[key].some((n) => n.name === user.name)) dayNames[key].push({ name: user.name, color });
+          cursor.setDate(cursor.getDate() + 1);
+        }
+      });
+    });
+
+    const lighten = (rgb: [number, number, number], amt: number): [number, number, number] => [
+      Math.round(rgb[0] + (255 - rgb[0]) * amt),
+      Math.round(rgb[1] + (255 - rgb[1]) * amt),
+      Math.round(rgb[2] + (255 - rgb[2]) * amt),
+    ];
+
+    const doc = new jsPDF({ orientation: 'landscape' });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 10;
+
+    const primaryColor: [number, number, number] = [138, 43, 226];
+    const secondaryColor: [number, number, number] = [59, 130, 246];
+    const textColor: [number, number, number] = [30, 30, 30];
+    const textSecondary: [number, number, number] = [110, 110, 122];
+    const borderColor: [number, number, number] = [224, 222, 235];
+    const weekendBg: [number, number, number] = [249, 247, 253];
+
+    // Cabeçalho
+    doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    doc.rect(0, 0, pageWidth, 26, 'F');
+    doc.setFillColor(secondaryColor[0], secondaryColor[1], secondaryColor[2]);
+    doc.rect(0, 26, pageWidth, 1.2, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(17);
+    doc.setFont('helvetica', 'bold');
+    doc.text('TIDESK', margin, 15);
+    doc.setFontSize(10.5);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Calendário de Plantões', margin + 33, 15);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    doc.text(reportData.monthName.charAt(0).toUpperCase() + reportData.monthName.slice(1), margin, 22);
+    const now = new Date();
+    doc.setFontSize(7.5);
+    doc.setFont('helvetica', 'normal');
+    doc.text(
+      `Gerado em ${now.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`,
+      pageWidth - margin,
+      15,
+      { align: 'right' }
+    );
+
+    // Legenda de plantonistas
+    let legendBottom = 32;
+    const legendUsers = reportData.users.filter((u) => u.shiftsCount > 0);
+    if (legendUsers.length > 0) {
+      doc.setFontSize(8);
+      let lx = margin;
+      let ly = 32;
+      legendUsers.forEach((user) => {
+        const userId = getUserIdByEmail(user.email);
+        const color = userId !== null ? hexToRgb(getUserColor(userId)) : ([249, 115, 22] as [number, number, number]);
+        const label = user.name;
+        const textWidth = doc.getTextWidth(label);
+        const chipWidth = textWidth + 9;
+        if (lx + chipWidth > pageWidth - margin) {
+          lx = margin;
+          ly += 6;
+        }
+        doc.setFillColor(color[0], color[1], color[2]);
+        doc.circle(lx + 2.2, ly - 1.2, 1.6, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(textColor[0], textColor[1], textColor[2]);
+        doc.text(label, lx + 6, ly, { maxWidth: 60 });
+        lx += chipWidth + 4;
+      });
+      legendBottom = ly + 4;
+    }
+
+    const gridTop = legendBottom + 2;
+    const gridWidth = pageWidth - margin * 2;
+    const cols = 7;
+    const cellWidth = gridWidth / cols;
+    const weekDays = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+
+    doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    doc.roundedRect(margin, gridTop, gridWidth, 8, 1.5, 1.5, 'F');
+    doc.rect(margin, gridTop + 4, gridWidth, 4, 'F');
+    doc.setFontSize(8.5);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(255, 255, 255);
+    weekDays.forEach((label, i) => {
+      doc.text(label, margin + i * cellWidth + cellWidth / 2, gridTop + 5.5, { align: 'center' });
+    });
+
+    const year = reportData.year;
+    const month = reportData.month;
+    const firstDay = new Date(year, month - 1, 1);
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const startWeekday = firstDay.getDay();
+    const rows = Math.ceil((startWeekday + daysInMonth) / 7);
+    const rowHeight = (pageHeight - gridTop - 8 - margin - 6) / rows;
+
+    let dayCounter = 1;
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const cellIndex = r * cols + c;
+        const x = margin + c * cellWidth;
+        const y = gridTop + 8 + r * rowHeight;
+        const isWeekendCol = c === 0 || c === 6;
+
+        doc.setFillColor(
+          isWeekendCol ? weekendBg[0] : 255,
+          isWeekendCol ? weekendBg[1] : 255,
+          isWeekendCol ? weekendBg[2] : 255
+        );
+        doc.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
+        doc.setLineWidth(0.25);
+        doc.rect(x, y, cellWidth, rowHeight, 'FD');
+
+        if (cellIndex >= startWeekday && dayCounter <= daysInMonth) {
+          const dateKey = `${year}-${String(month).padStart(2, '0')}-${String(dayCounter).padStart(2, '0')}`;
+
+          // Número do dia — badge discreto no canto superior direito
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(8);
+          doc.setTextColor(textSecondary[0], textSecondary[1], textSecondary[2]);
+          doc.text(String(dayCounter), x + cellWidth - 3, y + 5.5, { align: 'right' });
+
+          // Nome do(s) plantonista(s) — destaque: pill colorida, negrito
+          const names = dayNames[dateKey] || [];
+          let ny = y + 6.5;
+          const lineHeight = 6;
+          const maxLines = Math.max(1, Math.floor((rowHeight - 9) / lineHeight));
+          names.slice(0, maxLines).forEach((entry) => {
+            const label = entry.name.length > 22 ? entry.name.slice(0, 20) + '…' : entry.name;
+            const pillWidth = Math.min(doc.getTextWidth(label) + 5, cellWidth - 5);
+            const pillBg = lighten(entry.color, 0.82);
+            doc.setFillColor(pillBg[0], pillBg[1], pillBg[2]);
+            doc.roundedRect(x + 2, ny - 3.6, pillWidth, 5, 1, 1, 'F');
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(8.5);
+            doc.setTextColor(entry.color[0], entry.color[1], entry.color[2]);
+            doc.text(label, x + 4, ny, { maxWidth: cellWidth - 8 });
+            ny += lineHeight;
+          });
+          if (names.length > maxLines) {
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(6.5);
+            doc.setTextColor(textSecondary[0], textSecondary[1], textSecondary[2]);
+            doc.text(`+${names.length - maxLines}`, x + 4, ny);
+          }
+
+          dayCounter++;
+        }
+      }
+    }
+
+    // Rodapé
+    doc.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
+    doc.setLineWidth(0.3);
+    doc.line(margin, pageHeight - 8, pageWidth - margin, pageHeight - 8);
+    doc.setFontSize(7);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(textSecondary[0], textSecondary[1], textSecondary[2]);
+    doc.text('TIDESK · Calendário de Plantões', margin, pageHeight - 4);
+    doc.text('Página 1', pageWidth - margin, pageHeight - 4, { align: 'right' });
+
+    const fileName = `calendario-plantoes-${reportData.year}-${String(reportData.month).padStart(2, '0')}.pdf`;
+    doc.save(fileName);
+  };
+
   // Navegação do calendário
   const goToPrevious = () => {
     const newDate = new Date(currentDate);
@@ -517,7 +682,6 @@ export default function ShiftCalendar() {
     setShiftEndDate(dateStr);
     setShiftEndTime(timeStr);
     setSelectedUserIds([]);
-    setShiftProjectId(selectedProjectId ? Number(selectedProjectId) : '');
     setShowShiftModal(true);
   };
 
@@ -535,7 +699,6 @@ export default function ShiftCalendar() {
     setShiftEndDate(end.toISOString().split('T')[0]);
     setShiftEndTime(end.toTimeString().slice(0, 5));
     setSelectedUserIds(shift.user_ids || []);
-    setShiftProjectId(shift.project_id ?? '');
     setShowShiftModal(true);
   };
 
@@ -555,7 +718,6 @@ export default function ShiftCalendar() {
         start_time: startDateTime,
         end_time: endDateTime,
         user_ids: selectedUserIds,
-        project_id: shiftProjectId || undefined,
       };
 
       if (selectedShift) {
@@ -857,11 +1019,6 @@ export default function ShiftCalendar() {
                     <div className="min-w-0 flex-1">
                       <div className="mb-1 flex flex-wrap items-center gap-2">
                         <h3 className="text-[1.0625rem] font-semibold text-foreground">{shift.title || 'Plantão'}</h3>
-                        {shift.project_name && (
-                          <span className="flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
-                            <FolderKanban size={12} /> {shift.project_name}
-                          </span>
-                        )}
                       </div>
 
                       <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
@@ -1072,29 +1229,6 @@ export default function ShiftCalendar() {
 
           {tabMode === 'calendar' ? (
             <>
-              {canViewProjects && projects.length > 0 && (
-                <Select
-                  value={selectedProjectId ?? '__all'}
-                  onValueChange={(v) => {
-                    const value = v === '__all' ? null : v;
-                    setSelectedProjectId(value);
-                    if (value) setSearchParams({ project: value });
-                    else setSearchParams({});
-                  }}
-                >
-                  <SelectTrigger className="w-[180px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__all">Todos os projetos</SelectItem>
-                    {projects.map((p) => (
-                      <SelectItem key={p.id} value={String(p.id)}>
-                        {p.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
               <Button variant={viewMode === 'month' ? 'default' : 'outline'} onClick={() => setViewMode('month')}>
                 Mês
               </Button>
@@ -1111,9 +1245,14 @@ export default function ShiftCalendar() {
               )}
             </>
           ) : (
-            <Button onClick={generatePDF} disabled={!reportData || reportData.users.length === 0}>
-              <FileText size={16} /> Exportar PDF
-            </Button>
+            <>
+              <Button variant="outline" onClick={generateShiftCalendarPDF} disabled={!reportData || reportData.users.length === 0}>
+                <Calendar size={16} /> Calendário PDF
+              </Button>
+              <Button onClick={generatePDF} disabled={!reportData || reportData.users.length === 0}>
+                <FileText size={16} /> Exportar PDF
+              </Button>
+            </>
           )}
         </div>
       </div>
@@ -1168,28 +1307,6 @@ export default function ShiftCalendar() {
                 <Input type="time" value={shiftEndTime} onChange={(e) => setShiftEndTime(e.target.value)} />
               </div>
             </div>
-
-            {canViewProjects && projects.length > 0 && (
-              <div>
-                <Label className="mb-1.5">Projeto</Label>
-                <Select
-                  value={shiftProjectId === '' ? '__none' : String(shiftProjectId)}
-                  onValueChange={(v) => setShiftProjectId(v === '__none' ? '' : Number(v))}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none">Nenhum</SelectItem>
-                    {projects.map((p) => (
-                      <SelectItem key={p.id} value={String(p.id)}>
-                        {p.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
 
             <div>
               <Label className="mb-1.5">Usuários de plantão *</Label>

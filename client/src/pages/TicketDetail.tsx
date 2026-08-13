@@ -41,6 +41,9 @@ import {
   Pause,
   Play,
   Tag,
+  Users,
+  Plus,
+  Timer,
 } from 'lucide-react';
 
 const STATUS_META: Record<string, { label: string; color: string }> = {
@@ -90,6 +93,7 @@ interface Ticket {
   category_name: string;
   user_name: string;
   user_email: string;
+  assigned_to: number | null;
   assigned_name: string | null;
   form_name: string | null;
   form_submission_id: number | null;
@@ -110,6 +114,34 @@ interface FormAttachment {
   file_size: number;
   mime_type: string;
   source?: 'form' | 'ai_assistant';
+}
+
+interface Collaborator {
+  user_id: number;
+  name: string;
+  email: string;
+  added_at: string;
+}
+
+interface TimeSummaryEntry {
+  user_id: number;
+  name: string;
+  email: string;
+  total_seconds: number;
+  running_since: string | null;
+  is_responsible: boolean;
+}
+
+const FINALIZED_STATUSES = ['resolved', 'closed', 'rejected'];
+
+function formatDuration(totalSeconds: number): string {
+  const seconds = Math.max(0, Math.floor(totalSeconds));
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  if (h > 0) return `${h}h ${String(m).padStart(2, '0')}min`;
+  if (m > 0) return `${m}min ${String(s).padStart(2, '0')}s`;
+  return `${s}s`;
 }
 
 // Função para formatar ID do ticket para exibição (com barras)
@@ -172,6 +204,7 @@ export default function TicketDetail({ ticketId: ticketIdProp, onClose }: Ticket
   const [editingMessageId, setEditingMessageId] = useState<number | null>(null);
   const [editText, setEditText] = useState('');
   const [agents, setAgents] = useState<Array<{ id: number; name: string; email: string }>>([]);
+  const [collabCandidates, setCollabCandidates] = useState<Array<{ id: number; name: string; email: string }>>([]);
   const [showSettings, setShowSettings] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [attachments, setAttachments] = useState<FormAttachment[]>([]);
@@ -183,6 +216,13 @@ export default function TicketDetail({ ticketId: ticketIdProp, onClose }: Ticket
   const [scheduling, setScheduling] = useState(false);
   const [pausingResume, setPausingResume] = useState(false);
   const [showRawWebhookJson, setShowRawWebhookJson] = useState(false);
+  const [collaborators, setCollaborators] = useState<Collaborator[]>([]);
+  const [timeSummary, setTimeSummary] = useState<TimeSummaryEntry[]>([]);
+  const [addingCollaborator, setAddingCollaborator] = useState(false);
+  const [newCollaboratorId, setNewCollaboratorId] = useState('');
+  const [collaboratorBusy, setCollaboratorBusy] = useState(false);
+  const [timerBusy, setTimerBusy] = useState(false);
+  const [, setTick] = useState(0);
 
   // Determinar para onde voltar baseado no status do ticket
   const getBackPath = (): string => {
@@ -195,7 +235,10 @@ export default function TicketDetail({ ticketId: ticketIdProp, onClose }: Ticket
   useEffect(() => {
     if (id) {
       fetchTicket();
-      if (canEditTicket) fetchAgents();
+      if (canEditTicket) {
+        fetchAgents();
+        fetchCollabCandidates();
+      }
     } else {
       setLoading(false);
     }
@@ -213,6 +256,20 @@ export default function TicketDetail({ ticketId: ticketIdProp, onClose }: Ticket
       fetchAttachments();
     }
   }, [ticket?.form_submission_id]);
+
+  useEffect(() => {
+    if (ticket?.id) {
+      fetchCollaborators();
+      fetchTimeSummary();
+    }
+  }, [ticket?.id]);
+
+  // Atualiza a exibição a cada segundo enquanto houver algum cronômetro rodando
+  useEffect(() => {
+    if (!timeSummary.some((t) => t.running_since)) return;
+    const interval = setInterval(() => setTick((t) => t + 1), 1000);
+    return () => clearInterval(interval);
+  }, [timeSummary]);
 
   useEffect(() => {
     // Auto-scroll para a última mensagem
@@ -281,6 +338,16 @@ export default function TicketDetail({ ticketId: ticketIdProp, onClose }: Ticket
     }
   };
 
+  const fetchCollabCandidates = async () => {
+    try {
+      const response = await axios.get('/api/users/basic');
+      setCollabCandidates(response.data);
+    } catch (err: any) {
+      console.error('Erro ao buscar usuários para colaboração:', err);
+      setCollabCandidates(agents);
+    }
+  };
+
   const fetchAttachments = async () => {
     if (!ticket?.form_submission_id) {
       console.log('[TicketDetail] Ticket sem form_submission_id:', ticket);
@@ -293,6 +360,110 @@ export default function TicketDetail({ ticketId: ticketIdProp, onClose }: Ticket
       setAttachments(response.data);
     } catch (err: any) {
       console.error('Erro ao buscar anexos:', err);
+    }
+  };
+
+  const fetchCollaborators = async () => {
+    try {
+      const response = await axios.get(`/api/tickets/${id}/collaborators`);
+      setCollaborators(response.data);
+    } catch (err: any) {
+      console.error('Erro ao buscar colaboradores:', err);
+    }
+  };
+
+  const fetchTimeSummary = async () => {
+    try {
+      const response = await axios.get(`/api/tickets/${id}/time`);
+      setTimeSummary(response.data);
+    } catch (err: any) {
+      console.error('Erro ao buscar tempo do ticket:', err);
+    }
+  };
+
+  const handleAddCollaborator = async () => {
+    if (!newCollaboratorId || collaboratorBusy) return;
+    setCollaboratorBusy(true);
+    try {
+      await axios.post(`/api/tickets/${id}/collaborators`, { user_id: parseInt(newCollaboratorId) });
+      setNewCollaboratorId('');
+      setAddingCollaborator(false);
+      await fetchCollaborators();
+    } catch (err: any) {
+      console.error('Erro ao adicionar colaborador:', err);
+      toast.error(err.response?.data?.error || 'Erro ao adicionar colaborador');
+    } finally {
+      setCollaboratorBusy(false);
+    }
+  };
+
+  const handleRemoveCollaborator = async (userId: number) => {
+    if (collaboratorBusy) return;
+    setCollaboratorBusy(true);
+    try {
+      await axios.delete(`/api/tickets/${id}/collaborators/${userId}`);
+      await Promise.all([fetchCollaborators(), fetchTimeSummary()]);
+    } catch (err: any) {
+      console.error('Erro ao remover colaborador:', err);
+      toast.error(err.response?.data?.error || 'Erro ao remover colaborador');
+    } finally {
+      setCollaboratorBusy(false);
+    }
+  };
+
+  const handleStartTimer = async () => {
+    if (timerBusy || !user) return;
+    setTimerBusy(true);
+    try {
+      const response = await axios.post(`/api/tickets/${id}/time/start`);
+      const startedAt = response.data.started_at as string;
+      // Atualização otimista: liga o cronômetro na tela na hora, sem esperar o refetch
+      setTimeSummary((prev) => {
+        const exists = prev.some((t) => t.user_id === user.id);
+        if (exists) {
+          return prev.map((t) => (t.user_id === user.id ? { ...t, running_since: startedAt } : t));
+        }
+        return [
+          ...prev,
+          {
+            user_id: user.id,
+            name: user.name,
+            email: user.email,
+            total_seconds: 0,
+            running_since: startedAt,
+            is_responsible: user.id === ticket?.assigned_to,
+          },
+        ];
+      });
+      await Promise.all([fetchTimeSummary(), fetchCollaborators()]);
+    } catch (err: any) {
+      console.error('Erro ao iniciar cronômetro:', err);
+      toast.error(err.response?.data?.error || 'Erro ao iniciar cronômetro');
+    } finally {
+      setTimerBusy(false);
+    }
+  };
+
+  const handleStopTimer = async () => {
+    if (timerBusy || !user) return;
+    setTimerBusy(true);
+    try {
+      const response = await axios.post(`/api/tickets/${id}/time/stop`);
+      const endedAt = response.data.ended_at as string;
+      // Atualização otimista: congela o contador na tela na hora, sem esperar o refetch
+      setTimeSummary((prev) =>
+        prev.map((t) => {
+          if (t.user_id !== user.id) return t;
+          const delta = t.running_since ? (new Date(endedAt).getTime() - new Date(t.running_since).getTime()) / 1000 : 0;
+          return { ...t, running_since: null, total_seconds: t.total_seconds + Math.max(0, delta) };
+        })
+      );
+      await fetchTimeSummary();
+    } catch (err: any) {
+      console.error('Erro ao parar cronômetro:', err);
+      toast.error(err.response?.data?.error || 'Erro ao parar cronômetro');
+    } finally {
+      setTimerBusy(false);
     }
   };
 
@@ -950,6 +1121,144 @@ export default function TicketDetail({ ticketId: ticketIdProp, onClose }: Ticket
         )}
         </div>
       </header>
+
+      {canEditTicket && (() => {
+        const isFinalized = FINALIZED_STATUSES.includes(ticket.status);
+
+        if (isFinalized) {
+          const totalAll = timeSummary.reduce((s, t) => s + t.total_seconds, 0);
+          return (
+            <div className="border-b border-border px-4 py-3">
+              <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+                <Timer size={13} /> Tempo por colaborador
+              </div>
+              {timeSummary.length === 0 ? (
+                <p className="text-xs text-muted-foreground italic">Nenhum tempo registrado neste ticket</p>
+              ) : (
+                <div className="flex flex-col gap-1.5">
+                  {timeSummary.map((t) => (
+                    <div key={t.user_id} className="flex items-center justify-between gap-3 text-sm">
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        <span className="truncate font-medium text-foreground">{t.name}</span>
+                        {t.is_responsible && (
+                          <span className="shrink-0 rounded-full bg-[var(--purple-light)] px-1.5 py-0.5 text-[0.625rem] font-semibold text-[var(--purple)]">
+                            Responsável
+                          </span>
+                        )}
+                      </span>
+                      <span className="shrink-0 font-semibold text-foreground tabular-nums">{formatDuration(t.total_seconds)}</span>
+                    </div>
+                  ))}
+                  <div className="mt-1 flex items-center justify-between border-t border-border pt-1.5 text-sm font-semibold text-foreground">
+                    <span>Total</span>
+                    <span className="tabular-nums">{formatDuration(totalAll)}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        }
+
+        const myEntry = timeSummary.find((t) => t.user_id === user?.id);
+        const myRunning = !!myEntry?.running_since;
+        const myLiveSeconds = myEntry
+          ? myEntry.total_seconds + (myRunning ? (Date.now() - new Date(myEntry.running_since as string).getTime()) / 1000 : 0)
+          : 0;
+        const availableAgents = collabCandidates.filter(
+          (a) => a.id !== ticket.assigned_to && !collaborators.some((c) => c.user_id === a.id)
+        );
+
+        return (
+          <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2.5">
+            <span className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+              <Users size={13} /> Colaboradores
+            </span>
+
+            {collaborators.length === 0 && !addingCollaborator && (
+              <span className="text-xs text-muted-foreground italic">Nenhum colaborador</span>
+            )}
+
+            {collaborators.map((c) => {
+              const entry = timeSummary.find((t) => t.user_id === c.user_id);
+              const running = !!entry?.running_since;
+              const liveSeconds = entry
+                ? entry.total_seconds + (running ? (Date.now() - new Date(entry.running_since as string).getTime()) / 1000 : 0)
+                : 0;
+              return (
+                <span
+                  key={c.user_id}
+                  className="flex items-center gap-1.5 rounded-full border border-border bg-muted/50 py-1 pr-1.5 pl-2.5 text-xs"
+                >
+                  <span className={cn('font-medium text-foreground', running && 'text-[var(--green)]')}>{c.name}</span>
+                  {liveSeconds > 0 && <span className="tabular-nums text-muted-foreground">{formatDuration(liveSeconds)}</span>}
+                  <button
+                    onClick={() => handleRemoveCollaborator(c.user_id)}
+                    disabled={collaboratorBusy}
+                    className="rounded-full p-0.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                    title="Remover colaborador"
+                  >
+                    <X size={11} />
+                  </button>
+                </span>
+              );
+            })}
+
+            {addingCollaborator ? (
+              <div className="flex items-center gap-1.5">
+                <Select value={newCollaboratorId} onValueChange={setNewCollaboratorId}>
+                  <SelectTrigger size="sm" className="h-7 w-[170px] text-xs">
+                    <SelectValue placeholder="Selecionar agente" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableAgents.map((a) => (
+                      <SelectItem key={a.id} value={String(a.id)}>
+                        {a.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button size="sm" className="h-7" disabled={!newCollaboratorId || collaboratorBusy} onClick={handleAddCollaborator}>
+                  Adicionar
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7"
+                  onClick={() => {
+                    setAddingCollaborator(false);
+                    setNewCollaboratorId('');
+                  }}
+                >
+                  Cancelar
+                </Button>
+              </div>
+            ) : (
+              <Button
+                size="icon-sm"
+                variant="secondary"
+                className="h-6 w-6"
+                onClick={() => setAddingCollaborator(true)}
+                disabled={availableAgents.length === 0}
+                title="Adicionar colaborador"
+              >
+                <Plus size={13} />
+              </Button>
+            )}
+
+            <span className="mx-1 h-4 w-px bg-border" />
+
+            {myRunning ? (
+              <Button size="sm" variant="secondary" className="h-7 gap-1.5 text-[var(--green)]" onClick={handleStopTimer} disabled={timerBusy}>
+                <Timer size={13} /> Parar meu tempo · {formatDuration(myLiveSeconds)}
+              </Button>
+            ) : (
+              <Button size="sm" variant="secondary" className="h-7 gap-1.5" onClick={handleStartTimer} disabled={timerBusy}>
+                <Play size={13} /> Iniciar meu tempo
+              </Button>
+            )}
+          </div>
+        );
+      })()}
 
       {attachments.some((a) => a.source === 'ai_assistant') && (
         <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid var(--border-primary)' }}>

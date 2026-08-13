@@ -19,14 +19,13 @@ import {
   CheckCircle,
   Eye,
   History,
-  FileBarChart,
   Calendar,
   CalendarDays,
   Webhook,
-  FolderKanban,
   BookOpen,
   Bell,
   Sparkles,
+  BarChart3,
 } from 'lucide-react';
 import { RESOURCES, ACTIONS } from '../hooks/usePermissions';
 import { formatDateBR } from '../utils/dateUtils';
@@ -70,7 +69,6 @@ const RESOURCE_LABELS: Record<string, string> = {
   config: 'Configurações',
   agenda: 'Agenda',
   webhooks: 'Webhooks',
-  projects: 'Projetos',
   docs: 'Arquivos',
   ai_assistant: 'Assistente de IA (Tickets)',
   sigma: 'Consultar OS-SIGMA',
@@ -88,7 +86,6 @@ const ACTION_LABELS: Record<string, string> = {
 const SYSTEM_PAGES = [
   { path: '/', label: 'Dashboard', Icon: Home },
   { path: '/tickets', label: 'Tickets', Icon: Ticket },
-  { path: '/projetos', label: 'Projetos', Icon: FolderKanban },
   { path: '/docs', label: 'Arquivos', Icon: BookOpen },
   { path: '/create/forms', label: 'Formulários', Icon: FileEdit },
   { path: '/create/pages', label: 'Páginas', Icon: FileText },
@@ -102,8 +99,8 @@ const SYSTEM_PAGES = [
   { path: '/config/ia', label: 'Assistente de IA', Icon: Sparkles },
   { path: '/acompanhar/aprovar', label: 'Aprovar', Icon: CheckCircle },
   { path: '/acompanhar/acompanhar-tratativa', label: 'Acompanhar Tratativa', Icon: Eye },
+  { path: '/relatorios', label: 'Relatórios', Icon: BarChart3 },
   { path: '/historico', label: 'Histórico', Icon: History },
-  { path: '/relatorios', label: 'Relatórios', Icon: FileBarChart },
   { path: '/consultar-os-sigma', label: 'Consultar OS-SIGMA', Icon: Search },
   { path: '/agenda/calendario-de-servico', label: 'Calendário de Serviço', Icon: Calendar },
   { path: '/agenda/calendario-de-plantoes', label: 'Calendário de Plantões', Icon: CalendarDays },
@@ -344,12 +341,6 @@ export default function AccessProfile() {
                     <h3 className="mb-2 text-sm font-semibold text-foreground">
                       {RESOURCE_LABELS[resource] || resource}
                     </h3>
-                    {resource === 'projects' && (
-                      <p className="mb-2 text-xs text-muted-foreground">
-                        Marcar Visualizar (ou Criar/Editar) libera automaticamente o menu Projetos. Desmarcar
-                        Projetos nas páginas remove todas as permissões de projetos.
-                      </p>
-                    )}
                     <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
                       {Object.entries(ACTIONS).map(([, action]) => {
                         if (resource === 'approve' && action !== 'view' && action !== 'approve' && action !== 'reject') {

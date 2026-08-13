@@ -37,6 +37,23 @@ export interface Ticket {
   updated_at: string;
 }
 
+export interface TicketCollaborator {
+  id: number;
+  ticket_id: number;
+  user_id: number;
+  added_by: number | null;
+  created_at: string;
+}
+
+export interface TicketTimeEntry {
+  id: number;
+  ticket_id: number;
+  user_id: number;
+  started_at: string;
+  ended_at: string | null;
+  created_at: string;
+}
+
 export interface TicketAttachment {
   id: number;
   ticket_id: number;
@@ -175,7 +192,6 @@ export interface CalendarEvent {
   type: 'event' | 'ticket' | 'work';
   color: string | null;
   created_by: number;
-  project_id: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -193,7 +209,6 @@ export interface Shift {
   start_time: string;
   end_time: string;
   created_by: number;
-  project_id: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -668,6 +683,41 @@ const initSQLite = async () => {
     )
   `);
 
+  // Tabela de colaboradores do ticket (usuários adicionais além do responsável em assigned_to)
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS ticket_collaborators (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ticket_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      added_by INTEGER,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (added_by) REFERENCES users(id) ON DELETE SET NULL,
+      UNIQUE (ticket_id, user_id)
+    )
+  `);
+
+  // Tabela de cronômetro de tempo por usuário no ticket (sessões iniciar/parar)
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS ticket_time_entries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ticket_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      started_at DATETIME NOT NULL,
+      ended_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+  // Garante no máximo 1 cronômetro aberto por usuário/ticket
+  await dbRun(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_ticket_time_entries_open
+    ON ticket_time_entries (ticket_id, user_id)
+    WHERE ended_at IS NULL
+  `);
+
   // Tabela de anexos de ticket (genérica, não amarrada a formulário — ex. PDF de OS do assistente de IA)
   await dbRun(`
     CREATE TABLE IF NOT EXISTS ticket_attachments (
@@ -767,154 +817,6 @@ const initSQLite = async () => {
   } catch (error) {
     // Coluna já existe, ignorar erro
   }
-
-  // Tabelas do sistema de projetos
-  await dbRun(`
-    CREATE TABLE IF NOT EXISTS projects (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      description TEXT,
-      created_by INTEGER NOT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
-    )
-  `);
-  await dbRun(`
-    CREATE TABLE IF NOT EXISTS project_columns (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      project_id INTEGER NOT NULL,
-      name TEXT NOT NULL,
-      order_index INTEGER NOT NULL DEFAULT 0,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
-    )
-  `);
-  await dbRun(`
-    CREATE TABLE IF NOT EXISTS project_tasks (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      project_id INTEGER NOT NULL,
-      column_id INTEGER NOT NULL,
-      title TEXT NOT NULL,
-      description TEXT,
-      priority TEXT NOT NULL DEFAULT 'medium',
-      order_index INTEGER NOT NULL DEFAULT 0,
-      assigned_to INTEGER,
-      created_by INTEGER NOT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
-      FOREIGN KEY (column_id) REFERENCES project_columns(id) ON DELETE CASCADE,
-      FOREIGN KEY (assigned_to) REFERENCES users(id) ON DELETE SET NULL,
-      FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
-    )
-  `);
-  await dbRun(`
-    CREATE TABLE IF NOT EXISTS project_sprints (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      project_id INTEGER NOT NULL,
-      name TEXT NOT NULL,
-      start_date TEXT,
-      end_date TEXT,
-      order_index INTEGER NOT NULL DEFAULT 0,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
-    )
-  `);
-  try {
-    await dbRun('ALTER TABLE project_tasks ADD COLUMN sprint_id INTEGER REFERENCES project_sprints(id) ON DELETE SET NULL');
-  } catch (_) {}
-  try {
-    await dbRun('ALTER TABLE project_tasks ADD COLUMN story_points INTEGER');
-  } catch (_) {}
-  try {
-    await dbRun('ALTER TABLE project_tasks ADD COLUMN due_date TEXT');
-  } catch (_) {}
-  try {
-    await dbRun('ALTER TABLE project_tasks ADD COLUMN completed_at DATETIME');
-  } catch (_) {}
-  try {
-    await dbRun('ALTER TABLE project_tasks ADD COLUMN started_at DATETIME');
-  } catch (_) {}
-  try {
-    await dbRun("ALTER TABLE project_tasks ADD COLUMN task_type TEXT DEFAULT 'feature'");
-  } catch (_) {}
-  try {
-    await dbRun('ALTER TABLE calendar_events ADD COLUMN project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL');
-  } catch (_) {}
-  try {
-    await dbRun('ALTER TABLE shifts ADD COLUMN project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL');
-  } catch (_) {}
-  await dbRun(`
-    CREATE TABLE IF NOT EXISTS project_task_subtasks (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      task_id INTEGER NOT NULL,
-      title TEXT NOT NULL,
-      completed INTEGER NOT NULL DEFAULT 0,
-      order_index INTEGER NOT NULL DEFAULT 0,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (task_id) REFERENCES project_tasks(id) ON DELETE CASCADE
-    )
-  `);
-  await dbRun(`
-    CREATE TABLE IF NOT EXISTS project_task_dod (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      task_id INTEGER NOT NULL,
-      label TEXT NOT NULL,
-      checked INTEGER NOT NULL DEFAULT 0,
-      order_index INTEGER NOT NULL DEFAULT 0,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (task_id) REFERENCES project_tasks(id) ON DELETE CASCADE
-    )
-  `);
-  await dbRun(`
-    CREATE TABLE IF NOT EXISTS project_task_comments (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      task_id INTEGER NOT NULL,
-      user_id INTEGER NOT NULL,
-      message TEXT NOT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (task_id) REFERENCES project_tasks(id) ON DELETE CASCADE,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    )
-  `);
-  await dbRun(`
-    CREATE TABLE IF NOT EXISTS project_task_time_entries (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      task_id INTEGER NOT NULL,
-      user_id INTEGER NOT NULL,
-      hours REAL NOT NULL,
-      entry_date TEXT NOT NULL,
-      note TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (task_id) REFERENCES project_tasks(id) ON DELETE CASCADE,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    )
-  `);
-  await dbRun(`
-    CREATE TABLE IF NOT EXISTS project_task_attachments (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      task_id INTEGER NOT NULL,
-      user_id INTEGER NOT NULL,
-      file_name TEXT NOT NULL,
-      file_path TEXT NOT NULL,
-      file_size INTEGER,
-      mime_type TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (task_id) REFERENCES project_tasks(id) ON DELETE CASCADE,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    )
-  `);
-  await dbRun(`
-    CREATE TABLE IF NOT EXISTS project_task_dependencies (
-      task_id INTEGER NOT NULL,
-      depends_on_task_id INTEGER NOT NULL,
-      PRIMARY KEY (task_id, depends_on_task_id),
-      CHECK (task_id != depends_on_task_id),
-      FOREIGN KEY (task_id) REFERENCES project_tasks(id) ON DELETE CASCADE,
-      FOREIGN KEY (depends_on_task_id) REFERENCES project_tasks(id) ON DELETE CASCADE
-    )
-  `);
 
   // Tabela de webhooks
   await dbRun(`
@@ -1253,6 +1155,41 @@ const initPostgreSQL = async () => {
     )
   `);
 
+  // Tabela de colaboradores do ticket (usuários adicionais além do responsável em assigned_to)
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS ticket_collaborators (
+      id SERIAL PRIMARY KEY,
+      ticket_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      added_by INTEGER,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (added_by) REFERENCES users(id) ON DELETE SET NULL,
+      UNIQUE (ticket_id, user_id)
+    )
+  `);
+
+  // Tabela de cronômetro de tempo por usuário no ticket (sessões iniciar/parar)
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS ticket_time_entries (
+      id SERIAL PRIMARY KEY,
+      ticket_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      started_at TIMESTAMP NOT NULL,
+      ended_at TIMESTAMP,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+  // Garante no máximo 1 cronômetro aberto por usuário/ticket
+  await dbRun(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_ticket_time_entries_open
+    ON ticket_time_entries (ticket_id, user_id)
+    WHERE ended_at IS NULL
+  `);
+
   // Tabela de anexos de ticket (genérica, não amarrada a formulário — ex. PDF de OS do assistente de IA)
   await dbRun(`
     CREATE TABLE IF NOT EXISTS ticket_attachments (
@@ -1338,155 +1275,6 @@ const initPostgreSQL = async () => {
       UNIQUE(shift_id, user_id)
     )
   `);
-
-  // Tabelas do sistema de projetos
-  await dbRun(`
-    CREATE TABLE IF NOT EXISTS projects (
-      id SERIAL PRIMARY KEY,
-      name VARCHAR(255) NOT NULL,
-      description TEXT,
-      created_by INTEGER NOT NULL,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
-    )
-  `);
-  await dbRun(`
-    CREATE TABLE IF NOT EXISTS project_columns (
-      id SERIAL PRIMARY KEY,
-      project_id INTEGER NOT NULL,
-      name VARCHAR(255) NOT NULL,
-      order_index INTEGER NOT NULL DEFAULT 0,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
-    )
-  `);
-  await dbRun(`
-    CREATE TABLE IF NOT EXISTS project_tasks (
-      id SERIAL PRIMARY KEY,
-      project_id INTEGER NOT NULL,
-      column_id INTEGER NOT NULL,
-      title VARCHAR(255) NOT NULL,
-      description TEXT,
-      priority VARCHAR(50) NOT NULL DEFAULT 'medium',
-      order_index INTEGER NOT NULL DEFAULT 0,
-      assigned_to INTEGER,
-      created_by INTEGER NOT NULL,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
-      FOREIGN KEY (column_id) REFERENCES project_columns(id) ON DELETE CASCADE,
-      FOREIGN KEY (assigned_to) REFERENCES users(id) ON DELETE SET NULL,
-      FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
-    )
-  `);
-  await dbRun(`
-    CREATE TABLE IF NOT EXISTS project_sprints (
-      id SERIAL PRIMARY KEY,
-      project_id INTEGER NOT NULL,
-      name VARCHAR(255) NOT NULL,
-      start_date DATE,
-      end_date DATE,
-      order_index INTEGER NOT NULL DEFAULT 0,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
-    )
-  `);
-  try {
-    await dbRun('ALTER TABLE project_tasks ADD COLUMN IF NOT EXISTS sprint_id INTEGER REFERENCES project_sprints(id) ON DELETE SET NULL');
-  } catch (_) {}
-  try {
-    await dbRun('ALTER TABLE project_tasks ADD COLUMN IF NOT EXISTS story_points INTEGER');
-  } catch (_) {}
-  try {
-    await dbRun('ALTER TABLE project_tasks ADD COLUMN IF NOT EXISTS due_date DATE');
-  } catch (_) {}
-  try {
-    await dbRun('ALTER TABLE project_tasks ADD COLUMN IF NOT EXISTS completed_at TIMESTAMP');
-  } catch (_) {}
-  try {
-    await dbRun('ALTER TABLE project_tasks ADD COLUMN IF NOT EXISTS started_at TIMESTAMP');
-  } catch (_) {}
-  try {
-    await dbRun("ALTER TABLE project_tasks ADD COLUMN IF NOT EXISTS task_type VARCHAR(50) DEFAULT 'feature'");
-  } catch (_) {}
-  await dbRun(`
-    CREATE TABLE IF NOT EXISTS project_task_subtasks (
-      id SERIAL PRIMARY KEY,
-      task_id INTEGER NOT NULL,
-      title VARCHAR(500) NOT NULL,
-      completed INTEGER NOT NULL DEFAULT 0,
-      order_index INTEGER NOT NULL DEFAULT 0,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (task_id) REFERENCES project_tasks(id) ON DELETE CASCADE
-    )
-  `);
-  await dbRun(`
-    CREATE TABLE IF NOT EXISTS project_task_dod (
-      id SERIAL PRIMARY KEY,
-      task_id INTEGER NOT NULL,
-      label VARCHAR(500) NOT NULL,
-      checked INTEGER NOT NULL DEFAULT 0,
-      order_index INTEGER NOT NULL DEFAULT 0,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (task_id) REFERENCES project_tasks(id) ON DELETE CASCADE
-    )
-  `);
-  await dbRun(`
-    CREATE TABLE IF NOT EXISTS project_task_comments (
-      id SERIAL PRIMARY KEY,
-      task_id INTEGER NOT NULL,
-      user_id INTEGER NOT NULL,
-      message TEXT NOT NULL,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (task_id) REFERENCES project_tasks(id) ON DELETE CASCADE,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    )
-  `);
-  await dbRun(`
-    CREATE TABLE IF NOT EXISTS project_task_time_entries (
-      id SERIAL PRIMARY KEY,
-      task_id INTEGER NOT NULL,
-      user_id INTEGER NOT NULL,
-      hours DECIMAL(10,2) NOT NULL,
-      entry_date DATE NOT NULL,
-      note TEXT,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (task_id) REFERENCES project_tasks(id) ON DELETE CASCADE,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    )
-  `);
-  await dbRun(`
-    CREATE TABLE IF NOT EXISTS project_task_attachments (
-      id SERIAL PRIMARY KEY,
-      task_id INTEGER NOT NULL,
-      user_id INTEGER NOT NULL,
-      file_name VARCHAR(512) NOT NULL,
-      file_path VARCHAR(1024) NOT NULL,
-      file_size INTEGER,
-      mime_type VARCHAR(255),
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (task_id) REFERENCES project_tasks(id) ON DELETE CASCADE,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    )
-  `);
-  await dbRun(`
-    CREATE TABLE IF NOT EXISTS project_task_dependencies (
-      task_id INTEGER NOT NULL,
-      depends_on_task_id INTEGER NOT NULL,
-      PRIMARY KEY (task_id, depends_on_task_id),
-      CHECK (task_id != depends_on_task_id),
-      FOREIGN KEY (task_id) REFERENCES project_tasks(id) ON DELETE CASCADE,
-      FOREIGN KEY (depends_on_task_id) REFERENCES project_tasks(id) ON DELETE CASCADE
-    )
-  `);
-
-  try {
-    await dbRun('ALTER TABLE calendar_events ADD COLUMN IF NOT EXISTS project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL');
-  } catch (_) {}
-  try {
-    await dbRun('ALTER TABLE shifts ADD COLUMN IF NOT EXISTS project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL');
-  } catch (_) {}
 
   // Tabela de webhooks
   await dbRun(`

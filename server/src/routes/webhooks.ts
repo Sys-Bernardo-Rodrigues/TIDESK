@@ -396,12 +396,75 @@ router.post(
       let priority = webhookData.priority || 'medium';
 
       // Tentar extrair informações comuns de diferentes sistemas
-      
-      // Formato Zabbix
-      if (payload.alert && payload.alert.name) {
+
+      // Formato Prometheus Alertmanager / Grafana (unified alerting usa o mesmo schema do Alertmanager)
+      if (Array.isArray(payload.alerts)) {
+        const alerts = payload.alerts;
+        const first = alerts[0] || {};
+        const commonLabels = payload.commonLabels || first.labels || {};
+        const alertname = commonLabels.alertname || first.labels?.alertname || 'Alerta';
+        const status = payload.status || first.status || 'firing';
+        const severity = String(commonLabels.severity || first.labels?.severity || '').toLowerCase();
+
+        title = `[${status === 'resolved' ? 'RESOLVIDO' : 'FIRING'}] ${alertname}`;
+        if (alerts.length > 1) title += ` (+${alerts.length - 1} alerta${alerts.length - 1 > 1 ? 's' : ''})`;
+
+        description = alerts
+          .map((a: any, i: number) => {
+            const lbl = a.labels || {};
+            const ann = a.annotations || {};
+            return [
+              `#${i + 1} [${a.status || status}] ${lbl.alertname || alertname}`,
+              ann.summary ? `Resumo: ${ann.summary}` : null,
+              ann.description ? `Descrição: ${ann.description}` : null,
+              lbl.instance ? `Instância: ${lbl.instance}` : null,
+              lbl.job ? `Job: ${lbl.job}` : null,
+              a.startsAt ? `Início: ${a.startsAt}` : null,
+              a.generatorURL ? `Link: ${a.generatorURL}` : null,
+            ].filter(Boolean).join('\n');
+          })
+          .join('\n\n');
+        if (payload.externalURL) description += `\n\nOrigem: ${payload.externalURL}`;
+
+        priority = severity.includes('critical') || severity.includes('urgent') || severity === 'page' ? 'high'
+          : severity.includes('warning') ? 'medium'
+          : 'low';
+      }
+      // Formato Wazuh (alerta bruto do custom-http integrator, ou encaminhado via alerts.json)
+      else if (payload.rule && typeof payload.rule.level === 'number') {
+        const rule = payload.rule;
+        const agent = payload.agent || {};
+        title = `Wazuh: ${rule.description || 'Alerta de segurança'}`;
+        description = [
+          `Regra: ${rule.id ?? '-'} (nível ${rule.level})`,
+          rule.groups ? `Grupos: ${Array.isArray(rule.groups) ? rule.groups.join(', ') : rule.groups}` : null,
+          agent.name ? `Agente: ${agent.name}${agent.id ? ` (${agent.id})` : ''}` : null,
+          payload.location ? `Localização: ${payload.location}` : null,
+          payload.timestamp ? `Data: ${payload.timestamp}` : null,
+          payload.full_log ? `Log:\n${payload.full_log}` : null,
+        ].filter(Boolean).join('\n');
+        priority = rule.level >= 12 ? 'high' : rule.level >= 7 ? 'medium' : 'low';
+      }
+      // Formato Zabbix — template recomendado do TIDESK (media type Webhook, ver guia de integração)
+      else if (payload.source === 'zabbix') {
+        const severity = String(payload.severity || '').toLowerCase();
+        const resolved = String(payload.status || '').toLowerCase() === 'resolved';
+        title = `Zabbix: ${payload.event_name || 'Alerta'}${resolved ? ' [RESOLVIDO]' : ''}`;
+        description = [
+          payload.host ? `Host: ${payload.host}` : null,
+          payload.severity ? `Severidade: ${payload.severity}` : null,
+          payload.status ? `Status: ${payload.status}` : null,
+          payload.url ? `Link: ${payload.url}` : null,
+        ].filter(Boolean).join('\n') || description;
+        priority = severity.includes('disaster') || severity.includes('high') ? 'high'
+          : severity.includes('average') || severity.includes('warning') ? 'medium'
+          : 'low';
+      }
+      // Formato Zabbix (legado — media types que enviam {"alert": {"name","message","severity"}})
+      else if (payload.alert && payload.alert.name) {
         title = payload.alert.name;
         description = payload.alert.message || description;
-        priority = payload.alert.severity === 'High' || payload.alert.severity === 'Disaster' ? 'high' : 
+        priority = payload.alert.severity === 'High' || payload.alert.severity === 'Disaster' ? 'high' :
                    payload.alert.severity === 'Average' ? 'medium' : 'low';
       }
       // Formato genérico de eventos

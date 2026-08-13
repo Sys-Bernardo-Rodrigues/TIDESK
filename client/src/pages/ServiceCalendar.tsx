@@ -1,5 +1,5 @@
 import { useState, useEffect, type CSSProperties, type MouseEvent } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { toast } from 'sonner';
 import {
@@ -12,9 +12,6 @@ import {
   Edit,
   Trash2,
   Ticket,
-  FolderKanban,
-  ListTodo,
-  Flag,
 } from 'lucide-react';
 import { usePermissions, RESOURCES, ACTIONS } from '../hooks/usePermissions';
 import { getHolidayName } from '../utils/brazilianHolidays';
@@ -35,7 +32,7 @@ interface CalendarEvent {
   description?: string | null;
   start_time: string;
   end_time: string;
-  type: 'event' | 'ticket' | 'work' | 'project_task' | 'project_sprint';
+  type: 'event' | 'ticket' | 'work';
   color: string | null;
   created_by?: number;
   created_by_name?: string;
@@ -44,10 +41,6 @@ interface CalendarEvent {
   ticket_number?: number;
   priority?: string;
   assigned_name?: string;
-  project_id?: number | null;
-  project_name?: string | null;
-  task_id?: number;
-  sprint_id?: number;
 }
 
 type ViewMode = 'month' | 'week' | 'day';
@@ -66,23 +59,17 @@ function EventTypeIcon({
   style?: CSSProperties;
 }) {
   if (type === 'ticket') return <Ticket size={size} className={className} style={style} />;
-  if (type === 'project_task') return <ListTodo size={size} className={className} style={style} />;
-  if (type === 'project_sprint') return <Flag size={size} className={className} style={style} />;
   return null;
 }
 
 export default function ServiceCalendar() {
   const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
   const { hasPermission } = usePermissions();
   const confirm = useConfirm();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [viewMode, setViewMode] = useState<ViewMode>('month');
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [tickets, setTickets] = useState<CalendarEvent[]>([]);
-  const [projectItems, setProjectItems] = useState<{ tasks: CalendarEvent[]; sprints: CalendarEvent[] }>({ tasks: [], sprints: [] });
-  const [projects, setProjects] = useState<{ id: number; name: string }[]>([]);
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(() => searchParams.get('project'));
   const [loading, setLoading] = useState(true);
   const [showEventModal, setShowEventModal] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
@@ -93,7 +80,6 @@ export default function ServiceCalendar() {
   const canEdit = hasPermission(RESOURCES.AGENDA, ACTIONS.EDIT);
   const canDelete = hasPermission(RESOURCES.AGENDA, ACTIONS.DELETE);
   const canViewUsers = hasPermission(RESOURCES.USERS, ACTIONS.VIEW);
-  const canViewProjects = hasPermission(RESOURCES.PROJECTS, ACTIONS.VIEW);
 
   // Formulário de evento
   const [eventTitle, setEventTitle] = useState('');
@@ -105,7 +91,6 @@ export default function ServiceCalendar() {
   const [eventType, setEventType] = useState<'event' | 'work'>('event');
   const [eventColor, setEventColor] = useState('#8a2be2');
   const [selectedUserIds, setSelectedUserIds] = useState<number[]>([]);
-  const [eventProjectId, setEventProjectId] = useState<number | ''>('');
 
   // Obter início e fim do período atual
   const getPeriodRange = () => {
@@ -144,52 +129,24 @@ export default function ServiceCalendar() {
     }
   };
 
-  // Sincronizar filtro de projeto com a URL
-  useEffect(() => {
-    const projectFromUrl = searchParams.get('project');
-    if (projectFromUrl !== selectedProjectId) {
-      setSelectedProjectId(projectFromUrl);
-    }
-  }, [searchParams]);
-
-  // Buscar lista de projetos (para filtro e formulário)
-  useEffect(() => {
-    if (canViewProjects) {
-      axios.get('/api/projects').then((res) => setProjects(res.data)).catch(() => setProjects([]));
-    }
-  }, [canViewProjects]);
-
-  // Buscar eventos, tickets e itens de projetos
+  // Buscar eventos e tickets
   const fetchData = async () => {
     try {
       setLoading(true);
       const { start, end } = getPeriodRange();
-      const calendarParams = new URLSearchParams({ start, end });
-      if (selectedProjectId) calendarParams.set('project_id', selectedProjectId);
 
       const promises: Promise<any>[] = [
-        axios.get(`/api/calendar?${calendarParams.toString()}`),
+        axios.get(`/api/calendar?${new URLSearchParams({ start, end }).toString()}`),
         axios.get(`/api/calendar/tickets?start=${start}&end=${end}`),
       ];
       if (canViewUsers) {
         promises.push(axios.get('/api/users'));
-      }
-      if (canViewProjects) {
-        const projectItemsParams = new URLSearchParams({ start, end });
-        if (selectedProjectId) projectItemsParams.set('project_id', selectedProjectId);
-        promises.push(axios.get(`/api/calendar/project-items?${projectItemsParams.toString()}`));
       }
 
       const results = await Promise.all(promises);
       setEvents(results[0].data);
       setTickets(results[1].data);
       if (canViewUsers) setAllUsers(results[2]?.data || []);
-      if (canViewProjects) {
-        const idx = canViewUsers ? 3 : 2;
-        setProjectItems(results[idx]?.data || { tasks: [], sprints: [] });
-      } else {
-        setProjectItems({ tasks: [], sprints: [] });
-      }
     } catch (error) {
       console.error('Erro ao buscar dados:', error);
     } finally {
@@ -199,7 +156,7 @@ export default function ServiceCalendar() {
 
   useEffect(() => {
     fetchData();
-  }, [currentDate, viewMode, canViewUsers, canViewProjects, selectedProjectId]);
+  }, [currentDate, viewMode, canViewUsers]);
 
   // Navegação do calendário
   const goToPrevious = () => {
@@ -237,16 +194,11 @@ export default function ServiceCalendar() {
     setEventType('event');
     setEventColor('#8a2be2');
     setSelectedUserIds([]);
-    setEventProjectId(selectedProjectId ? Number(selectedProjectId) : '');
     setShowEventModal(true);
   };
 
-  // Abrir modal para editar evento (apenas eventos editáveis, não task/sprint)
+  // Abrir modal para editar evento
   const openEditModal = (event: CalendarEvent) => {
-    if (event.type === 'project_task' || event.type === 'project_sprint') {
-      if (event.project_id) navigate(`/projetos/${event.project_id}`);
-      return;
-    }
     setSelectedEvent(event);
     setSelectedDate(null);
 
@@ -262,7 +214,6 @@ export default function ServiceCalendar() {
     setEventType(event.type as 'event' | 'work');
     setEventColor(event.color || '#8a2be2');
     setSelectedUserIds(event.user_ids || []);
-    setEventProjectId(event.project_id ?? '');
     setShowEventModal(true);
   };
 
@@ -280,7 +231,6 @@ export default function ServiceCalendar() {
         type: eventType,
         color: eventColor,
         user_ids: selectedUserIds,
-        project_id: eventProjectId || undefined,
       };
 
       if (selectedEvent) {
@@ -324,7 +274,7 @@ export default function ServiceCalendar() {
     const endOfDay = new Date(date);
     endOfDay.setHours(23, 59, 59, 999);
 
-    const allItems: CalendarEvent[] = [...events, ...tickets, ...projectItems.tasks, ...projectItems.sprints];
+    const allItems: CalendarEvent[] = [...events, ...tickets];
 
     return allItems.filter((item) => {
       if (!item.start_time) return false;
@@ -418,7 +368,7 @@ export default function ServiceCalendar() {
                     onClick={(e) => handleEventClick(e, event)}
                     className="flex items-center gap-1 truncate rounded px-1.5 py-0.5 text-[0.7rem] font-medium text-white shadow-sm transition-transform hover:translate-x-0.5"
                     style={{ backgroundColor: event.color || '#8a2be2' }}
-                    title={event.project_name ? `${event.title} · ${event.project_name}` : event.title}
+                    title={event.title}
                   >
                     <EventTypeIcon type={event.type} size={10} className="shrink-0" />
                     <span className="truncate">{event.title}</span>
@@ -577,14 +527,6 @@ export default function ServiceCalendar() {
                             Ticket #{event.ticket_number || event.id}
                           </span>
                         )}
-                        {(event.type === 'project_task' || event.type === 'project_sprint') && event.project_name && (
-                          <span className="flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
-                            <FolderKanban size={12} /> {event.project_name}
-                          </span>
-                        )}
-                        {event.project_name && event.type !== 'ticket' && event.type !== 'project_task' && event.type !== 'project_sprint' && (
-                          <span className="text-xs text-muted-foreground">· {event.project_name}</span>
-                        )}
                       </div>
 
                       {event.description && <p className="mb-1 text-sm leading-relaxed text-muted-foreground">{event.description}</p>}
@@ -669,29 +611,6 @@ export default function ServiceCalendar() {
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5">
-          {canViewProjects && projects.length > 0 && (
-            <Select
-              value={selectedProjectId ?? '__all'}
-              onValueChange={(v) => {
-                const value = v === '__all' ? null : v;
-                setSelectedProjectId(value);
-                if (value) setSearchParams({ project: value });
-                else setSearchParams({});
-              }}
-            >
-              <SelectTrigger className="w-[180px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all">Todos os projetos</SelectItem>
-                {projects.map((p) => (
-                  <SelectItem key={p.id} value={String(p.id)}>
-                    {p.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
           <Button variant={viewMode === 'month' ? 'default' : 'outline'} onClick={() => setViewMode('month')}>
             Mês
           </Button>
@@ -787,28 +706,6 @@ export default function ServiceCalendar() {
                 />
               </div>
             </div>
-
-            {canViewProjects && projects.length > 0 && (
-              <div>
-                <Label className="mb-1.5">Projeto</Label>
-                <Select
-                  value={eventProjectId === '' ? '__none' : String(eventProjectId)}
-                  onValueChange={(v) => setEventProjectId(v === '__none' ? '' : Number(v))}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none">Nenhum</SelectItem>
-                    {projects.map((p) => (
-                      <SelectItem key={p.id} value={String(p.id)}>
-                        {p.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
 
             <div>
               <Label className="mb-1.5">Participantes</Label>

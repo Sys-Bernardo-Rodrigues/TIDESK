@@ -454,7 +454,7 @@ router.get('/me/permissions', authenticate, async (req: AuthRequest, res) => {
 
     const pagesSet = new Set<string>((pagesFromDb as any[]).map((p: any) => p.page_path));
 
-    // Incluir páginas derivadas das permissões (para Projetos e Docs funcionarem pelo recurso)
+    // Incluir páginas derivadas das permissões (para Docs funcionar pelo recurso)
     for (const [perm, pagePath] of Object.entries(PERMISSION_TO_PAGE)) {
       if (permSet.includes(perm)) pagesSet.add(pagePath);
     }

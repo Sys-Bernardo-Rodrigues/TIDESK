@@ -16,7 +16,6 @@ export const RESOURCES = {
   CONFIG: 'config',
   AGENDA: 'agenda',
   WEBHOOKS: 'webhooks',
-  PROJECTS: 'projects',
   DOCS: 'docs',
   AI_ASSISTANT: 'ai_assistant',
   SIGMA: 'sigma'
@@ -59,13 +58,13 @@ export const usePermissions = () => {
 
       if (userIsAdmin) {
         const allPages = new Set<string>([
-          '/', '/tickets', '/projetos', '/docs',
+          '/', '/tickets', '/relatorios', '/docs',
           '/create/forms', '/create/pages', '/create/webhooks',
           '/create/forms/builder', '/create/pages/builder',
           '/config/perfil-de-acesso', '/config/usuarios', '/config/backup',
           '/config/atualizar', '/config/grupos',
           '/acompanhar/aprovar', '/acompanhar/acompanhar-tratativa', '/historico',
-          '/relatorios', '/agenda/calendario-de-servico', '/agenda/calendario-de-plantoes',
+          '/agenda/calendario-de-servico', '/agenda/calendario-de-plantoes',
           '/consultar-os-sigma'
         ]);
         setAllowedPages(allPages);
@@ -90,13 +89,13 @@ export const usePermissions = () => {
         });
         setPermissions(allPerms);
         setAllowedPages(new Set([
-          '/', '/tickets', '/projetos', '/docs',
+          '/', '/tickets', '/relatorios', '/docs',
           '/create/forms', '/create/pages', '/create/webhooks',
           '/create/forms/builder', '/create/pages/builder',
           '/config/perfil-de-acesso', '/config/usuarios', '/config/backup',
           '/config/atualizar', '/config/grupos',
           '/acompanhar/aprovar', '/acompanhar/acompanhar-tratativa', '/historico',
-          '/relatorios', '/agenda/calendario-de-servico', '/agenda/calendario-de-plantoes',
+          '/agenda/calendario-de-servico', '/agenda/calendario-de-plantoes',
           '/consultar-os-sigma'
         ]));
       } else {
@@ -140,7 +139,6 @@ export const usePermissions = () => {
     if (pagePath === '/tickets' || (pagePath.startsWith('/tickets/') && pagePath !== '/tickets')) {
       return permissions.has('tickets:view') || permissions.has('approve:view') || permissions.has('track:view');
     }
-    if (pagePath === '/projetos' || pagePath.startsWith('/projetos/')) return permissions.has('projects:view');
     if (pagePath === '/docs' || pagePath.startsWith('/docs/')) return permissions.has('docs:view');
     if (pagePath === '/historico') return permissions.has('history:view');
     if (pagePath === '/relatorios') return permissions.has('reports:view');

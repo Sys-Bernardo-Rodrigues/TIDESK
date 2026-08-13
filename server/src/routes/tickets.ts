@@ -7,10 +7,15 @@ import { getBrasiliaDate, generateTicketNumber, createTicketRecord } from '../se
 
 const DB_TYPE = process.env.DB_TYPE || 'sqlite';
 
+// "Agora" equivalente ao horário de Brasília (mesmo formato naive gravado por getBrasiliaTimestamp)
+const SQL_NOW_BRASILIA = DB_TYPE === 'sqlite'
+  ? `datetime('now', '-3 hours')`
+  : `(NOW() AT TIME ZONE 'America/Sao_Paulo')`;
+
 // Subquery para total de segundos em pausa (inclui pausa atual se ticket estiver pausado)
 const TOTAL_PAUSE_SECONDS = DB_TYPE === 'sqlite'
-  ? `(SELECT COALESCE(SUM((julianday(COALESCE(p.resumed_at, datetime('now'))) - julianday(p.paused_at)) * 86400), 0) FROM ticket_pauses p WHERE p.ticket_id = t.id)`
-  : `(SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(p.resumed_at, NOW()) - p.paused_at))), 0)::bigint FROM ticket_pauses p WHERE p.ticket_id = t.id)`;
+  ? `(SELECT COALESCE(SUM((julianday(COALESCE(p.resumed_at, ${SQL_NOW_BRASILIA})) - julianday(p.paused_at)) * 86400), 0) FROM ticket_pauses p WHERE p.ticket_id = t.id)`
+  : `(SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(p.resumed_at, ${SQL_NOW_BRASILIA}) - p.paused_at))), 0)::bigint FROM ticket_pauses p WHERE p.ticket_id = t.id)`;
 
 const router = express.Router();
 
@@ -545,6 +550,14 @@ router.put('/:id', [
       );
     }
 
+    // Ao finalizar o ticket, encerrar qualquer cronômetro de colaborador ainda aberto
+    if (req.body.status === 'resolved' || req.body.status === 'closed' || req.body.status === 'rejected') {
+      await dbRun(
+        'UPDATE ticket_time_entries SET ended_at = ? WHERE ticket_id = ? AND ended_at IS NULL',
+        [now, ticketId]
+      );
+    }
+
     const updatedTicket = await dbGet(
       `SELECT t.*, 
               u.name as user_name, 
@@ -770,6 +783,223 @@ router.post('/:id/resume', authenticate, requirePermission(RESOURCES.TICKETS, AC
   } catch (error) {
     console.error('Erro ao retomar ticket:', error);
     res.status(500).json({ error: 'Erro ao retomar ticket' });
+  }
+});
+
+// Listar colaboradores do ticket (usuários adicionais além do responsável)
+router.get('/:id/collaborators', authenticate, requirePermission(RESOURCES.TICKETS, ACTIONS.VIEW), async (req: AuthRequest, res) => {
+  try {
+    const ticketId = await getTicketIdFromFullId(req.params.id);
+    if (!ticketId) {
+      return res.status(404).json({ error: 'Ticket não encontrado' });
+    }
+
+    const collaborators = await dbAll(`
+      SELECT tc.user_id, u.name, u.email, tc.created_at as added_at
+      FROM ticket_collaborators tc
+      JOIN users u ON tc.user_id = u.id
+      WHERE tc.ticket_id = ?
+      ORDER BY tc.created_at ASC
+    `, [ticketId]);
+
+    res.json(collaborators);
+  } catch (error) {
+    console.error('Erro ao listar colaboradores:', error);
+    res.status(500).json({ error: 'Erro ao buscar colaboradores' });
+  }
+});
+
+// Adicionar colaborador ao ticket
+router.post('/:id/collaborators', authenticate, requirePermission(RESOURCES.TICKETS, ACTIONS.EDIT), [
+  body('user_id').isInt({ min: 1 }).withMessage('Usuário é obrigatório')
+], async (req: AuthRequest, res: Response) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const ticketId = await getTicketIdFromFullId(req.params.id);
+    if (!ticketId) {
+      return res.status(404).json({ error: 'Ticket não encontrado' });
+    }
+
+    const ticket = await dbGet('SELECT id FROM tickets WHERE id = ?', [ticketId]);
+    if (!ticket) {
+      return res.status(404).json({ error: 'Ticket não encontrado' });
+    }
+
+    const userId = Number(req.body.user_id);
+    const user = await dbGet('SELECT id, name, email FROM users WHERE id = ?', [userId]) as any;
+    if (!user) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    const existing = await dbGet(
+      'SELECT id FROM ticket_collaborators WHERE ticket_id = ? AND user_id = ?',
+      [ticketId, userId]
+    );
+    if (existing) {
+      return res.status(400).json({ error: 'Usuário já é colaborador deste ticket' });
+    }
+
+    await dbRun(
+      'INSERT INTO ticket_collaborators (ticket_id, user_id, added_by, created_at) VALUES (?, ?, ?, ?)',
+      [ticketId, userId, req.userId, getBrasiliaTimestamp()]
+    );
+
+    res.status(201).json({ user_id: userId, name: user.name, email: user.email });
+  } catch (error) {
+    console.error('Erro ao adicionar colaborador:', error);
+    res.status(500).json({ error: 'Erro ao adicionar colaborador' });
+  }
+});
+
+// Remover colaborador do ticket (também encerra cronômetro em aberto, se houver)
+router.delete('/:id/collaborators/:userId', authenticate, requirePermission(RESOURCES.TICKETS, ACTIONS.EDIT), async (req: AuthRequest, res) => {
+  try {
+    const ticketId = await getTicketIdFromFullId(req.params.id);
+    if (!ticketId) {
+      return res.status(404).json({ error: 'Ticket não encontrado' });
+    }
+
+    const userId = Number(req.params.userId);
+    const now = getBrasiliaTimestamp();
+    await dbRun(
+      'UPDATE ticket_time_entries SET ended_at = ? WHERE ticket_id = ? AND user_id = ? AND ended_at IS NULL',
+      [now, ticketId, userId]
+    );
+    await dbRun('DELETE FROM ticket_collaborators WHERE ticket_id = ? AND user_id = ?', [ticketId, userId]);
+
+    res.json({ message: 'Colaborador removido' });
+  } catch (error) {
+    console.error('Erro ao remover colaborador:', error);
+    res.status(500).json({ error: 'Erro ao remover colaborador' });
+  }
+});
+
+// Resumo de tempo por usuário no ticket (cronômetro individual)
+// Resumo de tempo por usuário — inclui responsável + colaboradores mesmo sem cronômetro registrado
+router.get('/:id/time', authenticate, requirePermission(RESOURCES.TICKETS, ACTIONS.VIEW), async (req: AuthRequest, res) => {
+  try {
+    const ticketId = await getTicketIdFromFullId(req.params.id);
+    if (!ticketId) {
+      return res.status(404).json({ error: 'Ticket não encontrado' });
+    }
+
+    const ticket = await dbGet('SELECT assigned_to FROM tickets WHERE id = ?', [ticketId]) as any;
+    if (!ticket) {
+      return res.status(404).json({ error: 'Ticket não encontrado' });
+    }
+
+    const totalSecondsExpr = DB_TYPE === 'sqlite'
+      ? `COALESCE(SUM((julianday(COALESCE(te.ended_at, ${SQL_NOW_BRASILIA})) - julianday(te.started_at)) * 86400), 0)`
+      : `COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(te.ended_at, ${SQL_NOW_BRASILIA}) - te.started_at))), 0)::bigint`;
+
+    const rows = await dbAll(`
+      SELECT u.id as user_id, u.name, u.email,
+             ${totalSecondsExpr} as total_seconds,
+             MAX(CASE WHEN te.ended_at IS NULL THEN te.started_at END) as running_since
+      FROM (
+        SELECT assigned_to AS user_id FROM tickets WHERE id = ? AND assigned_to IS NOT NULL
+        UNION
+        SELECT user_id FROM ticket_collaborators WHERE ticket_id = ?
+        UNION
+        SELECT user_id FROM ticket_time_entries WHERE ticket_id = ?
+      ) p
+      JOIN users u ON u.id = p.user_id
+      LEFT JOIN ticket_time_entries te ON te.user_id = u.id AND te.ticket_id = ?
+      GROUP BY u.id, u.name, u.email
+      ORDER BY total_seconds DESC
+    `, [ticketId, ticketId, ticketId, ticketId]);
+
+    const result = rows.map((row: any) => ({
+      ...row,
+      is_responsible: row.user_id === ticket.assigned_to,
+    }));
+    result.sort((a: any, b: any) => (b.is_responsible ? 1 : 0) - (a.is_responsible ? 1 : 0) || b.total_seconds - a.total_seconds);
+
+    res.json(result);
+  } catch (error) {
+    console.error('Erro ao buscar tempo do ticket:', error);
+    res.status(500).json({ error: 'Erro ao buscar tempo do ticket' });
+  }
+});
+
+// Iniciar cronômetro pessoal no ticket (marca o usuário como colaborador automaticamente)
+router.post('/:id/time/start', authenticate, requirePermission(RESOURCES.TICKETS, ACTIONS.EDIT), async (req: AuthRequest, res) => {
+  try {
+    const ticketId = await getTicketIdFromFullId(req.params.id);
+    if (!ticketId) {
+      return res.status(404).json({ error: 'Ticket não encontrado' });
+    }
+
+    const ticket = await dbGet('SELECT id, assigned_to FROM tickets WHERE id = ?', [ticketId]) as any;
+    if (!ticket) {
+      return res.status(404).json({ error: 'Ticket não encontrado' });
+    }
+
+    const running = await dbGet(
+      'SELECT id FROM ticket_time_entries WHERE ticket_id = ? AND user_id = ? AND ended_at IS NULL',
+      [ticketId, req.userId]
+    );
+    if (running) {
+      return res.status(400).json({ error: 'Cronômetro já está rodando' });
+    }
+
+    const now = getBrasiliaTimestamp();
+    await dbRun(
+      'INSERT INTO ticket_time_entries (ticket_id, user_id, started_at, created_at) VALUES (?, ?, ?, ?)',
+      [ticketId, req.userId, now, now]
+    );
+
+    if (ticket.assigned_to !== req.userId) {
+      const existingCollab = await dbGet(
+        'SELECT id FROM ticket_collaborators WHERE ticket_id = ? AND user_id = ?',
+        [ticketId, req.userId]
+      );
+      if (!existingCollab) {
+        await dbRun(
+          'INSERT INTO ticket_collaborators (ticket_id, user_id, added_by, created_at) VALUES (?, ?, ?, ?)',
+          [ticketId, req.userId, req.userId, now]
+        );
+      }
+    }
+
+    res.json({ message: 'Cronômetro iniciado', started_at: now });
+  } catch (error) {
+    console.error('Erro ao iniciar cronômetro:', error);
+    res.status(500).json({ error: 'Erro ao iniciar cronômetro' });
+  }
+});
+
+// Parar cronômetro pessoal no ticket
+router.post('/:id/time/stop', authenticate, requirePermission(RESOURCES.TICKETS, ACTIONS.EDIT), async (req: AuthRequest, res) => {
+  try {
+    const ticketId = await getTicketIdFromFullId(req.params.id);
+    if (!ticketId) {
+      return res.status(404).json({ error: 'Ticket não encontrado' });
+    }
+
+    const running = await dbGet(
+      'SELECT id FROM ticket_time_entries WHERE ticket_id = ? AND user_id = ? AND ended_at IS NULL',
+      [ticketId, req.userId]
+    ) as any;
+    if (!running) {
+      return res.status(400).json({ error: 'Cronômetro não está rodando' });
+    }
+
+    const now = getBrasiliaTimestamp();
+    // Fecha por filtro (não só pelo id encontrado) para nunca deixar nenhuma entrada aberta pra trás
+    await dbRun(
+      'UPDATE ticket_time_entries SET ended_at = ? WHERE ticket_id = ? AND user_id = ? AND ended_at IS NULL',
+      [now, ticketId, req.userId]
+    );
+
+    res.json({ message: 'Cronômetro parado', ended_at: now });
+  } catch (error) {
+    console.error('Erro ao parar cronômetro:', error);
+    res.status(500).json({ error: 'Erro ao parar cronômetro' });
   }
 });
 

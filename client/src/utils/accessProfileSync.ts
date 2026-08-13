@@ -3,7 +3,6 @@
 export type ProfilePermission = { resource: string; action: string };
 
 export const PERMISSION_TO_PAGE: Record<string, string> = {
-  'projects:view': '/projetos',
   'docs:view': '/docs',
   'tickets:view': '/tickets',
   'reports:view': '/relatorios',
@@ -18,7 +17,6 @@ export const PERMISSION_TO_PAGE: Record<string, string> = {
 };
 
 export const PAGE_TO_VIEW_PERMISSION: Record<string, ProfilePermission> = {
-  '/projetos': { resource: 'projects', action: 'view' },
   '/docs': { resource: 'docs', action: 'view' },
   '/tickets': { resource: 'tickets', action: 'view' },
   '/relatorios': { resource: 'reports', action: 'view' },
@@ -33,7 +31,7 @@ export const PAGE_TO_VIEW_PERMISSION: Record<string, ProfilePermission> = {
   '/consultar-os-sigma': { resource: 'sigma', action: 'view' },
 };
 
-const RESOURCES_REQUIRING_VIEW = ['projects', 'docs', 'tickets', 'forms', 'pages', 'webhooks', 'reports', 'history', 'agenda', 'sigma'];
+const RESOURCES_REQUIRING_VIEW = ['docs', 'tickets', 'forms', 'pages', 'webhooks', 'reports', 'history', 'agenda', 'sigma'];
 
 function permKey(p: ProfilePermission) {
   return `${p.resource}:${p.action}`;
@@ -97,10 +95,6 @@ export function applyPermissionToggle(
     }
   } else {
     perms = perms.filter((p) => !(p.resource === resource && p.action === action));
-    if (resource === 'projects' && action === 'view') {
-      perms = perms.filter((p) => p.resource !== 'projects');
-      pageList = pageList.filter((p) => p !== '/projetos');
-    }
     if (resource === 'docs' && action === 'view') {
       perms = perms.filter((p) => p.resource !== 'docs');
       pageList = pageList.filter((p) => p !== '/docs');
@@ -123,9 +117,6 @@ export function applyPageToggle(
     if (!pageList.includes(pagePath)) pageList.push(pagePath);
   } else {
     pageList = pageList.filter((p) => p !== pagePath);
-    if (pagePath === '/projetos') {
-      perms = perms.filter((p) => p.resource !== 'projects');
-    }
     if (pagePath === '/docs') {
       perms = perms.filter((p) => p.resource !== 'docs');
     }

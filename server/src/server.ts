@@ -22,7 +22,6 @@ import backupRoutes from './routes/backup';
 import updateRoutes from './routes/updates';
 import dashboardRoutes from './routes/dashboard';
 import webhookRoutes from './routes/webhooks';
-import projectRoutes from './routes/projects';
 import docsRoutes from './routes/docs';
 import notificationRoutes from './routes/notifications';
 import tvRoutes from './routes/tv';
@@ -142,7 +141,6 @@ app.use('/api/dashboard', dashboardRoutes);
 
 // Registrar rotas de webhook (incluindo recebimento que já tem raw body parsing)
 app.use('/api/webhooks', webhookRoutes);
-app.use('/api/projects', projectRoutes);
 app.use('/api/docs', docsRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/tv', tvRoutes);

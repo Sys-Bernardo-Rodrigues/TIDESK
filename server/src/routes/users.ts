@@ -81,6 +81,19 @@ router.get('/agents', requireAgent, async (req: AuthRequest, res) => {
   }
 });
 
+// Listar todos os usuários (nome/email básicos) — usado para adicionar colaboradores em tickets
+router.get('/basic', requireAgent, async (req: AuthRequest, res) => {
+  try {
+    const users = await dbAll(
+      'SELECT id, name, email, role FROM users ORDER BY name'
+    );
+    res.json(users);
+  } catch (error) {
+    console.error('Erro ao listar usuários (básico):', error);
+    res.status(500).json({ error: 'Erro ao buscar usuários' });
+  }
+});
+
 // Obter usuário específico com perfis
 router.get('/:id', requirePermission(RESOURCES.USERS, ACTIONS.VIEW), async (req: AuthRequest, res) => {
   try {

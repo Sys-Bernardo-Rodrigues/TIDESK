@@ -47,7 +47,6 @@ export default function Login() {
           '/acompanhar/aprovar',
           '/acompanhar/acompanhar-tratativa',
           '/historico',
-          '/relatorios',
           '/agenda/calendario-de-servico',
           '/agenda/calendario-de-plantoes',
         ];

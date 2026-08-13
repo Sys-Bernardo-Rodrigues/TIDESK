@@ -15,32 +15,23 @@ interface AuthRequest extends Request {
 router.get('/', authenticate, requirePermission(RESOURCES.AGENDA, ACTIONS.VIEW), async (req: AuthRequest, res: Response) => {
   try {
     const { start, end } = req.query;
-    
-    const projectId = req.query.project_id;
-    
+
     let query = `
-      SELECT DISTINCT s.*, 
-             u.name as created_by_name,
-             p.name as project_name
+      SELECT DISTINCT s.*,
+             u.name as created_by_name
       FROM shifts s
       LEFT JOIN users u ON s.created_by = u.id
-      LEFT JOIN projects p ON s.project_id = p.id
     `;
-    
+
     const params: any[] = [];
     const conditions: string[] = [];
-    
+
     // Filtrar por período se fornecido
     if (start && end) {
       conditions.push('(s.start_time >= ? AND s.start_time <= ?) OR (s.end_time >= ? AND s.end_time <= ?)');
       params.push(start, end, start, end);
     }
-    
-    if (projectId) {
-      conditions.push('s.project_id = ?');
-      params.push(projectId);
-    }
-    
+
     // Usuários só veem plantões onde estão vinculados ou que criaram
     if (req.userRole === 'user') {
       query += ` LEFT JOIN shift_users su ON s.id = su.shift_id`;
@@ -198,23 +189,22 @@ router.post('/', authenticate, requirePermission(RESOURCES.AGENDA, ACTIONS.CREAT
       return res.status(400).json({ errors: errors.array() });
     }
     
-    const { title, start_time, end_time, user_ids, project_id } = req.body;
-    
+    const { title, start_time, end_time, user_ids } = req.body;
+
     // Validar que pelo menos um usuário foi selecionado
     if (!user_ids || !Array.isArray(user_ids) || user_ids.length === 0) {
       return res.status(400).json({ error: 'É necessário selecionar pelo menos um usuário para o plantão' });
     }
-    
+
     // Criar plantão
     const result = await dbRun(
-      `INSERT INTO shifts (title, start_time, end_time, created_by, project_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO shifts (title, start_time, end_time, created_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
       [
         title || null,
         start_time,
         end_time,
         req.userId,
-        project_id || null,
         getBrasiliaTimestamp(),
         getBrasiliaTimestamp()
       ]
@@ -236,12 +226,10 @@ router.post('/', authenticate, requirePermission(RESOURCES.AGENDA, ACTIONS.CREAT
     
     // Buscar plantão criado
     const shift = await dbGet(`
-      SELECT s.*, 
-             u.name as created_by_name,
-             p.name as project_name
+      SELECT s.*,
+             u.name as created_by_name
       FROM shifts s
       LEFT JOIN users u ON s.created_by = u.id
-      LEFT JOIN projects p ON s.project_id = p.id
       WHERE s.id = ?
     `, [shiftId]);
     
@@ -279,7 +267,7 @@ router.put('/:id', authenticate, requirePermission(RESOURCES.AGENDA, ACTIONS.EDI
     }
     
     const shiftId = parseInt(req.params.id);
-    const { title, start_time, end_time, user_ids, project_id } = req.body;
+    const { title, start_time, end_time, user_ids } = req.body;
     
     // Verificar se o plantão existe e se o usuário tem permissão
     const shift = await dbGet('SELECT * FROM shifts WHERE id = ?', [shiftId]);
@@ -308,11 +296,6 @@ router.put('/:id', authenticate, requirePermission(RESOURCES.AGENDA, ACTIONS.EDI
       updateFields.push('end_time = ?');
       updateParams.push(end_time);
     }
-    if (project_id !== undefined) {
-      updateFields.push('project_id = ?');
-      updateParams.push(project_id);
-    }
-    
     updateFields.push('updated_at = ?');
     updateParams.push(getBrasiliaTimestamp());
     updateParams.push(shiftId);
@@ -347,12 +330,10 @@ router.put('/:id', authenticate, requirePermission(RESOURCES.AGENDA, ACTIONS.EDI
     
     // Buscar plantão atualizado
     const updatedShift = await dbGet(`
-      SELECT s.*, 
-             u.name as created_by_name,
-             p.name as project_name
+      SELECT s.*,
+             u.name as created_by_name
       FROM shifts s
       LEFT JOIN users u ON s.created_by = u.id
-      LEFT JOIN projects p ON s.project_id = p.id
       WHERE s.id = ?
     `, [shiftId]);
     

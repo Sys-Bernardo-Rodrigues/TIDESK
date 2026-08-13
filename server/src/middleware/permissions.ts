@@ -16,7 +16,6 @@ export const RESOURCES = {
   CONFIG: 'config',
   AGENDA: 'agenda',
   WEBHOOKS: 'webhooks',
-  PROJECTS: 'projects',
   DOCS: 'docs',
   AI_ASSISTANT: 'ai_assistant',
   SIGMA: 'sigma'

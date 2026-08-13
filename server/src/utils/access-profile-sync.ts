@@ -1,9 +1,8 @@
-/** Sincroniza permissões (resource:action) com páginas do menu — evita perfil só com /projetos sem projects:view */
+/** Sincroniza permissões (resource:action) com páginas do menu — evita perfil só com página sem permissão de view */
 
 export type ProfilePermission = { resource: string; action: string };
 
 export const PERMISSION_TO_PAGE: Record<string, string> = {
-  'projects:view': '/projetos',
   'docs:view': '/docs',
   'tickets:view': '/tickets',
   'reports:view': '/relatorios',
@@ -17,7 +16,6 @@ export const PERMISSION_TO_PAGE: Record<string, string> = {
 };
 
 export const PAGE_TO_VIEW_PERMISSION: Record<string, ProfilePermission> = {
-  '/projetos': { resource: 'projects', action: 'view' },
   '/docs': { resource: 'docs', action: 'view' },
   '/tickets': { resource: 'tickets', action: 'view' },
   '/relatorios': { resource: 'reports', action: 'view' },
@@ -32,7 +30,7 @@ export const PAGE_TO_VIEW_PERMISSION: Record<string, ProfilePermission> = {
 };
 
 /** Recursos que exigem "view" para acessar a área no sistema */
-const RESOURCES_REQUIRING_VIEW = ['projects', 'docs', 'tickets', 'forms', 'pages', 'webhooks', 'reports', 'history', 'agenda'];
+const RESOURCES_REQUIRING_VIEW = ['docs', 'tickets', 'forms', 'pages', 'webhooks', 'reports', 'history', 'agenda'];
 
 function permKey(p: ProfilePermission) {
   return `${p.resource}:${p.action}`;

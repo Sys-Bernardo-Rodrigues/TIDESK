@@ -15,6 +15,11 @@ import {
   Filter,
   Send,
   RefreshCw,
+  BookOpen,
+  Activity,
+  ShieldAlert,
+  Flame,
+  LayoutDashboard,
 } from 'lucide-react';
 import { formatDateBR } from '../utils/dateUtils';
 import { usePermissions, RESOURCES, ACTIONS } from '../hooks/usePermissions';
@@ -24,6 +29,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import {
@@ -34,6 +40,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 
 interface WebhookData {
   id: number;
@@ -67,6 +74,13 @@ interface User {
   email: string;
 }
 
+const TOOL_META = {
+  zabbix: { icon: Activity, color: 'var(--red)', label: 'Zabbix' },
+  wazuh: { icon: ShieldAlert, color: 'var(--blue)', label: 'Wazuh' },
+  prometheus: { icon: Flame, color: 'var(--orange)', label: 'Prometheus' },
+  grafana: { icon: LayoutDashboard, color: 'var(--purple)', label: 'Grafana' },
+} as const;
+
 export default function Webhooks() {
   const confirm = useConfirm();
   const [searchTerm, setSearchTerm] = useState('');
@@ -84,6 +98,8 @@ export default function Webhooks() {
   const [filterActive, setFilterActive] = useState<string>('all');
   const [filterPriority, setFilterPriority] = useState<string>('all');
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
+  const [guideWebhook, setGuideWebhook] = useState<WebhookData | null>(null);
+  const [copiedSnippet, setCopiedSnippet] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -209,6 +225,16 @@ export default function Webhooks() {
     }
   };
 
+  const copySnippet = async (key: string, text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedSnippet(key);
+      setTimeout(() => setCopiedSnippet(null), 2000);
+    } catch {
+      toast.error('Erro ao copiar. Por favor, copie manualmente.');
+    }
+  };
+
   const toggleActive = async (webhook: WebhookData) => {
     if (!canEdit) {
       toast.error('Você não tem permissão para editar webhooks');
@@ -321,14 +347,31 @@ export default function Webhooks() {
     return <p className="p-10 text-center text-muted-foreground">Você não tem permissão para visualizar webhooks.</p>;
   }
 
+  const totalCalls = webhooks.reduce((sum, w) => sum + (w.total_calls || 0), 0);
+  const successCalls = webhooks.reduce((sum, w) => sum + (w.success_calls || 0), 0);
+  const successRateAll = totalCalls > 0 ? Math.round((successCalls / totalCalls) * 100) : 0;
+
   return (
     <div>
-      <div className="mb-8">
-        <h1 className="text-3xl font-extrabold tracking-tight text-foreground">Webhooks</h1>
-        <p className="mt-1 text-muted-foreground">
-          Gerencie webhooks para receber notificações de outros sistemas e criar tickets automaticamente
-        </p>
-      </div>
+      <header className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          <div className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <Webhook size={18} />
+          </div>
+          <div>
+            <h1 className="text-xl font-semibold text-foreground">Webhooks</h1>
+            <p className="text-xs text-muted-foreground">Receba alertas de outros sistemas e crie tickets automaticamente</p>
+          </div>
+        </div>
+        {webhooks.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2">
+            <StatChip label="Total" value={webhooks.length} colorVar="var(--text-tertiary)" />
+            <StatChip label="Ativos" value={webhooks.filter((w) => w.active === 1).length} colorVar="var(--green)" />
+            <StatChip label="Chamadas" value={totalCalls} colorVar="var(--blue)" />
+            <StatChip label="Sucesso" value={`${successRateAll}%`} colorVar={successRateAll >= 80 ? 'var(--green)' : successRateAll >= 50 ? 'var(--orange)' : 'var(--red)'} />
+          </div>
+        )}
+      </header>
 
       {error && (
         <div className="mb-4 rounded-lg border border-[var(--red)] bg-[var(--red-light)] p-3 text-sm text-[var(--red)]">
@@ -390,37 +433,6 @@ export default function Webhooks() {
         </div>
       ) : (
         <>
-          {webhooks.length > 0 && (
-            <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <Card className="px-4 py-3">
-                <div className="text-xs text-muted-foreground">Total de Webhooks</div>
-                <div className="text-2xl font-bold text-foreground">{webhooks.length}</div>
-              </Card>
-              <Card className="px-4 py-3">
-                <div className="text-xs text-muted-foreground">Ativos</div>
-                <div className="text-2xl font-bold text-[var(--green)]">
-                  {webhooks.filter((w) => w.active === 1).length}
-                </div>
-              </Card>
-              <Card className="px-4 py-3">
-                <div className="text-xs text-muted-foreground">Total de Chamadas</div>
-                <div className="text-2xl font-bold text-foreground">
-                  {webhooks.reduce((sum, w) => sum + (w.total_calls || 0), 0)}
-                </div>
-              </Card>
-              <Card className="px-4 py-3">
-                <div className="text-xs text-muted-foreground">Taxa de Sucesso</div>
-                <div className="text-2xl font-bold text-[var(--green)]">
-                  {(() => {
-                    const total = webhooks.reduce((sum, w) => sum + (w.total_calls || 0), 0);
-                    const success = webhooks.reduce((sum, w) => sum + (w.success_calls || 0), 0);
-                    return total > 0 ? `${Math.round((success / total) * 100)}%` : '0%';
-                  })()}
-                </div>
-              </Card>
-            </div>
-          )}
-
           {filteredWebhooks.length === 0 ? (
             <Card className="items-center p-10 text-center">
               <Webhook size={40} className="mx-auto mb-3 text-muted-foreground" />
@@ -436,30 +448,28 @@ export default function Webhooks() {
                 const successRate = webhook.total_calls > 0 ? Math.round((webhook.success_calls / webhook.total_calls) * 100) : 0;
 
                 return (
-                  <Card key={webhook.id} className="p-5">
+                  <Card key={webhook.id} className="relative overflow-hidden p-5 pl-6">
+                    <span className="absolute top-0 left-0 h-full w-1" style={{ background: priorityColors[webhook.priority] }} />
                     <div className="flex flex-wrap items-start justify-between gap-4">
                       <div className="min-w-0 flex-1">
                         <div className="mb-2 flex flex-wrap items-center gap-2">
                           <Webhook size={20} className={webhook.active ? 'text-[var(--green)]' : 'text-muted-foreground'} />
                           <h3 className="text-lg font-semibold text-foreground">{webhook.name}</h3>
-                          <span
-                            className="rounded px-2 py-0.5 text-xs font-semibold"
-                            style={{
-                              background: webhook.active ? 'var(--green-light)' : 'var(--bg-tertiary)',
-                              color: webhook.active ? 'var(--green)' : 'var(--text-tertiary)',
-                            }}
+                          <Badge
+                            className={cn(
+                              'border-0 text-[0.625rem] font-semibold tracking-wide uppercase',
+                              webhook.active ? 'bg-[var(--green-light)] text-[var(--green)]' : 'bg-muted text-muted-foreground'
+                            )}
                           >
                             {webhook.active ? 'Ativo' : 'Inativo'}
-                          </span>
-                          <span
-                            className="rounded px-2 py-0.5 text-xs font-semibold"
-                            style={{
-                              background: `color-mix(in srgb, ${priorityColors[webhook.priority]} 15%, transparent)`,
-                              color: priorityColors[webhook.priority],
-                            }}
+                          </Badge>
+                          <Badge
+                            variant="outline"
+                            className="text-[0.625rem] font-semibold tracking-wide uppercase"
+                            style={{ color: priorityColors[webhook.priority] }}
                           >
                             {priorityLabels[webhook.priority]}
-                          </span>
+                          </Badge>
                         </div>
                         {webhook.description && <p className="mb-3 text-muted-foreground">{webhook.description}</p>}
 
@@ -516,30 +526,31 @@ export default function Webhooks() {
                         </div>
                       </div>
 
-                      <div className="flex min-w-[120px] shrink-0 flex-col gap-2">
+                      <div className="flex shrink-0 flex-col items-end gap-2">
+                        <div className="flex items-center gap-1.5">
+                          <Button variant="secondary" size="icon-sm" onClick={() => setGuideWebhook(webhook)} title="Guia de integração">
+                            <BookOpen size={14} />
+                          </Button>
+                          <Button variant="secondary" size="icon-sm" onClick={() => testWebhook(webhook)} title="Testar">
+                            <Send size={14} />
+                          </Button>
+                          <Button variant="secondary" size="icon-sm" onClick={() => handleViewLogs(webhook)} title="Logs">
+                            <Eye size={14} />
+                          </Button>
+                          {canEdit && (
+                            <Button variant="secondary" size="icon-sm" onClick={() => handleEdit(webhook)} title="Editar">
+                              <Edit size={14} />
+                            </Button>
+                          )}
+                          {canDelete && (
+                            <Button variant="destructive" size="icon-sm" onClick={() => handleDelete(webhook.id)} title="Deletar">
+                              <Trash2 size={14} />
+                            </Button>
+                          )}
+                        </div>
                         <Button variant="secondary" size="sm" onClick={() => toggleActive(webhook)} disabled={!canEdit}>
                           {webhook.active ? 'Desativar' : 'Ativar'}
                         </Button>
-                        <Button variant="secondary" size="sm" onClick={() => testWebhook(webhook)}>
-                          <Send size={14} />
-                          Testar
-                        </Button>
-                        <Button variant="secondary" size="sm" onClick={() => handleViewLogs(webhook)}>
-                          <Eye size={14} />
-                          Logs
-                        </Button>
-                        {canEdit && (
-                          <Button variant="secondary" size="sm" onClick={() => handleEdit(webhook)}>
-                            <Edit size={14} />
-                            Editar
-                          </Button>
-                        )}
-                        {canDelete && (
-                          <Button variant="destructive" size="sm" onClick={() => handleDelete(webhook.id)}>
-                            <Trash2 size={14} />
-                            Deletar
-                          </Button>
-                        )}
                       </div>
                     </div>
                   </Card>
@@ -751,6 +762,211 @@ export default function Webhooks() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Modal de Guia de Integração */}
+      <Dialog open={!!guideWebhook} onOpenChange={(open) => !open && setGuideWebhook(null)}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto p-0 sm:max-w-3xl">
+          <div className="flex items-center gap-3 border-b border-border bg-muted/30 px-6 py-3.5">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <BookOpen size={18} />
+            </div>
+            <div className="min-w-0">
+              <DialogTitle className="text-base">Guia de integração</DialogTitle>
+              <DialogDescription className="truncate">
+                Conecte <strong className="text-foreground">{guideWebhook?.name}</strong> a uma dessas ferramentas
+              </DialogDescription>
+            </div>
+          </div>
+
+          <div className="px-6 pb-5">
+            {guideWebhook && (() => {
+              const fullUrl = `${window.location.origin}/api/webhooks/receive/${guideWebhook.webhook_url}`;
+              return (
+                <Tabs defaultValue="zabbix">
+                  <TabsList className="h-auto flex-wrap gap-1 bg-muted/60 p-1">
+                    {(Object.keys(TOOL_META) as Array<keyof typeof TOOL_META>).map((key) => {
+                      const meta = TOOL_META[key];
+                      const Icon = meta.icon;
+                      return (
+                        <TabsTrigger key={key} value={key} className="gap-1.5 px-3 py-1.5">
+                          <Icon size={14} style={{ color: meta.color }} />
+                          {meta.label}
+                        </TabsTrigger>
+                      );
+                    })}
+                  </TabsList>
+
+                  <TabsContent value="zabbix" className="flex flex-col gap-3 pt-3">
+                    <ToolBanner meta={TOOL_META.zabbix} description="Crie um meio de notificação Webhook no Zabbix e cada alerta vira ticket automaticamente." />
+                    <GuideStep n={1}>
+                      <p className="text-sm text-foreground">
+                        Em <strong>Alertas → Meios de notificação → Criar meio</strong>, escolha o tipo <strong>Webhook</strong> e
+                        adicione estes parâmetros:
+                      </p>
+                      <CopyBlock
+                        id="zabbix-params"
+                        label="Parâmetros"
+                        copiedKey={copiedSnippet}
+                        onCopy={copySnippet}
+                        text={'event_name = {EVENT.NAME}\nseverity = {EVENT.SEVERITY}\nhost = {HOST.NAME}\nstatus = {EVENT.STATUS}\nurl = {TRIGGER.URL}'}
+                      />
+                    </GuideStep>
+                    <GuideStep n={2}>
+                      <p className="text-sm text-foreground">Cole este script no campo "Script":</p>
+                      <CopyBlock
+                        id="zabbix-script"
+                        label="script.js"
+                        copiedKey={copiedSnippet}
+                        onCopy={copySnippet}
+                        text={`var params = JSON.parse(value);\nvar req = new HttpRequest();\nreq.addHeader('Content-Type: application/json');\nreq.post('${fullUrl}', JSON.stringify({\n  source: 'zabbix',\n  event_name: params.event_name,\n  severity: params.severity,\n  host: params.host,\n  status: params.status,\n  url: params.url\n}));\nreturn 'OK';`}
+                      />
+                    </GuideStep>
+                  </TabsContent>
+
+                  <TabsContent value="wazuh" className="flex flex-col gap-3 pt-3">
+                    <ToolBanner meta={TOOL_META.wazuh} description="O manager encaminha o alerta bruto direto pro TIDESK via integração HTTP custom." />
+                    <GuideStep n={1}>
+                      <p className="text-sm text-foreground">
+                        Adicione este bloco no <code className="rounded bg-muted px-1 py-0.5 text-xs">ossec.conf</code> do manager
+                        (ajuste o <code className="rounded bg-muted px-1 py-0.5 text-xs">level</code> mínimo se quiser filtrar
+                        alertas de baixa severidade):
+                      </p>
+                      <CopyBlock
+                        id="wazuh"
+                        label="ossec.conf"
+                        copiedKey={copiedSnippet}
+                        onCopy={copySnippet}
+                        text={`<ossec_config>\n  <integration>\n    <name>custom-http</name>\n    <hook_url>${fullUrl}</hook_url>\n    <alert_format>json</alert_format>\n    <level>7</level>\n  </integration>\n</ossec_config>`}
+                      />
+                    </GuideStep>
+                    <GuideStep n={2}>
+                      <p className="text-sm text-foreground">Reinicie o manager pra aplicar:</p>
+                      <CopyBlock id="wazuh-restart" label="shell" copiedKey={copiedSnippet} onCopy={copySnippet} text={'systemctl restart wazuh-manager'} />
+                    </GuideStep>
+                  </TabsContent>
+
+                  <TabsContent value="prometheus" className="flex flex-col gap-3 pt-3">
+                    <ToolBanner meta={TOOL_META.prometheus} description="O Alertmanager dispara pro TIDESK sempre que um alerta entra em firing ou é resolvido." />
+                    <GuideStep n={1}>
+                      <p className="text-sm text-foreground">
+                        Adicione um receiver no seu <code className="rounded bg-muted px-1 py-0.5 text-xs">alertmanager.yml</code>:
+                      </p>
+                      <CopyBlock
+                        id="prometheus"
+                        label="alertmanager.yml"
+                        copiedKey={copiedSnippet}
+                        onCopy={copySnippet}
+                        text={`receivers:\n  - name: 'tidesk'\n    webhook_configs:\n      - url: '${fullUrl}'\n        send_resolved: true\n\nroute:\n  receiver: 'tidesk'`}
+                      />
+                    </GuideStep>
+                  </TabsContent>
+
+                  <TabsContent value="grafana" className="flex flex-col gap-3 pt-3">
+                    <ToolBanner meta={TOOL_META.grafana} description="Grafana Alerting usa o mesmo formato do Alertmanager — basta um contact point." />
+                    <GuideStep n={1}>
+                      <p className="text-sm text-foreground">
+                        Em <strong>Alerting → Contact points → New contact point</strong>, escolha a integração{' '}
+                        <strong>Webhook</strong> e cole a URL abaixo:
+                      </p>
+                      <CopyBlock id="grafana" label="URL" copiedKey={copiedSnippet} onCopy={copySnippet} text={fullUrl} />
+                    </GuideStep>
+                  </TabsContent>
+                </Tabs>
+              );
+            })()}
+          </div>
+
+          <DialogFooter className="mx-0 mb-0 rounded-b-none border-t border-border bg-transparent px-6 py-3">
+            <Button variant="outline" onClick={() => setGuideWebhook(null)}>
+              Fechar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function StatChip({ label, value, colorVar }: { label: string; value: number | string; colorVar: string }) {
+  return (
+    <span className="flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-foreground">
+      <span className="font-semibold" style={{ color: colorVar }}>
+        {value}
+      </span>
+      {label}
+    </span>
+  );
+}
+
+function ToolBanner({ meta, description }: { meta: { icon: typeof Activity; color: string; label: string }; description: string }) {
+  const Icon = meta.icon;
+  return (
+    <div
+      className="flex items-center gap-3 rounded-lg border border-border p-3"
+      style={{ background: `color-mix(in srgb, ${meta.color} 8%, transparent)` }}
+    >
+      <div
+        className="flex size-9 shrink-0 items-center justify-center rounded-lg"
+        style={{ background: `color-mix(in srgb, ${meta.color} 18%, transparent)`, color: meta.color }}
+      >
+        <Icon size={18} />
+      </div>
+      <p className="text-sm text-muted-foreground">{description}</p>
+    </div>
+  );
+}
+
+function GuideStep({ n, children }: { n: number; children: React.ReactNode }) {
+  return (
+    <div className="flex gap-3">
+      <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
+        {n}
+      </div>
+      <div className="flex min-w-0 flex-1 flex-col gap-2">{children}</div>
+    </div>
+  );
+}
+
+function CopyBlock({
+  id,
+  text,
+  label,
+  copiedKey,
+  onCopy,
+}: {
+  id: string;
+  text: string;
+  label?: string;
+  copiedKey: string | null;
+  onCopy: (id: string, text: string) => void;
+}) {
+  return (
+    <div className="overflow-hidden rounded-lg border border-black/20 shadow-sm">
+      {label && (
+        <div className="flex items-center gap-1.5 border-b border-white/10 bg-[#161b22] px-3 py-1.5">
+          <span className="size-2 rounded-full bg-[#ff5f57]" />
+          <span className="size-2 rounded-full bg-[#febc2e]" />
+          <span className="size-2 rounded-full bg-[#28c840]" />
+          <span className="ml-1.5 font-mono text-[0.6875rem] text-white/50">{label}</span>
+        </div>
+      )}
+      <div className="relative bg-[#0d1117]">
+        <pre className="p-3 pr-11 font-mono text-[0.75rem] leading-snug whitespace-pre-wrap text-[#c9d1d9]">
+          {text}
+        </pre>
+        <Button
+          variant="secondary"
+          size="icon-sm"
+          className={cn(
+            'absolute top-2 right-2 border border-white/10 bg-white/10 text-white/70 hover:bg-white/20 hover:text-white',
+            copiedKey === id && 'bg-[var(--green)]/25 text-[var(--green)]'
+          )}
+          onClick={() => onCopy(id, text)}
+          title={copiedKey === id ? 'Copiado!' : 'Copiar'}
+        >
+          {copiedKey === id ? <CheckCircle size={13} /> : <Copy size={13} />}
+        </Button>
+      </div>
     </div>
   );
 }
