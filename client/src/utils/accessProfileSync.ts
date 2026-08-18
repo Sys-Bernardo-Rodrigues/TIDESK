@@ -122,9 +122,10 @@ export function applyPageToggle(
     }
     const viewPerm = PAGE_TO_VIEW_PERMISSION[pagePath];
     if (viewPerm) {
-      perms = perms.filter(
-        (p) => !(p.resource === viewPerm.resource && p.action === viewPerm.action)
-      );
+      // Remove todas as permissões do recurso, não só :view — senão
+      // normalizeProfileAccess resgata view+página por causa de outras
+      // ações (create/edit/delete) que ainda restam no perfil
+      perms = perms.filter((p) => p.resource !== viewPerm.resource);
     }
   }
 
