@@ -1,7 +1,7 @@
 import express, { Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import { authenticate, AuthRequest } from '../middleware/auth';
-import { requirePermission, RESOURCES, ACTIONS } from '../middleware/permissions';
+import { requirePermission, requireAnyPermission, RESOURCES, ACTIONS } from '../middleware/permissions';
 import { dbGet, dbAll, dbRun, getBrasiliaTimestamp } from '../database';
 import { uploadMessage } from '../middleware/upload';
 import path from 'path';
@@ -59,7 +59,11 @@ async function getTicketIdFromFullId(fullId: string): Promise<number | null> {
 router.use(authenticate);
 
 // Listar mensagens de um ticket
-router.get('/ticket/:ticketId', requirePermission(RESOURCES.TICKETS, ACTIONS.VIEW), async (req: AuthRequest, res) => {
+router.get('/ticket/:ticketId', requireAnyPermission(
+  { resource: RESOURCES.TICKETS, action: ACTIONS.VIEW },
+  { resource: RESOURCES.APPROVE, action: ACTIONS.VIEW },
+  { resource: RESOURCES.TRACK, action: ACTIONS.VIEW }
+), async (req: AuthRequest, res) => {
   try {
     // Converter ID completo para ID numérico se necessário
     let ticketId: number | null = null;
@@ -270,7 +274,11 @@ router.put('/:id', [
 });
 
 // Buscar anexos de uma mensagem
-router.get('/:id/attachments', requirePermission(RESOURCES.TICKETS, ACTIONS.VIEW), async (req: AuthRequest, res) => {
+router.get('/:id/attachments', requireAnyPermission(
+  { resource: RESOURCES.TICKETS, action: ACTIONS.VIEW },
+  { resource: RESOURCES.APPROVE, action: ACTIONS.VIEW },
+  { resource: RESOURCES.TRACK, action: ACTIONS.VIEW }
+), async (req: AuthRequest, res) => {
   try {
     const messageId = req.params.id;
     
@@ -301,7 +309,11 @@ router.get('/:id/attachments', requirePermission(RESOURCES.TICKETS, ACTIONS.VIEW
 });
 
 // Download de anexo de mensagem
-router.get('/attachments/:id', requirePermission(RESOURCES.TICKETS, ACTIONS.VIEW), async (req: AuthRequest, res) => {
+router.get('/attachments/:id', requireAnyPermission(
+  { resource: RESOURCES.TICKETS, action: ACTIONS.VIEW },
+  { resource: RESOURCES.APPROVE, action: ACTIONS.VIEW },
+  { resource: RESOURCES.TRACK, action: ACTIONS.VIEW }
+), async (req: AuthRequest, res) => {
   try {
     const attachment = await dbGet('SELECT * FROM message_attachments WHERE id = ?', [req.params.id]);
     

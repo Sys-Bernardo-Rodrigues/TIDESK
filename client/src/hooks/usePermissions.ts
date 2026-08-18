@@ -135,8 +135,13 @@ export const usePermissions = () => {
       return permissions.has('forms:create') || permissions.has('forms:edit');
     }
     
-    // Permitir acesso a tickets (lista e detalhe) se o usuário tem permissão de visualizar
-    if (pagePath === '/tickets' || (pagePath.startsWith('/tickets/') && pagePath !== '/tickets')) {
+    // Lista geral de tickets exige tickets:view (aprovador/tratativa não veem a lista completa)
+    if (pagePath === '/tickets') {
+      return permissions.has('tickets:view');
+    }
+    // Detalhe de um ticket: além de tickets:view, aprovador e tratativa também podem
+    // abrir a descrição do ticket específico que estão acompanhando
+    if (pagePath.startsWith('/tickets/')) {
       return permissions.has('tickets:view') || permissions.has('approve:view') || permissions.has('track:view');
     }
     if (pagePath === '/docs' || pagePath.startsWith('/docs/')) return permissions.has('docs:view');

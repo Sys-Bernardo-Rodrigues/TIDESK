@@ -1,7 +1,7 @@
 import express, { Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import { authenticate, AuthRequest, requireAgent } from '../middleware/auth';
-import { requirePermission, RESOURCES, ACTIONS } from '../middleware/permissions';
+import { requirePermission, requireAnyPermission, RESOURCES, ACTIONS } from '../middleware/permissions';
 import { dbGet, dbAll, dbRun, getBrasiliaTimestamp } from '../database';
 import { getBrasiliaDate, generateTicketNumber, createTicketRecord } from '../services/ticket-service';
 
@@ -288,7 +288,11 @@ router.get('/', requirePermission(RESOURCES.TICKETS, ACTIONS.VIEW), async (req: 
 });
 
 // Obter ticket específico
-router.get('/:id', requirePermission(RESOURCES.TICKETS, ACTIONS.VIEW), async (req: AuthRequest, res) => {
+router.get('/:id', requireAnyPermission(
+  { resource: RESOURCES.TICKETS, action: ACTIONS.VIEW },
+  { resource: RESOURCES.APPROVE, action: ACTIONS.VIEW },
+  { resource: RESOURCES.TRACK, action: ACTIONS.VIEW }
+), async (req: AuthRequest, res) => {
   try {
     console.log(`[GET /:id] Recebido ID: ${req.params.id}, length: ${req.params.id.length}, isNaN: ${isNaN(Number(req.params.id))}`);
     
@@ -603,7 +607,11 @@ router.put('/:id', [
 });
 
 // Buscar anexos de um ticket
-router.get('/:id/attachments', requirePermission(RESOURCES.TICKETS, ACTIONS.VIEW), async (req: AuthRequest, res) => {
+router.get('/:id/attachments', requireAnyPermission(
+  { resource: RESOURCES.TICKETS, action: ACTIONS.VIEW },
+  { resource: RESOURCES.APPROVE, action: ACTIONS.VIEW },
+  { resource: RESOURCES.TRACK, action: ACTIONS.VIEW }
+), async (req: AuthRequest, res) => {
   try {
     const ticketId = await getTicketIdFromFullId(req.params.id);
     if (!ticketId) {
@@ -744,7 +752,11 @@ router.post('/:id/unschedule', authenticate, requirePermission(RESOURCES.TICKETS
 });
 
 // Listar colaboradores do ticket (usuários adicionais além do responsável)
-router.get('/:id/collaborators', authenticate, requirePermission(RESOURCES.TICKETS, ACTIONS.VIEW), async (req: AuthRequest, res) => {
+router.get('/:id/collaborators', authenticate, requireAnyPermission(
+  { resource: RESOURCES.TICKETS, action: ACTIONS.VIEW },
+  { resource: RESOURCES.APPROVE, action: ACTIONS.VIEW },
+  { resource: RESOURCES.TRACK, action: ACTIONS.VIEW }
+), async (req: AuthRequest, res) => {
   try {
     const ticketId = await getTicketIdFromFullId(req.params.id);
     if (!ticketId) {
@@ -837,7 +849,11 @@ router.delete('/:id/collaborators/:userId', authenticate, requirePermission(RESO
 
 // Resumo de tempo por usuário no ticket (cronômetro individual)
 // Resumo de tempo por usuário — inclui responsável + colaboradores mesmo sem cronômetro registrado
-router.get('/:id/time', authenticate, requirePermission(RESOURCES.TICKETS, ACTIONS.VIEW), async (req: AuthRequest, res) => {
+router.get('/:id/time', authenticate, requireAnyPermission(
+  { resource: RESOURCES.TICKETS, action: ACTIONS.VIEW },
+  { resource: RESOURCES.APPROVE, action: ACTIONS.VIEW },
+  { resource: RESOURCES.TRACK, action: ACTIONS.VIEW }
+), async (req: AuthRequest, res) => {
   try {
     const ticketId = await getTicketIdFromFullId(req.params.id);
     if (!ticketId) {
