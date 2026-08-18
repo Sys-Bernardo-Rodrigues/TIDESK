@@ -25,6 +25,8 @@ import webhookRoutes from './routes/webhooks';
 import docsRoutes from './routes/docs';
 import notificationRoutes from './routes/notifications';
 import tvRoutes from './routes/tv';
+import tvSlidesRoutes from './routes/tv-slides';
+import tvConfigRoutes from './routes/tv-config';
 import ticketAssistantRoutes from './routes/ticket-assistant';
 import aiConfigRoutes from './routes/ai-config';
 import sigmaRoutes from './routes/sigma';
@@ -144,8 +146,10 @@ app.use('/api/webhooks', webhookRoutes);
 app.use('/api/docs', docsRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/tv', tvRoutes);
+app.use('/api/tv-slides', tvSlidesRoutes);
 app.use('/api/ticket-assistant', ticketAssistantRoutes);
 app.use('/api/config', aiConfigRoutes);
+app.use('/api/config', tvConfigRoutes);
 app.use('/api/sigma', sigmaRoutes);
 
 // Rota de health check

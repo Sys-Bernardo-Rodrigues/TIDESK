@@ -14,7 +14,6 @@ interface TvScheduledTicket {
   createdAt: string | null;
   scheduledAt: string | null;
   priority: string;
-  isPaused: boolean;
   isLate: boolean;
 }
 
@@ -37,7 +36,20 @@ interface TvStats {
   ranking: TvRankingEntry[];
 }
 
+interface TvSlide {
+  id: number;
+  title: string;
+  url: string;
+  durationSeconds: number;
+}
+
+interface TvPanelConfig {
+  dashboardDurationSeconds: number;
+  slides: TvSlide[];
+}
+
 const REFRESH_MS = 15000;
+const PANEL_CONFIG_REFRESH_MS = 60000;
 
 const PRIORITY_LABELS: Record<string, { label: string; color: string }> = {
   low: { label: 'Baixa', color: 'var(--text-tertiary)' },
@@ -98,6 +110,8 @@ export default function TvPanel() {
   const [stats, setStats] = useState<TvStats | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const [panelConfig, setPanelConfig] = useState<TvPanelConfig | null>(null);
+  const [slideIndex, setSlideIndex] = useState(-1);
 
   useEffect(() => {
     let cancelled = false;
@@ -127,6 +141,55 @@ export default function TvPanel() {
     const clockInterval = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(clockInterval);
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchPanelConfig = async () => {
+      try {
+        const response = await axios.get<TvPanelConfig>('/api/tv/panel-config');
+        if (!cancelled) setPanelConfig(response.data);
+      } catch (err) {
+        console.error('Erro ao buscar configuração do painel TV:', err);
+      }
+    };
+
+    fetchPanelConfig();
+    const configInterval = setInterval(fetchPanelConfig, PANEL_CONFIG_REFRESH_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(configInterval);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!panelConfig || panelConfig.slides.length === 0) {
+      setSlideIndex(-1);
+      return;
+    }
+
+    const currentDurationMs = slideIndex === -1
+      ? panelConfig.dashboardDurationSeconds * 1000
+      : panelConfig.slides[slideIndex]?.durationSeconds * 1000 || 30000;
+
+    const timeout = setTimeout(() => {
+      setSlideIndex((prev) => (prev + 1 >= panelConfig.slides.length ? -1 : prev + 1));
+    }, currentDurationMs);
+
+    return () => clearTimeout(timeout);
+  }, [panelConfig, slideIndex]);
+
+  const activeSlide = panelConfig && slideIndex >= 0 ? panelConfig.slides[slideIndex] : null;
+
+  if (activeSlide) {
+    return (
+      <iframe
+        src={activeSlide.url}
+        title={activeSlide.title}
+        className="fixed inset-0 h-screen w-screen border-0"
+      />
+    );
+  }
 
   return (
     <div
@@ -216,7 +279,6 @@ export default function TvPanel() {
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-[color:var(--text-secondary)]">{formatScheduledFor(t.scheduledAt)}</span>
                   <div className="flex items-center gap-1">
-                    {t.isPaused && <PauseBadge />}
                     {t.isLate && (
                       <span className="rounded px-1.5 py-0.5 text-xs font-bold" style={{ background: 'var(--red)', color: 'white' }}>
                         ATRASADO

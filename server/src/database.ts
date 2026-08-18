@@ -220,6 +220,18 @@ export interface ShiftUser {
   created_at: string;
 }
 
+export interface TvSlide {
+  id: number;
+  title: string;
+  url: string;
+  duration_seconds: number;
+  sort_order: number;
+  active: number;
+  created_by: number;
+  created_at: string;
+  updated_at: string;
+}
+
 // Função para obter timestamp atual em horário de Brasília (UTC-3)
 export function getBrasiliaTimestamp(): string {
   const now = new Date();
@@ -855,6 +867,22 @@ const initSQLite = async () => {
     )
   `);
 
+  // Tabela de slides (links externos) do painel de TV
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS tv_slides (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      url TEXT NOT NULL,
+      duration_seconds INTEGER NOT NULL DEFAULT 30,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      active INTEGER DEFAULT 1,
+      created_by INTEGER NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+
   await dbRun(`
     CREATE TABLE IF NOT EXISTS doc_repositories (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1310,6 +1338,22 @@ const initPostgreSQL = async () => {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (webhook_id) REFERENCES webhooks(id) ON DELETE CASCADE,
       FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE SET NULL
+    )
+  `);
+
+  // Tabela de slides (links externos) do painel de TV
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS tv_slides (
+      id SERIAL PRIMARY KEY,
+      title VARCHAR(255) NOT NULL,
+      url VARCHAR(2048) NOT NULL,
+      duration_seconds INTEGER NOT NULL DEFAULT 30,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      active INTEGER DEFAULT 1,
+      created_by INTEGER NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
     )
   `);
 

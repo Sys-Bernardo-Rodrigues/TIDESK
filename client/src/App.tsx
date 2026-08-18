@@ -13,6 +13,7 @@ import Users from './pages/Users';
 import Backup from './pages/Backup';
 import Notificacoes from './pages/Notificacoes';
 import ConfigIa from './pages/ConfigIa';
+import ConfigTv from './pages/ConfigTv';
 import Atualizar from './pages/Atualizar';
 import Grupos from './pages/Grupos';
 import Aprovar from './pages/Aprovar';
@@ -209,13 +210,21 @@ function App() {
                 </ProtectedRoute>
               }
             />
-            <Route 
-              path="config/grupos" 
+            <Route
+              path="config/grupos"
               element={
                 <ProtectedRoute resource={RESOURCES.CONFIG} action={ACTIONS.VIEW}>
                   <Grupos />
                 </ProtectedRoute>
-              } 
+              }
+            />
+            <Route
+              path="config/painel-tv"
+              element={
+                <ProtectedRoute resource={RESOURCES.CONFIG} action={ACTIONS.VIEW}>
+                  <ConfigTv />
+                </ProtectedRoute>
+              }
             />
             <Route 
               path="acompanhar/aprovar" 

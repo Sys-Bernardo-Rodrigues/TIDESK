@@ -149,10 +149,10 @@ router.get(
         [todayStartStr, todayEndStr]
       );
 
-      // Tempo médio de resolução: do momento em que o agente pegou o ticket até fechamento (não abertura→fechamento)
+      // Tempo médio de resolução: soma do tempo de colaboração (cronômetro) registrado no ticket
       const activeHoursExpr = DB_TYPE === 'sqlite'
-        ? `(julianday(t.updated_at) - julianday(COALESCE(t.assigned_at, t.created_at))) * 24 - COALESCE((SELECT SUM((julianday(p.resumed_at) - julianday(p.paused_at)) * 24) FROM ticket_pauses p WHERE p.ticket_id = t.id AND p.resumed_at IS NOT NULL), 0)`
-        : `EXTRACT(EPOCH FROM (t.updated_at - COALESCE(t.assigned_at, t.created_at))) / 3600 - COALESCE((SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (p.resumed_at - p.paused_at))), 0) / 3600 FROM ticket_pauses p WHERE p.ticket_id = t.id AND p.resumed_at IS NOT NULL), 0)`;
+        ? `(SELECT COALESCE(SUM((julianday(COALESCE(te.ended_at, datetime('now', '-3 hours'))) - julianday(te.started_at)) * 24), 0) FROM ticket_time_entries te WHERE te.ticket_id = t.id)`
+        : `(SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(te.ended_at, (NOW() AT TIME ZONE 'America/Sao_Paulo')) - te.started_at))), 0) / 3600 FROM ticket_time_entries te WHERE te.ticket_id = t.id)`;
       const avgResolutionTime = await dbGet(`
         SELECT AVG(active_hours) as avg_hours
         FROM (

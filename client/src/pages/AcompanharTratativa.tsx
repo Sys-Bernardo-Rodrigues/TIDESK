@@ -187,7 +187,7 @@ export default function AcompanharTratativa() {
           priority: ticket.priority === 'high' || ticket.priority === 'urgent' ? 'Alta' : ticket.priority === 'medium' ? 'Média' : 'Baixa',
           createdAt: ticket.created_at,
           lastUpdate: ticket.updated_at,
-          timeElapsed: calculateTimeElapsed(ticket.assigned_at || ticket.created_at, ticket.total_pause_seconds),
+          timeElapsed: calculateTimeElapsed(ticket.total_collab_seconds),
           source: ticket.form_id ? 'formulário' : undefined,
           formName: ticket.form_name,
           wasApproved: ticket.needs_approval === 1 && ticket.status === 'open',
@@ -202,14 +202,8 @@ export default function AcompanharTratativa() {
     }
   };
 
-  const calculateTimeElapsed = (startAt: string, totalPauseSeconds?: number): string => {
-    const now = new Date();
-    const start = new Date(startAt);
-    let diffMs = now.getTime() - start.getTime();
-    if (totalPauseSeconds != null && totalPauseSeconds > 0) {
-      diffMs -= totalPauseSeconds * 1000;
-    }
-    const diff = Math.max(0, diffMs);
+  const calculateTimeElapsed = (totalCollabSeconds?: number): string => {
+    const diff = Math.max(0, (totalCollabSeconds || 0) * 1000);
     const hours = Math.floor(diff / (1000 * 60 * 60));
     const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
     if (hours > 0) return `${hours}h ${minutes}min`;

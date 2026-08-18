@@ -3,14 +3,7 @@ import { authenticate, AuthRequest } from '../middleware/auth';
 import { requirePermission, RESOURCES, ACTIONS } from '../middleware/permissions';
 import { dbAll } from '../database';
 
-const DB_TYPE = process.env.DB_TYPE || 'sqlite';
-
 const router = express.Router();
-
-// Segundos totais em pausa de um ticket (mesmo padrão usado em routes/tickets.ts)
-const TOTAL_PAUSE_SECONDS = DB_TYPE === 'sqlite'
-  ? `(SELECT COALESCE(SUM((julianday(COALESCE(p.resumed_at, datetime('now', '-3 hours'))) - julianday(p.paused_at)) * 86400), 0) FROM ticket_pauses p WHERE p.ticket_id = t.id)`
-  : `(SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(p.resumed_at, (NOW() AT TIME ZONE 'America/Sao_Paulo')) - p.paused_at))), 0)::bigint FROM ticket_pauses p WHERE p.ticket_id = t.id)`;
 
 function inRange(dateStr: string | null | undefined, start: Date | null, end: Date | null): boolean {
   if (!dateStr) return false;
@@ -20,11 +13,25 @@ function inRange(dateStr: string | null | undefined, start: Date | null, end: Da
   return true;
 }
 
-function hoursBetween(fromStr: string, toStr: string, pauseSeconds = 0): number {
+function hoursBetween(fromStr: string, toStr: string): number {
   const from = new Date(fromStr).getTime();
   const to = new Date(toStr).getTime();
-  const ms = Math.max(0, to - from - pauseSeconds * 1000);
+  const ms = Math.max(0, to - from);
   return ms / (1000 * 60 * 60);
+}
+
+// Soma, por ticket, o tempo de colaboração (ticket_time_entries) já encerrado ou em aberto
+function buildCollabSecondsByTicket(
+  timeEntries: Array<{ ticket_id: number; started_at: string; ended_at: string | null }>
+): Map<number, number> {
+  const map = new Map<number, number>();
+  const now = Date.now();
+  for (const te of timeEntries) {
+    const endedMs = te.ended_at ? new Date(te.ended_at).getTime() : now;
+    const seconds = Math.max(0, (endedMs - new Date(te.started_at).getTime()) / 1000);
+    map.set(te.ticket_id, (map.get(te.ticket_id) || 0) + seconds);
+  }
+  return map;
 }
 
 // Métricas completas por usuário (tickets, tempo colaborativo, mensagens, plantão) — todos os usuários, não só agent/admin
@@ -40,13 +47,12 @@ router.get('/agents', authenticate, requirePermission(RESOURCES.REPORTS, ACTIONS
     ) as Array<{ id: number; name: string; email: string; role: string }>;
 
     const tickets = await dbAll(`
-      SELECT id, assigned_to, status, priority, created_at, assigned_at, updated_at,
-             ${TOTAL_PAUSE_SECONDS} AS total_pause_seconds
+      SELECT id, assigned_to, status, priority, created_at, assigned_at, updated_at
       FROM tickets t
       WHERE t.assigned_to IS NOT NULL
     `) as Array<{
       id: number; assigned_to: number; status: string; priority: string;
-      created_at: string; assigned_at: string | null; updated_at: string; total_pause_seconds: number;
+      created_at: string; assigned_at: string | null; updated_at: string;
     }>;
 
     const messages = await dbAll(`SELECT user_id, created_at FROM ticket_messages`) as Array<{ user_id: number; created_at: string }>;
@@ -54,6 +60,8 @@ router.get('/agents', authenticate, requirePermission(RESOURCES.REPORTS, ACTIONS
     const timeEntries = await dbAll(`SELECT user_id, ticket_id, started_at, ended_at FROM ticket_time_entries`) as Array<{
       user_id: number; ticket_id: number; started_at: string; ended_at: string | null;
     }>;
+
+    const collabSecondsByTicket = buildCollabSecondsByTicket(timeEntries);
 
     const shiftRows = await dbAll(`
       SELECT su.user_id, s.start_time, s.end_time
@@ -81,7 +89,7 @@ router.get('/agents', authenticate, requirePermission(RESOURCES.REPORTS, ACTIONS
 
       const resolutionHours = resolvedPeriod
         .filter((t) => t.status === 'resolved' || t.status === 'closed')
-        .map((t) => hoursBetween(t.assigned_at || t.created_at, t.updated_at, t.total_pause_seconds));
+        .map((t) => (collabSecondsByTicket.get(t.id) || 0) / 3600);
 
       const avgResolutionHours = resolutionHours.length
         ? resolutionHours.reduce((s, h) => s + h, 0) / resolutionHours.length
@@ -164,15 +172,19 @@ router.get('/overview', authenticate, requirePermission(RESOURCES.REPORTS, ACTIO
 
     const tickets = await dbAll(`
       SELECT t.id, t.status, t.priority, t.created_at, t.assigned_at, t.updated_at,
-             ${TOTAL_PAUSE_SECONDS} AS total_pause_seconds,
              c.name as category_name, f.name as form_name
       FROM tickets t
       LEFT JOIN categories c ON t.category_id = c.id
       LEFT JOIN forms f ON t.form_id = f.id
     `) as Array<{
       id: number; status: string; priority: string; created_at: string; assigned_at: string | null;
-      updated_at: string; total_pause_seconds: number; category_name: string | null; form_name: string | null;
+      updated_at: string; category_name: string | null; form_name: string | null;
     }>;
+
+    const timeEntries = await dbAll(`SELECT ticket_id, started_at, ended_at FROM ticket_time_entries`) as Array<{
+      ticket_id: number; started_at: string; ended_at: string | null;
+    }>;
+    const collabSecondsByTicket = buildCollabSecondsByTicket(timeEntries);
 
     const nowMs = Date.now();
 
@@ -188,7 +200,7 @@ router.get('/overview', authenticate, requirePermission(RESOURCES.REPORTS, ACTIO
 
     const resolutionHours = resolvedPeriod
       .filter((t) => t.status === 'resolved' || t.status === 'closed')
-      .map((t) => hoursBetween(t.assigned_at || t.created_at, t.updated_at, t.total_pause_seconds));
+      .map((t) => (collabSecondsByTicket.get(t.id) || 0) / 3600);
     const avgResolutionHours = resolutionHours.length ? resolutionHours.reduce((s, h) => s + h, 0) / resolutionHours.length : 0;
 
     const backlogOpen = tickets.filter((t) => t.status === 'open').length;

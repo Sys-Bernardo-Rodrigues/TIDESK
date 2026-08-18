@@ -26,6 +26,7 @@ import {
   Bell,
   Sparkles,
   BarChart3,
+  Tv,
 } from 'lucide-react';
 import { RESOURCES, ACTIONS } from '../hooks/usePermissions';
 import { formatDateBR } from '../utils/dateUtils';
@@ -97,6 +98,7 @@ const SYSTEM_PAGES = [
   { path: '/config/atualizar', label: 'Atualizar', Icon: RefreshCw },
   { path: '/config/grupos', label: 'Grupos', Icon: Users },
   { path: '/config/ia', label: 'Assistente de IA', Icon: Sparkles },
+  { path: '/config/painel-tv', label: 'Painel de TV', Icon: Tv },
   { path: '/acompanhar/aprovar', label: 'Aprovar', Icon: CheckCircle },
   { path: '/acompanhar/acompanhar-tratativa', label: 'Acompanhar Tratativa', Icon: Eye },
   { path: '/relatorios', label: 'Relatórios', Icon: BarChart3 },

@@ -34,6 +34,7 @@ import {
   Bell,
   Sparkles,
   Search,
+  Tv,
 } from 'lucide-react';
 import { useState } from 'react';
 import type { LucideIcon } from 'lucide-react';
@@ -120,6 +121,7 @@ const MENU_STRUCTURE: { label: string; items: NavItem[] }[] = [
         { path: '/config/backup', label: 'Backup', icon: Database, permission: '/config/backup' },
         { path: '/config/notificacoes', label: 'Notificações', icon: Bell, permission: '/config/notificacoes' },
         { path: '/config/ia', label: 'Assistente de IA', icon: Sparkles, permission: '/config/ia' },
+        { path: '/config/painel-tv', label: 'Painel de TV', icon: Tv, permission: '/config/painel-tv' },
         { path: '/config/atualizar', label: 'Atualizar', icon: RefreshCw, permission: '/config/atualizar' },
       ],
     }],

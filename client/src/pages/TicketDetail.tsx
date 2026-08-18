@@ -38,7 +38,6 @@ import {
   X,
   Calendar,
   Clock,
-  Pause,
   Play,
   Tag,
   Users,
@@ -101,7 +100,6 @@ interface Ticket {
   created_at: string;
   updated_at: string;
   is_paused?: boolean;
-  paused_at?: string | null;
 }
 
 interface FormAttachment {
@@ -214,7 +212,6 @@ export default function TicketDetail({ ticketId: ticketIdProp, onClose }: Ticket
   const [scheduleDate, setScheduleDate] = useState('');
   const [scheduleTime, setScheduleTime] = useState('');
   const [scheduling, setScheduling] = useState(false);
-  const [pausingResume, setPausingResume] = useState(false);
   const [showRawWebhookJson, setShowRawWebhookJson] = useState(false);
   const [collaborators, setCollaborators] = useState<Collaborator[]>([]);
   const [timeSummary, setTimeSummary] = useState<TimeSummaryEntry[]>([]);
@@ -774,34 +771,6 @@ export default function TicketDetail({ ticketId: ticketIdProp, onClose }: Ticket
     }
   };
 
-  const handlePause = async () => {
-    if (pausingResume || !ticket) return;
-    setPausingResume(true);
-    try {
-      await axios.post(`/api/tickets/${id}/pause`);
-      await fetchTicket();
-    } catch (err: any) {
-      console.error('Erro ao pausar ticket:', err);
-      toast.error(err.response?.data?.error || 'Erro ao pausar ticket');
-    } finally {
-      setPausingResume(false);
-    }
-  };
-
-  const handleResume = async () => {
-    if (pausingResume || !ticket) return;
-    setPausingResume(true);
-    try {
-      await axios.post(`/api/tickets/${id}/resume`);
-      await fetchTicket();
-    } catch (err: any) {
-      console.error('Erro ao retomar ticket:', err);
-      toast.error(err.response?.data?.error || 'Erro ao retomar ticket');
-    } finally {
-      setPausingResume(false);
-    }
-  };
-
   const handleSendMessage = async () => {
     if ((!newMessage.trim() && messageFiles.length === 0) || sending || !ticket) return;
 
@@ -1015,18 +984,6 @@ export default function TicketDetail({ ticketId: ticketIdProp, onClose }: Ticket
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            {canEditTicket && ticket.status === 'in_progress' && (
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={ticket.is_paused ? handleResume : handlePause}
-                disabled={pausingResume}
-                title={ticket.is_paused ? 'Retomar (tempo volta a contar)' : 'Pausar (tempo não conta no tempo médio)'}
-              >
-                {ticket.is_paused ? <Play size={16} /> : <Pause size={16} />}
-                {pausingResume ? '…' : ticket.is_paused ? 'Retomar' : 'Pausar'}
-              </Button>
-            )}
             {canEditTicket && ticket.status !== 'pending_approval' && (
               <Button variant={showSettings ? 'default' : 'secondary'} size="icon-sm" onClick={() => setShowSettings(!showSettings)}>
                 <Settings size={16} />

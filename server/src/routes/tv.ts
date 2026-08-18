@@ -1,5 +1,6 @@
 import express from 'express';
 import { dbGet, dbAll, getBrasiliaTimestamp } from '../database';
+import { getTvConfig } from '../services/tv-config-service';
 
 const router = express.Router();
 
@@ -25,9 +26,14 @@ router.get('/stats', async (req, res) => {
       )
     ]);
 
+    // "Pausado" é derivado do cronômetro de colaboração: em progresso sem ninguém com o tempo rodando
+    const IS_PAUSED_EXPR = `(CASE WHEN t.status = 'in_progress' AND NOT EXISTS (
+      SELECT 1 FROM ticket_time_entries te WHERE te.ticket_id = t.id AND te.ended_at IS NULL
+    ) THEN 1 ELSE 0 END)`;
+
     const queue = await dbAll(`
       SELECT t.ticket_number, t.created_at, t.status, t.priority,
-             EXISTS (SELECT 1 FROM ticket_pauses p WHERE p.ticket_id = t.id AND p.resumed_at IS NULL) AS is_paused
+             ${IS_PAUSED_EXPR} AS is_paused
       FROM tickets t
       WHERE t.status IN ('open', 'in_progress')
       ORDER BY
@@ -38,15 +44,14 @@ router.get('/stats', async (req, res) => {
 
     const latest = await dbAll(`
       SELECT t.ticket_number, t.created_at, t.status, t.priority,
-             EXISTS (SELECT 1 FROM ticket_pauses p WHERE p.ticket_id = t.id AND p.resumed_at IS NULL) AS is_paused
+             ${IS_PAUSED_EXPR} AS is_paused
       FROM tickets t
       ORDER BY t.created_at DESC
       LIMIT 10
     `);
 
     const scheduled = await dbAll(`
-      SELECT t.ticket_number, t.created_at, t.scheduled_at, t.priority,
-             EXISTS (SELECT 1 FROM ticket_pauses p WHERE p.ticket_id = t.id AND p.resumed_at IS NULL) AS is_paused
+      SELECT t.ticket_number, t.created_at, t.scheduled_at, t.priority
       FROM tickets t
       WHERE t.status = 'scheduled'
       ORDER BY t.scheduled_at ASC
@@ -101,7 +106,6 @@ router.get('/stats', async (req, res) => {
         createdAt: t.created_at,
         scheduledAt: t.scheduled_at,
         priority: t.priority,
-        isPaused: Boolean(t.is_paused),
         isLate: Boolean(t.scheduled_at) && new Date(t.scheduled_at).getTime() < Date.now()
       })),
       ranking
@@ -109,6 +113,31 @@ router.get('/stats', async (req, res) => {
   } catch (error) {
     console.error('Erro ao buscar estatísticas do painel TV:', error);
     res.status(500).json({ error: 'Erro ao buscar estatísticas' });
+  }
+});
+
+// Painel público (sem autenticação): tempo do dashboard + slides ativos pra rotação na tela /tv.
+router.get('/panel-config', async (req, res) => {
+  try {
+    const tvConfig = getTvConfig();
+    const slides = await dbAll(`
+      SELECT id, title, url, duration_seconds FROM tv_slides
+      WHERE active = 1
+      ORDER BY sort_order ASC, id ASC
+    `);
+
+    res.json({
+      dashboardDurationSeconds: tvConfig.dashboardDurationSeconds,
+      slides: (slides as any[]).map((s) => ({
+        id: s.id,
+        title: s.title,
+        url: s.url,
+        durationSeconds: s.duration_seconds
+      }))
+    });
+  } catch (error) {
+    console.error('Erro ao buscar configuração do painel de TV:', error);
+    res.status(500).json({ error: 'Erro ao buscar configuração' });
   }
 });
 

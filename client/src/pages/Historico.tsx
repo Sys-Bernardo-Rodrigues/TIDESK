@@ -26,7 +26,7 @@ interface Ticket {
   assigned_at: string | null; // Momento em que o agente pegou o ticket (para tempo de resolução correto)
   created_at: string;
   updated_at: string;
-  total_pause_seconds?: number; // Tempo em pausa (não contabilizado)
+  total_collab_seconds?: number; // Soma do tempo de colaboração (cronômetro) no ticket
   form_name?: string;
 }
 
@@ -123,15 +123,8 @@ export default function Historico() {
 
   const formatDate = (dateString: string) => formatDateBR(dateString, { includeTime: true });
 
-  const calculateTimeToResolve = (createdAt: string, updatedAt: string, assignedAt?: string | null, totalPauseSeconds?: number) => {
-    const start = assignedAt || createdAt;
-    const startDate = new Date(start);
-    const updated = new Date(updatedAt);
-    let diffMs = updated.getTime() - startDate.getTime();
-    if (totalPauseSeconds != null && totalPauseSeconds > 0) {
-      diffMs -= totalPauseSeconds * 1000;
-    }
-    const diff = Math.max(0, diffMs);
+  const calculateTimeToResolve = (totalCollabSeconds?: number) => {
+    const diff = Math.max(0, (totalCollabSeconds || 0) * 1000);
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
     const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
     const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
@@ -347,7 +340,7 @@ export default function Historico() {
                       </span>
                     )}
                     <span className="flex items-center gap-1">
-                      <Clock size={12} /> {calculateTimeToResolve(ticket.created_at, ticket.updated_at, ticket.assigned_at, ticket.total_pause_seconds)}
+                      <Clock size={12} /> {calculateTimeToResolve(ticket.total_collab_seconds)}
                     </span>
                     <span className="ml-auto flex items-center gap-1">
                       <Calendar size={12} /> {formatDate(ticket.updated_at)}

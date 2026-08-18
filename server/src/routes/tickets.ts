@@ -12,10 +12,15 @@ const SQL_NOW_BRASILIA = DB_TYPE === 'sqlite'
   ? `datetime('now', '-3 hours')`
   : `(NOW() AT TIME ZONE 'America/Sao_Paulo')`;
 
-// Subquery para total de segundos em pausa (inclui pausa atual se ticket estiver pausado)
-const TOTAL_PAUSE_SECONDS = DB_TYPE === 'sqlite'
-  ? `(SELECT COALESCE(SUM((julianday(COALESCE(p.resumed_at, ${SQL_NOW_BRASILIA})) - julianday(p.paused_at)) * 86400), 0) FROM ticket_pauses p WHERE p.ticket_id = t.id)`
-  : `(SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(p.resumed_at, ${SQL_NOW_BRASILIA}) - p.paused_at))), 0)::bigint FROM ticket_pauses p WHERE p.ticket_id = t.id)`;
+// Subquery para total de segundos de colaboração (soma do cronômetro de todos os colaboradores)
+const TOTAL_COLLAB_SECONDS = DB_TYPE === 'sqlite'
+  ? `(SELECT COALESCE(SUM((julianday(COALESCE(te.ended_at, ${SQL_NOW_BRASILIA})) - julianday(te.started_at)) * 86400), 0) FROM ticket_time_entries te WHERE te.ticket_id = t.id)`
+  : `(SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(te.ended_at, ${SQL_NOW_BRASILIA}) - te.started_at))), 0)::bigint FROM ticket_time_entries te WHERE te.ticket_id = t.id)`;
+
+// "Pausado" agora é derivado do cronômetro de colaboração: ticket em progresso sem ninguém com o tempo rodando
+const IS_PAUSED_EXPR = `(CASE WHEN t.status = 'in_progress' AND NOT EXISTS (
+  SELECT 1 FROM ticket_time_entries te WHERE te.ticket_id = t.id AND te.ended_at IS NULL
+) THEN 1 ELSE 0 END)`;
 
 const router = express.Router();
 
@@ -211,7 +216,7 @@ router.get('/in-treatment', requirePermission(RESOURCES.TRACK, ACTIONS.VIEW), as
              f.public_url as form_url,
              f.linked_user_id,
              f.linked_group_id,
-             ${TOTAL_PAUSE_SECONDS} AS total_pause_seconds
+             ${TOTAL_COLLAB_SECONDS} AS total_collab_seconds
       FROM tickets t
       LEFT JOIN users u ON t.user_id = u.id
       LEFT JOIN users a ON t.assigned_to = a.id
@@ -254,8 +259,8 @@ router.get('/', requirePermission(RESOURCES.TICKETS, ACTIONS.VIEW), async (req: 
              f.public_url as form_url,
              f.id as form_id,
              t.scheduled_at,
-             EXISTS (SELECT 1 FROM ticket_pauses p WHERE p.ticket_id = t.id AND p.resumed_at IS NULL) AS is_paused,
-             ${TOTAL_PAUSE_SECONDS} AS total_pause_seconds
+             ${TOTAL_COLLAB_SECONDS} AS total_collab_seconds,
+             ${IS_PAUSED_EXPR} AS is_paused
       FROM tickets t
       LEFT JOIN users u ON t.user_id = u.id
       LEFT JOIN users a ON t.assigned_to = a.id
@@ -325,7 +330,8 @@ router.get('/:id', requirePermission(RESOURCES.TICKETS, ACTIONS.VIEW), async (re
              c.name as category_name,
              f.name as form_name,
              f.id as form_id,
-             ${TOTAL_PAUSE_SECONDS} AS total_pause_seconds
+             ${TOTAL_COLLAB_SECONDS} AS total_collab_seconds,
+             ${IS_PAUSED_EXPR} AS is_paused
       FROM tickets t
       LEFT JOIN users u ON t.user_id = u.id
       LEFT JOIN users a ON t.assigned_to = a.id
@@ -349,12 +355,7 @@ router.get('/:id', requirePermission(RESOURCES.TICKETS, ACTIONS.VIEW), async (re
     if (!ticket) {
       return res.status(404).json({ error: 'Ticket não encontrado' });
     }
-    const openPause = await dbGet(
-      'SELECT id, paused_at FROM ticket_pauses WHERE ticket_id = ? AND resumed_at IS NULL',
-      [ticketId]
-    ) as any;
-    const out = { ...ticket, is_paused: !!openPause, paused_at: openPause?.paused_at || null };
-    res.json(out);
+    res.json(ticket);
   } catch (error) {
     console.error('Erro ao buscar ticket:', error);
     res.status(500).json({ error: 'Erro ao buscar ticket' });
@@ -543,19 +544,41 @@ router.put('/:id', [
       values
     );
 
-    if (req.body.status === 'resolved' || req.body.status === 'closed') {
-      await dbRun(
-        'UPDATE ticket_pauses SET resumed_at = ? WHERE ticket_id = ? AND resumed_at IS NULL',
-        [now, ticketId]
-      );
-    }
-
     // Ao finalizar o ticket, encerrar qualquer cronômetro de colaborador ainda aberto
     if (req.body.status === 'resolved' || req.body.status === 'closed' || req.body.status === 'rejected') {
       await dbRun(
         'UPDATE ticket_time_entries SET ended_at = ? WHERE ticket_id = ? AND ended_at IS NULL',
         [now, ticketId]
       );
+    }
+
+    // Ao entrar em progresso, iniciar automaticamente o cronômetro de quem fez a mudança
+    // (ex.: arrastar o ticket no kanban já conta como início de atendimento)
+    if (req.body.status === 'in_progress' && existingTicket.status !== 'in_progress') {
+      const running = await dbGet(
+        'SELECT id FROM ticket_time_entries WHERE ticket_id = ? AND user_id = ? AND ended_at IS NULL',
+        [ticketId, req.userId]
+      );
+      if (!running) {
+        await dbRun(
+          'INSERT INTO ticket_time_entries (ticket_id, user_id, started_at, created_at) VALUES (?, ?, ?, ?)',
+          [ticketId, req.userId, now, now]
+        );
+
+        const assignedToNow = assignId != null && canAssign ? assignId : existingTicket.assigned_to;
+        if (assignedToNow !== req.userId) {
+          const existingCollab = await dbGet(
+            'SELECT id FROM ticket_collaborators WHERE ticket_id = ? AND user_id = ?',
+            [ticketId, req.userId]
+          );
+          if (!existingCollab) {
+            await dbRun(
+              'INSERT INTO ticket_collaborators (ticket_id, user_id, added_by, created_at) VALUES (?, ?, ?, ?)',
+              [ticketId, req.userId, req.userId, now]
+            );
+          }
+        }
+      }
     }
 
     const updatedTicket = await dbGet(
@@ -717,72 +740,6 @@ router.post('/:id/unschedule', authenticate, requirePermission(RESOURCES.TICKETS
   } catch (error) {
     console.error('Erro ao cancelar agendamento:', error);
     res.status(500).json({ error: 'Erro ao cancelar agendamento' });
-  }
-});
-
-// Pausar ticket (tempo em pausa não conta no tempo médio)
-router.post('/:id/pause', authenticate, requirePermission(RESOURCES.TICKETS, ACTIONS.EDIT), async (req: AuthRequest, res) => {
-  try {
-    const ticketId = await getTicketIdFromFullId(req.params.id);
-    if (!ticketId) {
-      return res.status(404).json({ error: 'Ticket não encontrado' });
-    }
-
-    const ticket = await dbGet('SELECT id, status FROM tickets WHERE id = ?', [ticketId]) as any;
-    if (!ticket) {
-      return res.status(404).json({ error: 'Ticket não encontrado' });
-    }
-    if (ticket.status !== 'in_progress') {
-      return res.status(400).json({ error: 'Só é possível pausar tickets em progresso' });
-    }
-
-    const openPause = await dbGet(
-      'SELECT id FROM ticket_pauses WHERE ticket_id = ? AND resumed_at IS NULL',
-      [ticketId]
-    );
-    if (openPause) {
-      return res.status(400).json({ error: 'Ticket já está em pausa' });
-    }
-
-    const now = getBrasiliaTimestamp();
-    await dbRun(
-      'INSERT INTO ticket_pauses (ticket_id, paused_at, paused_by) VALUES (?, ?, ?)',
-      [ticketId, now, req.userId]
-    );
-
-    res.json({ message: 'Ticket pausado', paused_at: now });
-  } catch (error) {
-    console.error('Erro ao pausar ticket:', error);
-    res.status(500).json({ error: 'Erro ao pausar ticket' });
-  }
-});
-
-// Retomar ticket (encerrar pausa)
-router.post('/:id/resume', authenticate, requirePermission(RESOURCES.TICKETS, ACTIONS.EDIT), async (req: AuthRequest, res) => {
-  try {
-    const ticketId = await getTicketIdFromFullId(req.params.id);
-    if (!ticketId) {
-      return res.status(404).json({ error: 'Ticket não encontrado' });
-    }
-
-    const openPause = await dbGet(
-      'SELECT id FROM ticket_pauses WHERE ticket_id = ? AND resumed_at IS NULL',
-      [ticketId]
-    ) as any;
-    if (!openPause) {
-      return res.status(400).json({ error: 'Ticket não está em pausa' });
-    }
-
-    const now = getBrasiliaTimestamp();
-    await dbRun(
-      'UPDATE ticket_pauses SET resumed_at = ? WHERE id = ?',
-      [now, openPause.id]
-    );
-
-    res.json({ message: 'Ticket retomado', resumed_at: now });
-  } catch (error) {
-    console.error('Erro ao retomar ticket:', error);
-    res.status(500).json({ error: 'Erro ao retomar ticket' });
   }
 });
 
